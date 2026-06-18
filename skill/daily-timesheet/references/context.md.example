@@ -1,0 +1,147 @@
+# Timesheet context
+
+The daily-timesheet skill reads this file every run. It's your source of truth for
+*who's who* and *which client each activity belongs to*. Keep only confirmed facts;
+the skill will propose additions when it learns something new — review and merge
+those additions rather than letting them accumulate elsewhere.
+
+You can hand-edit this file at any time. The skill never overwrites it without
+showing you the diff first.
+
+---
+
+## Preferences
+
+Override the skill's defaults here. Omit any line you're happy with as default.
+
+- **Timezone**: `Pacific/Auckland`  <!-- IANA name; affects AW UTC→local conversion -->
+- **AFK threshold for a real break**: `1050s` (17.5 min) — shorter AFK folds into work
+- **Lunch detection window**: `11:30`–`14:30` local — longest AFK in here is lunch
+- **Work-hours window for AW rendering**: `06:00`–`20:00` local
+- **Default Harvest task for client work**: `Gen - Development/Configuration`
+- **Default Harvest task for internal/admin time**: `Meeting - Standup Meetings`
+- **Display name in window titles**: `<YourFirstName>` (used by Edge profile signal — e.g. titles ending `… - <Profile> - <YourFirstName> - Microsoft Edge`)
+
+## AW buckets
+
+(The skill caches these after first discovery so subsequent runs skip the buckets endpoint.)
+
+- Hostname suffix: `<YOUR-MACHINE-NAME>`  <!-- e.g. ACL-113359 -->
+- Window: `aw-watcher-window_<HOST>`
+- AFK: `aw-watcher-afk_<HOST>`
+- Web (Firefox): `aw-watcher-web-firefox_<HOST>`
+- Web (Edge/Chrome): `aw-watcher-web-chrome_<HOST>`
+- VS Code: `aw-watcher-vscode_<HOST>` (optional)
+
+---
+
+## Internal colleagues
+
+Names that, if they appear in Teams chat/call titles, indicate internal work
+rather than a client.
+
+- **<Full Name>** — <role / team, optional>
+- **<Full Name>** — <role / team, optional>
+
+## Known external contacts
+
+Teams often marks externals in window titles like `Chat | <Name> (External unfamiliar) | …`.
+List the externals you regularly chat with so they auto-classify to a client.
+
+- **<Full Name>** — external. Project: <client name>. <Optional note: "Teams sometimes flags as External unfamiliar — that's stale.">
+- **<Full Name>** — external. Project: <client name>.
+
+---
+
+## Active client projects
+
+One section per client. Include every signal that would let the skill identify
+"this block is for <client>" without asking you.
+
+### <Client Name>
+
+**Harvest client**: `<exact name as shown in Harvest>`
+**Default Harvest project**: `<project code>` `<project name>`
+
+Signals:
+- `<token>` appears in URL or window title
+- Edge profile `<ProfileName>` (window title ends `... - <ProfileName> - <YourName> - Microsoft Edge`)
+- Dynamics 365 at `<env-url>.crm6.dynamics.com`
+- ChatGPT project named `<Project Name>` (Firefox tab title `ChatGPT - <Project Name>`, URL contains `g-p-…-<slug>`)
+- Azure DevOps org `<dev.azure.com/orgname>`
+- SharePoint subdomains: `<subdomain>.sharepoint.com`
+- VS Code workspace `<WorkspaceName>` (title ends `… - <WorkspaceName> - Visual Studio Code`)
+- Local repo path `<path>\<repo>`
+- Microsoft Teams team `<Team Name>`
+
+Common activities: <free text describing what kind of work you typically do for this client>
+
+### <Client Name 2>
+
+…repeat the structure above for each client.
+
+---
+
+## Shared signals across client groups (optional)
+
+If two clients share signals (sister organisations, shared codebase, etc.), document
+the shared patterns here and the rule for splitting.
+
+### <Parent group name>
+
+<Client A> and <Client B> are both part of <Parent>. Some artefacts span both:
+
+- **Recurring `<Meeting Name>`** → bills to <project> (the convention you actually use)
+- **Codebase `<repo>`** → serves both clients; pick by ticket / commit context
+
+---
+
+## How I bill (description style + project selection)
+
+Your own conventions. The skill applies these when proposing entries.
+
+**Description style — client-readable, 5–15 words, outcome-focused.** Most
+descriptions get sent to clients with the invoice. Lead with the *result*, not the
+tools or files. Don't name specific code files, internal app names, or chat partners
+unless essential.
+
+Real examples from your entries (paste 3–5 here once you have them):
+- "<example outcome description>"
+- "<example outcome description>"
+- "<example outcome description>"
+
+**Bill by ticket / work item, not by window or app.** One sustained block of work
+on one ticket = one Harvest entry, even when the surface switched between VS Code,
+Power Apps, Teams, browser. Don't fragment by window-title change.
+
+**Ticket-catalog caveat.** If you maintain a dump of all active tickets, remember
+that catalog existence ≠ today's billing target. A ticket may exist with a
+thematically-matching name but the day's work bills somewhere else.
+
+**Codebase path is a codebase signal, not a billing signal.** A repo can serve
+multiple Harvest projects. Use the work-item context to pick the project.
+
+---
+
+## Personal browsing patterns to exclude (do not bill)
+
+List anything that's *clearly* personal so the skill drops it from time blocks
+automatically. Be specific — generic categories invite false positives.
+
+- Flight / travel searches (Google Flights, destination image searches, travel guides)
+- Social media (personal scrolling on FB / IG / X / LinkedIn)
+- News, weather, shopping, personal email
+- Pomodoro timer pages (timer overlay only — not work itself)
+- Home admin pages (router admin, smart home, NAS, etc.)
+
+---
+
+## Notes on inference
+
+Any standing rules that don't fit the categories above. Examples:
+
+- **Edge profile in title is a strong client signal.** Pattern: `... - <ProfileName> - <YourName> - Microsoft Edge`. Treat profile name as the client unless this file overrides.
+- **Teams meeting names** are reliable block boundaries.
+- **ActivityWatch noise**: the Power Platform admin center page polls in the background and produces lots of 0-duration events. Ignore short blips.
+- **Harvest itself** (Timesheet tab in browser) → internal admin, not billable client work.
+- **Pure `claude.exe` time** accompanying timesheet-automation files (`Claude/Scheduled/`, `Pictures/WorkScreenshots/`, `Timesheets/`) → internal admin. `claude.exe` adjacent to a billable client's app stack should be attributed to that client.

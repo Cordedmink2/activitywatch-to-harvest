@@ -1,0 +1,98 @@
+# activitywatch-to-harvest — setup runbook for an AI coding agent
+
+You are helping a user install and configure the **daily-timesheet** Claude Code skill from this
+repo. This file is the authoritative, ordered runbook. Follow it top to bottom. Do the steps you
+*can* do (run scripts, create files, verify services); for steps only a human can do (installing
+desktop apps, clicking through browser-extension options), give clear, copy-pasteable instructions and
+wait for the user to confirm before moving on.
+
+## Hard rules
+
+- **Never invent or guess secrets.** When you need the Harvest Account ID or API key, ask the user to
+  paste them. Do not fabricate placeholder values into a real `.env`.
+- **Never commit `.env`** or any secret. It is git-ignored; keep it that way.
+- **Never post to Harvest** as part of setup. Setup ends at "verified credentials work". Actually
+  logging time is a separate, user-initiated action handled by the skill with a confirmation gate.
+- Confirm each external/desktop step with the user before continuing. Don't assume an app got
+  installed — verify (e.g. curl the ActivityWatch port).
+- This repo targets Windows primarily. Prefer the PowerShell scripts on Windows; use the `.sh`
+  equivalents on macOS/Linux (note: the screenshot pipeline is Windows-only as shipped).
+
+## Environment detection
+
+1. Detect the OS. On Windows use `install\*.ps1`; on macOS/Linux use `install/*.sh`.
+2. Confirm Python 3.10+ is on PATH (`python --version` / `python3 --version`).
+3. Confirm Claude Code is installed (the user is presumably already in it).
+
+## Steps
+
+### 1. ActivityWatch (manual — human installs)
+- Ask the user to install ActivityWatch from https://activitywatch.net/downloads/ and launch it.
+- Verify it's running: GET http://localhost:5600/api/0/buckets/ should return JSON. If it doesn't,
+  stop and help the user start ActivityWatch before continuing.
+
+### 2. Browser extension (manual — human installs)
+- Ask the user to install "URL in Title":
+  https://chromewebstore.google.com/detail/url-in-title/ignpacbgnbnkaiooknalneoeladjnfgb
+
+### 3. Per-client browser-profile tags (manual — human configures, you advise)
+- Explain: one browser profile per client; in each profile set the URL-in-Title format to append the
+  client's short code in brackets, e.g. `{title}-{hostname}{path}{args}{hash} - [ACME]`.
+- Help the user choose a short, collision-resistant code per client. Offer to record the
+  profile→code mapping into their `Timesheets/.context.md` once it exists (step 7).
+
+### 4. ActivityWatch categories (manual — human configures, you advise)
+- Walk the user through http://localhost:5600 → Settings → Categories: one category per client with a
+  Regex rule matching the bracketed code, e.g. `\[ACME\]`.
+
+### 5. Install the skill (you run this)
+- Windows: `pwsh -File install\install_skill.ps1`
+- POSIX:   `./install/install_skill.sh`
+- This copies `skill/daily-timesheet` to `~/.claude/skills/daily-timesheet`, excluding `.env` and
+  `__pycache__`. Safe to re-run.
+
+### 6. Scaffold the workspace (you run this)
+- Ask the user which folder should be their workspace (default: current directory).
+- Windows: `pwsh -File install\setup_workspace.ps1 [-Workspace <path>]`
+- POSIX:   `./install/setup_workspace.sh [<path>]`
+- Creates `Timesheets/`, `daily_exports/`, `.mcp/` and seeds `Timesheets/.context.md` from the
+  template (without overwriting an existing one).
+
+### 7. Fill in `.context.md` (collaborate)
+- Open `Timesheets/.context.md`. Walk the user through it section by section: Preferences (timezone,
+  thresholds, default task), AW buckets (hostname suffix — you can discover this from the buckets
+  endpoint), Internal colleagues, Known external contacts, Active client projects (one block per
+  client with its code/Edge profile/URLs/repo signals), How I bill, and exclusions.
+- Write only confirmed facts. This file stays local (git-ignored).
+
+### 8. Harvest credentials (you create the file; user supplies values)
+- Copy `~/.claude/skills/daily-timesheet/.env.example` to `.env` in the same folder.
+- Ask the user for their Harvest Account ID and a Personal Access Token from
+  https://id.getharvest.com/developers. Do NOT guess these.
+- Write them into `.env` as `HARVEST_ACCOUNT_ID=` and `HARVEST_API_KEY=`.
+- Verify: `python ~/.claude/skills/daily-timesheet/scripts/harvest_list.py <today> <today>` runs with
+  no auth error. A 401/403 means the token is wrong — ask the user to regenerate.
+
+### 9. Optional Dataverse catalog (only if the user wants it)
+- If the user creates tickets in a Dataverse org that sync to Harvest: set `DATAVERSE_URL` and
+  `PAC_PROFILE` in `.env` (requires the `pac` CLI authenticated). Otherwise leave both blank — the
+  skill runs Harvest-only and `refresh_catalogs.py` will simply skip the Dataverse step.
+
+### 10. Screenshot pipeline (you run this — REQUIRED, Windows)
+- This is a core part of the skill (screenshots disambiguate generic activity into the right client).
+- Run: `pwsh -File ~/.claude/skills/daily-timesheet/scripts/setup_screenshot_pipeline.ps1`
+- Installs Pillow if needed and registers the `WorkScreenshots` scheduled task (weekdays 08:30–20:00,
+  ~every 2.5 min). Params: `-StartTime`, `-EndTime`, `-IntervalSeconds`.
+
+### 11. Done
+- Summarize what's configured and what the user must still do manually (browser profiles + AW
+  categories if not yet finished).
+- Tell the user they can now ask the skill things like "do my timesheet for yesterday". Remind them
+  the skill always asks before posting to Harvest.
+
+## Reference files in the installed skill
+- `SKILL.md` — the full skill workflow.
+- `references/classification-rules.md` — how signals map to a billing decision.
+- `references/context.md.example` — the `.context.md` template.
+- `references/catalog-refresh.md` — how the `.mcp/` catalogs are built/refreshed.
+- `references/output-format.md` — the markdown timesheet format.

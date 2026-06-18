@@ -1,0 +1,17 @@
+# Secrets — never commit. The API key grants full access to your Harvest account.
+.env
+**/.env
+
+# Python build artifacts
+__pycache__/
+*.pyc
+
+# User data — these belong in your own workspace, not in this repo
+Timesheets/
+daily_exports/
+.mcp/
+WorkScreenshots/
+
+# OS noise
+.DS_Store
+Thumbs.db
