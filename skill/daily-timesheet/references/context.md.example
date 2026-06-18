@@ -4,6 +4,9 @@ Source of truth for *who's who* and *which client each activity belongs to*. The
 run and proposes additions (with a diff) when it learns something — merge those, don't duplicate. Keep
 it tight: only confirmed facts. Delete sections you don't use. Hand-edit any time.
 
+> **Keep this file lean.** It's loaded into context on every run, so terse facts beat prose. Use short
+> bullets, drop unused sections, and don't let it bloat — fewer tokens here means a faster, cheaper run.
+
 ## Preferences
 
 Override skill defaults. Omit any line to keep the default.
