@@ -209,17 +209,18 @@ uncertain, and asks before posting anything to Harvest.
 ## The lazy path — let Claude Code set it up for you
 
 Don't want to click through all of the above? This repo ships an [`llms.txt`](./llms.txt) — a
-machine-readable runbook for the setup. Clone the repo, open Claude Code in it, and paste:
+machine-readable runbook for the setup. Just open Claude Code anywhere and paste this — it tells
+Claude where to find everything, so you don't even need to clone first:
 
 ```
-Read llms.txt in this repo and set up the activitywatch-to-harvest skill for me on this machine.
-Walk me through anything you can't do yourself (installing ActivityWatch, the browser extension,
-the browser-profile title tags, the AW categories). Ask me for any secrets — don't guess them —
-and never commit my .env.
+Clone https://github.com/Cordedmink2/activitywatch-to-harvest, read its llms.txt, and set up the
+daily-timesheet skill for me on this machine. Walk me through anything you can't do yourself
+(installing ActivityWatch, the browser extension, the browser-profile title tags, the AW
+categories). Ask me for any secrets — don't guess them — and never commit my .env.
 ```
 
-Claude will run the install/scaffold scripts, help you create your `.env`, verify ActivityWatch is
-reachable, and talk you through the manual browser steps that only a human can do.
+Claude will clone the repo, run the install/scaffold scripts, help you create your `.env`, verify
+ActivityWatch is reachable, and talk you through the manual browser steps that only a human can do.
 
 ---
 
