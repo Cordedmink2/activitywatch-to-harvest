@@ -17,6 +17,14 @@ wait for the user to confirm before moving on.
   installed — verify (e.g. curl the ActivityWatch port).
 - This repo targets Windows primarily. Prefer the PowerShell scripts on Windows; use the `.sh`
   equivalents on macOS/Linux (note: the screenshot pipeline is Windows-only as shipped).
+- **Antivirus / EDR may block a step mid-install — never assume a step succeeded.** Corporate
+  endpoint security commonly flags this setup: a scheduled task that silently runs a `pythonw`
+  screen-grabber every few minutes looks like spyware, so the task registration may be denied or the
+  `screenshot_capture.py` file quarantined; `pip install` can also be blocked by a proxy/AV. After
+  each install or registration step, VERIFY it actually took effect (see the per-step checks below)
+  rather than trusting a clean-looking exit. If something was blocked, stop and tell the user exactly
+  what to allow-list (the skill's `scripts/` folder, `pythonw.exe`, the `WorkScreenshots` task) — do
+  not silently retry or carry on as if it worked.
 
 ## Environment detection
 
@@ -81,8 +89,18 @@ wait for the user to confirm before moving on.
 ### 10. Screenshot pipeline (you run this — REQUIRED, Windows)
 - This is a core part of the skill (screenshots disambiguate generic activity into the right client).
 - Run: `pwsh -File ~/.claude/skills/daily-timesheet/scripts/setup_screenshot_pipeline.ps1`
-- Installs Pillow if needed and registers the `WorkScreenshots` scheduled task (weekdays 08:30–20:00,
-  ~every 2.5 min). Params: `-StartTime`, `-EndTime`, `-IntervalSeconds`.
+- Installs Pillow + mss if needed and registers the `WorkScreenshots` scheduled task (weekdays
+  08:30–20:00, ~every 2.5 min). Params: `-StartTime`, `-EndTime`, `-IntervalSeconds`.
+- VERIFY it actually works — this is the step most likely to be silently blocked by AV/EDR:
+  1. `Get-ScheduledTaskInfo -TaskName WorkScreenshots` returns without error (the task registered).
+  2. Fire one capture by hand and confirm PNGs land: run
+     `python ~/.claude/skills/daily-timesheet/scripts/screenshot_capture.py`, then check that
+     `~/Pictures/WorkScreenshots/<today>/` now holds `HH-MM-SS_m1.png` files.
+  If the task registers but no images ever appear, endpoint security has likely quarantined
+  `screenshot_capture.py` or is blocking the silent `pythonw` process — tell the user and ask them to
+  allow-list the skill's `scripts/` folder; don't just re-run it.
+- If a previous `WorkScreenshots` task was registered elevated, re-running from a normal shell fails
+  with `Access is denied` — have the user run the setup once from an elevated PowerShell.
 
 ### 11. Done
 - Summarize what's configured and what the user must still do manually (browser profiles + AW

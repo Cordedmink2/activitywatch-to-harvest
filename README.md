@@ -44,6 +44,12 @@ categories). Ask me for any secrets — don't guess them — and never commit my
 Claude will clone the repo, run the install/scaffold scripts, help you create your `.env`, verify
 ActivityWatch is reachable, and talk you through the manual browser steps that only a human can do.
 
+> **Heads-up on antivirus / EDR.** A scheduled task that silently screenshots every few minutes looks
+> like spyware to endpoint security, so it (or `pip install`) may be blocked mid-setup. The runbook
+> tells Claude to verify each step actually took effect rather than assume it — if a step is blocked,
+> Claude will stop and tell you exactly what to allow-list (the skill's `scripts/` folder) instead of
+> silently carrying on.
+
 ---
 
 ## Updating
