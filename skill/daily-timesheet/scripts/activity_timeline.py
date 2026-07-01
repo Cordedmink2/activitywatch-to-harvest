@@ -1,0 +1,267 @@
+"""Window-activity timeline for the daily-timesheet skill, tagged with the
+client categories ActivityWatch already knows.
+
+afk_blocks.py gives the day *skeleton* (start/end/breaks). This gives the
+*content*: a high-resolution, merged timeline of foreground-window activity,
+each span tagged with the AW category (client) whose class-rule it matches.
+Spans that match no class are "uncategorized"; spans matching several are
+flagged — both are exactly the spans to confirm with --window or a screenshot.
+
+AW category rules are read live from GET /api/0/settings -> "classes", so the
+tags mirror what the AW web UI shows (regex on the window app + title). The
+rules are *client*-level, not project/ticket-level: they get you to "NZLS",
+never to "NLS-CR202 vs NLS2232S", and are a first-pass signal only — never
+taken as 100% certain.
+
+Two modes:
+  * default              -> merged category spans for the whole day + per-category
+                            day totals (the "bin rollup").
+  * --window HH:MM-HH:MM -> zoom one section AND fold in the web watchers
+                            (firefox + chrome) URLs/titles for it.
+
+No third-party deps — stdlib urllib, like the sibling helpers.
+
+Usage:
+  python scripts/activity_timeline.py 2026-06-19
+  python scripts/activity_timeline.py 2026-06-19 --window 12:30-14:00
+  python scripts/activity_timeline.py 2026-06-19 --json
+  python scripts/activity_timeline.py 2026-06-19 --utc-offset 13   # NZDT
+"""
+import argparse
+import datetime as dt
+import json
+import re
+import sys
+import urllib.request
+
+AW_BASE = "http://localhost:5600/api/0"
+NOISE_FLOOR = 5    # drop sub-5s events (tab-switch noise), per SKILL.md
+GAP_FOLD = 60      # inter-event gaps shorter than this don't break a span (seconds)
+
+for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigure
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _get(path):
+    with urllib.request.urlopen(AW_BASE + path, timeout=15) as r:
+        return json.load(r)
+
+
+def discover_bucket(prefix):
+    buckets = _get("/buckets/")
+    cands = [b for b in buckets if b.startswith(prefix)]
+    cands.sort(key=lambda b: ("_" not in b, b))  # prefer hostname-suffixed live buckets
+    return cands[0] if cands else None
+
+
+def fetch_events(bucket, start_utc, end_utc):
+    if not bucket:
+        return []
+    q = f"/buckets/{bucket}/events?start={start_utc}&end={end_utc}&limit=10000"
+    return _get(q)
+
+
+def dedupe_heartbeats(events):
+    best = {}
+    for e in events:
+        ts = e["timestamp"]
+        if ts not in best or e["duration"] > best[ts]["duration"]:
+            best[ts] = e
+    return sorted(best.values(), key=lambda e: e["timestamp"])
+
+
+def parse_ts(ts):
+    return dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def load_classes():
+    """Return [(label, compiled_regex), ...] from AW settings 'classes'.
+    Skips non-regex rules (e.g. parent categories with type 'none')."""
+    try:
+        settings = _get("/settings")
+    except Exception:
+        return []
+    out = []
+    for c in settings.get("classes", []):
+        rule = c.get("rule") or {}
+        if rule.get("type") != "regex":
+            continue
+        pattern = rule.get("regex")
+        if not pattern:
+            continue
+        flags = re.IGNORECASE if rule.get("ignore_case") else 0
+        try:
+            rx = re.compile(pattern, flags)
+        except re.error:
+            continue
+        label = ">".join(c.get("name") or []) or pattern
+        out.append((label, rx))
+    return out
+
+
+def categorize(app, title, classes):
+    """Labels of every class whose regex matches 'app title'. [] if none."""
+    hay = f"{app} {title}"
+    return [label for label, rx in classes if rx.search(hay)]
+
+
+def build_window_spans(events, classes):
+    """Merge chronological window events into spans sharing a category.
+    Each span: start, end (datetime), category, multi (bool), categories (set of
+    every class label matched within the span), titles {label: secs}."""
+    evs = dedupe_heartbeats(events)
+    spans = []
+    cur = None
+    for e in evs:
+        if e["duration"] < NOISE_FLOOR:
+            continue
+        s = parse_ts(e["timestamp"])
+        en = s + dt.timedelta(seconds=e["duration"])
+        app = e["data"].get("app", "?")
+        title = e["data"].get("title", "") or ""
+        cats = categorize(app, title, classes)
+        primary = cats[0] if cats else "uncategorized"
+        key = f"{app} | {title}"
+        if (cur is not None and cur["category"] == primary
+                and (s - cur["end"]).total_seconds() < GAP_FOLD):
+            cur["end"] = max(cur["end"], en)
+            cur["titles"][key] = cur["titles"].get(key, 0) + e["duration"]
+            cur["categories"].update(cats)
+            cur["multi"] = cur["multi"] or len(cats) > 1
+        else:
+            if cur is not None:
+                spans.append(cur)
+            cur = {"start": s, "end": en, "category": primary,
+                   "multi": len(cats) > 1, "categories": set(cats),
+                   "titles": {key: e["duration"]}}
+    if cur is not None:
+        spans.append(cur)
+    return spans
+
+
+def category_rollup(events, classes):
+    """Minutes per category across all (deduped, >=5s) events."""
+    totals = {}
+    for e in dedupe_heartbeats(events):
+        if e["duration"] < NOISE_FLOOR:
+            continue
+        cats = categorize(e["data"].get("app", "?"), e["data"].get("title", "") or "", classes)
+        label = cats[0] if cats else "uncategorized"
+        totals[label] = totals.get(label, 0) + e["duration"]
+    return {k: round(v / 60, 1) for k, v in sorted(totals.items(), key=lambda kv: -kv[1])}
+
+
+def _utc_bounds(local_date, offset):
+    local_start = dt.datetime.combine(local_date, dt.time(0, 0))
+    start_utc = (local_start - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_utc = (local_start + dt.timedelta(days=1) - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return start_utc, end_utc
+
+
+def _parse_window(window, local_date, offset):
+    a, b = window.split("-", 1)
+    ws = (dt.datetime.combine(local_date, dt.datetime.strptime(a.strip(), "%H:%M").time())
+          - offset).replace(tzinfo=dt.timezone.utc)
+    we = (dt.datetime.combine(local_date, dt.datetime.strptime(b.strip(), "%H:%M").time())
+          - offset).replace(tzinfo=dt.timezone.utc)
+    return ws, we
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Categorized window-activity timeline for one day.")
+    ap.add_argument("date", help="YYYY-MM-DD (local date)")
+    ap.add_argument("--utc-offset", type=float, default=12.0,
+                    help="Local zone offset from UTC in hours (default 12 = NZST; 13 for NZDT)")
+    ap.add_argument("--window", help="Zoom HH:MM-HH:MM and include web-watcher detail")
+    ap.add_argument("--json", action="store_true", help="Emit JSON instead of text")
+    args = ap.parse_args()
+
+    offset = dt.timedelta(hours=args.utc_offset)
+    try:
+        local_date = dt.datetime.strptime(args.date, "%Y-%m-%d").date()
+    except ValueError:
+        print(f"ERR bad date '{args.date}', expected YYYY-MM-DD", file=sys.stderr)
+        return 2
+
+    start_utc, end_utc = _utc_bounds(local_date, offset)
+    try:
+        win_bucket = discover_bucket("aw-watcher-window_")
+        win_events = fetch_events(win_bucket, start_utc, end_utc)
+    except Exception as e:
+        print(f"ERR ActivityWatch unreachable at {AW_BASE} ({e})", file=sys.stderr)
+        return 1
+    classes = load_classes()
+
+    def to_local(d):
+        return (d + offset).strftime("%H:%M:%S")
+
+    spans = build_window_spans(win_events, classes)
+    rollup = category_rollup(win_events, classes)
+
+    # Zoom mode: restrict spans + pull web watchers for the window.
+    web_rows = None
+    if args.window:
+        try:
+            ws, we = _parse_window(args.window, local_date, offset)
+        except Exception:
+            print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM", file=sys.stderr)
+            return 2
+        spans = [s for s in spans if s["end"] > ws and s["start"] < we]
+        web_rows = []
+        for pref in ("aw-watcher-web-firefox_", "aw-watcher-web-chrome_"):
+            try:
+                b = discover_bucket(pref)
+                for e in dedupe_heartbeats(fetch_events(b, start_utc, end_utc)):
+                    if e["duration"] < NOISE_FLOOR:
+                        continue
+                    t = parse_ts(e["timestamp"])
+                    if t < ws or t > we:
+                        continue
+                    web_rows.append({"time": to_local(t), "secs": int(e["duration"]),
+                                     "title": (e["data"].get("title") or "")[:60],
+                                     "url": (e["data"].get("url") or "")[:80]})
+            except Exception:
+                pass
+        web_rows.sort(key=lambda r: r["time"])
+
+    result = {
+        "date": args.date,
+        "window_bucket": win_bucket,
+        "spans": [{"start": to_local(s["start"]), "end": to_local(s["end"]),
+                   "min": round((s["end"] - s["start"]).total_seconds() / 60, 1),
+                   "category": s["category"], "multi": s["multi"],
+                   "categories": sorted(s["categories"]),
+                   "top_titles": sorted(s["titles"].items(), key=lambda kv: -kv[1])[:3]}
+                  for s in spans],
+        "rollup_min_by_category": rollup,
+        "web": web_rows,
+    }
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    hdr = f"Window timeline for {args.date} (offset UTC+{args.utc_offset:g})"
+    if args.window:
+        hdr += f"  [zoom {args.window}]"
+    print(hdr)
+    print(f"  window bucket: {win_bucket}   classes loaded: {len(classes)}")
+    for s in result["spans"]:
+        flag = " !MULTI" if s["multi"] else ""
+        top = s["top_titles"][0][0][:64] if s["top_titles"] else ""
+        print(f"  {s['start']}-{s['end']}  {s['min']:>5}m  {s['category']:<14}{flag}  {top}")
+    print("  --- day totals by category (min) ---")
+    for cat, mins in result["rollup_min_by_category"].items():
+        print(f"     {cat:<16} {mins}")
+    if web_rows is not None:
+        print(f"  --- web tabs in {args.window} (firefox+chrome) ---")
+        for r in web_rows:
+            print(f"     {r['time']}  [{r['secs']}s] {r['title']} :: {r['url']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2,7 +2,7 @@
 
 WARNING: --hours is a footgun on start/end-time accounts.
 If the account stores entries as started_time + ended_time (most accounts,
-i.e. a typical start/end-time setup), patching with just --hours leaves the
+including the typical Adaptable setup), patching with just --hours leaves the
 entry inconsistent or converts it to a running timer. Always prefer
 --start HH:MM --end HH:MM to change duration. --hours is retained for
 duration-mode accounts only.

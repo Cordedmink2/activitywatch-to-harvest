@@ -26,27 +26,12 @@ from pathlib import Path
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding="utf-8")
 
-from harvest_client import request as harvest_request, _parse_env_file, ENV_PATH
+from harvest_client import request as harvest_request
 
-
-def _config(key):
-    """Read an optional setting from the skill `.env` file, falling back to OS env vars."""
-    file_vals = _parse_env_file(ENV_PATH) if ENV_PATH.exists() else {}
-    return file_vals.get(key) or os.environ.get(key)
-
-
-# Workspace root: where `.mcp/` catalogs are written. Defaults to the path four levels up
-# from this script (its location inside the skill folder), but set TIMESHEET_WORKSPACE in
-# `.env` (or as an OS env var) to point it at your actual workspace explicitly.
-_ws = _config("TIMESHEET_WORKSPACE")
-WORKSPACE = Path(_ws).expanduser() if _ws else Path(__file__).resolve().parents[3]
+WORKSPACE = Path(__file__).resolve().parents[3]
 MCP_DIR = WORKSPACE / ".mcp"
-
-# Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_PROFILE unset in `.env`
-# to skip it entirely — the Harvest refresh still runs. Set both to enable ticket-number
-# resolution from your Dataverse org via the `pac` CLI.
-DV_URL = _config("DATAVERSE_URL")
-PAC_PROFILE = _config("PAC_PROFILE")
+DV_URL = "https://adaptableconsulting.crm6.dynamics.com/"
+PAC_PROFILE = "AdaptableConsulting"
 
 INCIDENT_FETCHXML = """<fetch>
   <entity name="incident">
@@ -135,9 +120,9 @@ def _active_pac_index(pac_cmd):
     """Return the index (str) of the currently-active pac auth profile, or None.
 
     Parsed from `pac auth list` — the active row is marked with `*`, e.g. `[6]   *  …`.
-    Used so we can restore the user's profile after temporarily switching to PAC_PROFILE;
-    otherwise every refresh silently leaves the active profile changed (a cause of
-    cross-tenant 'profile drift').
+    Used so we can restore the user's profile after temporarily switching to
+    AdaptableConsulting; otherwise every refresh silently leaves the active profile
+    changed (a cause of cross-tenant 'profile drift').
     """
     res = subprocess.run([pac_cmd, "auth", "list"], capture_output=True, text=True)
     if res.returncode != 0:
@@ -150,13 +135,6 @@ def _active_pac_index(pac_cmd):
 
 
 def refresh_dataverse():
-    if not DV_URL or not PAC_PROFILE:
-        print(
-            "  Skipping Dataverse refresh — DATAVERSE_URL and/or PAC_PROFILE not set in .env.\n"
-            "  (This is an optional feature; the Harvest catalog above is all most users need.)"
-        )
-        return
-
     pac_cmd = shutil.which("pac")
     if not pac_cmd:
         sys.exit("ERROR: pac CLI not on PATH. Install Power Platform CLI and retry.")
@@ -198,7 +176,7 @@ def refresh_dataverse():
             os.unlink(xml_path)
         except OSError:
             pass
-        # Restore the user's original active profile (don't leave it on PAC_PROFILE).
+        # Restore the user's original active profile (don't leave it on AdaptableConsulting).
         if prior_index:
             subprocess.run(
                 [pac_cmd, "auth", "select", "--index", prior_index],

@@ -85,6 +85,8 @@ def main():
     ap.add_argument("--afk-threshold", type=int, default=DEFAULT_THRESHOLD,
                     help="Seconds of afk that counts as a real break (default 1050 = 17.5 min)")
     ap.add_argument("--window", help="Compute active_ratio for HH:MM-HH:MM (local)")
+    ap.add_argument("--cover", help="Comma-separated proposed billable blocks "
+                    "(HH:MM-HH:MM,HH:MM-HH:MM,...); reports active time they fail to cover")
     ap.add_argument("--json", action="store_true", help="Emit JSON instead of text")
     args = ap.parse_args()
 
@@ -170,7 +172,7 @@ def main():
     window_report = None
     if args.window:
         try:
-            a, b = args.window.split("-")
+            a, b = args.window.split("-", 1)
             ws = (dt.datetime.combine(local_date, dt.datetime.strptime(a.strip(), "%H:%M").time())
                   - offset).replace(tzinfo=dt.timezone.utc)
             we = (dt.datetime.combine(local_date, dt.datetime.strptime(b.strip(), "%H:%M").time())
@@ -196,6 +198,66 @@ def main():
             "verdict": band,
         }
 
+    # Coverage check: do the proposed billable blocks cover the AFK active_spans?
+    # The symmetric partner to the work_end ceiling — surfaces UNDER-billing (active
+    # time silently dropped) the way win_tail surfaces over-billing past end-of-day.
+    coverage_report = None
+    if args.cover:
+        prop = []
+        try:
+            for part in args.cover.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                a, b = part.split("-", 1)
+                cs = (dt.datetime.combine(local_date, dt.datetime.strptime(a.strip(), "%H:%M").time())
+                      - offset).replace(tzinfo=dt.timezone.utc)
+                ce = (dt.datetime.combine(local_date, dt.datetime.strptime(b.strip(), "%H:%M").time())
+                      - offset).replace(tzinfo=dt.timezone.utc)
+                prop.append((cs, ce))
+        except Exception:
+            print(f"ERR bad --cover '{args.cover}', expected HH:MM-HH:MM,...", file=sys.stderr)
+            return 2
+
+        def active_min(lo, hi):
+            tot = 0.0
+            for s, e, status, dur in spans:
+                if status != "not-afk":
+                    continue
+                a2, b2 = max(s, lo), min(e, hi)
+                if b2 > a2:
+                    tot += (b2 - a2).total_seconds()
+            return tot / 60.0
+
+        # Detected breaks (>= threshold) split active_spans, so they never fall *inside*
+        # one — subtracting only the proposed blocks already excludes them as expected gaps.
+        uncovered = []
+        for a_start, a_end in active_spans:
+            segments = [(a_start, a_end)]
+            for cs, ce in prop:
+                nxt = []
+                for s0, e0 in segments:
+                    if ce <= s0 or cs >= e0:
+                        nxt.append((s0, e0))
+                        continue
+                    if cs > s0:
+                        nxt.append((s0, min(cs, e0)))
+                    if ce < e0:
+                        nxt.append((max(ce, s0), e0))
+                segments = nxt
+            for s0, e0 in segments:
+                am = active_min(s0, e0)
+                if am >= 15.0:
+                    uncovered.append({"start": to_local(s0), "end": to_local(e0),
+                                      "active_min": round(am, 1)})
+        covered_active = round(sum(active_min(cs, ce) for cs, ce in prop), 1)
+        coverage_report = {
+            "proposed_blocks": args.cover,
+            "covered_active_min": covered_active,
+            "total_active_min": round(total_active_s / 60, 1),
+            "uncovered": uncovered,
+        }
+
     result = {
         "date": args.date,
         "afk_bucket": afk_bucket,
@@ -207,6 +269,7 @@ def main():
                           "min": round((e - s).total_seconds() / 60, 1)} for s, e in active_spans],
         "window_watcher_tail": win_tail,
         "window_report": window_report,
+        "coverage_report": coverage_report,
     }
 
     if args.json:
@@ -235,6 +298,16 @@ def main():
         w = window_report
         print(f"  active_ratio for {w['window']}: {w['active_ratio']} "
               f"({w['active_min']}/{w['window_min']} min) -> {w['verdict']}")
+    if coverage_report:
+        c = coverage_report
+        print(f"  coverage of proposed blocks vs AFK active_spans:")
+        print(f"     blocks cover {c['covered_active_min']} of {c['total_active_min']} active min")
+        if c["uncovered"]:
+            for u in c["uncovered"]:
+                print(f"     UNCOVERED active {u['start']} - {u['end']}  "
+                      f"({u['active_min']} active min)  <- not billed, not a break")
+        else:
+            print(f"     (all active spans covered)")
     return 0
 
 

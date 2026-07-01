@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Sets up the workday screenshot grabber: installs the Pillow dependency and
+  Sets up the workday screenshot grabber: installs the Pillow + mss dependencies and
   registers ONE Windows scheduled task that fires screenshot_capture.py every
   ~2.5 minutes across the workday.
 
@@ -49,6 +49,15 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Installing Pillow (user scope)..."
     & $pipExe -m pip install --user --quiet Pillow
     if ($LASTEXITCODE -ne 0) { throw "Failed to install Pillow." }
+}
+
+# --- Ensure mss is installed (per-monitor capture) ------------------------
+Write-Host "Checking mss..."
+& $pipExe -c "import mss" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Installing mss (user scope)..."
+    & $pipExe -m pip install --user --quiet mss
+    if ($LASTEXITCODE -ne 0) { throw "Failed to install mss." }
 }
 
 # --- Build the trigger: weekly Mon-Fri, repeating every IntervalSeconds ----
