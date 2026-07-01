@@ -187,10 +187,17 @@ into the right client — the window title alone often can't.
 pwsh -File "$HOME\.claude\skills\daily-timesheet\scripts\setup_screenshot_pipeline.ps1"
 ```
 
-This installs [Pillow](https://pillow.readthedocs.io/) if needed and registers a single Windows
-scheduled task (`WorkScreenshots`) that captures an all-monitors screenshot every ~2.5 minutes on
-weekdays from **08:30 to 20:00**, saving to `~/Pictures/WorkScreenshots/<date>/`. Adjust with
-`-StartTime`, `-EndTime`, `-IntervalSeconds`. Re-running safely replaces the task.
+This installs [Pillow](https://pillow.readthedocs.io/) and [mss](https://python-mss.readthedocs.io/)
+if needed and registers a single Windows scheduled task (`WorkScreenshots`) that runs every ~2.5
+minutes on weekdays from **08:30 to 20:00**, saving to `~/Pictures/WorkScreenshots/<date>/`. Each
+tick writes **one PNG per monitor** (`HH-MM-SS_m1.png`, `HH-MM-SS_m2.png`, … in left-to-right order,
+at native resolution) rather than a single stitched image. Adjust with `-StartTime`, `-EndTime`,
+`-IntervalSeconds`. Re-running safely replaces the task.
+
+> **If a previous `WorkScreenshots` task was registered as Administrator**, re-running setup from a
+> normal shell fails with `Access is denied`. Run the setup command once from an **elevated**
+> PowerShell to replace it; afterward it points at the in-place skill script, so ordinary skill
+> updates need no further elevation.
 
 ### 11. Use it
 
@@ -258,6 +265,10 @@ activitywatch-to-harvest/
 │   ├── .env.example          # credential + optional-config template
 │   ├── references/           # classification rules, context template, formats
 │   └── scripts/              # Harvest + ActivityWatch + screenshot helpers (stdlib Python)
+│       ├── activity_timeline.py  # categorized window timeline from AW category rules
+│       ├── afk_blocks.py         # AFK-anchored day skeleton (work_start/end, breaks)
+│       ├── harvest_lookup.py     # project_id/task_id lookup across .mcp catalogs
+│       └── ...                   # harvest_post/patch/list, refresh_catalogs, screenshot_capture
 └── install/                  # install_skill + setup_workspace (PowerShell + bash)
 ```
 
