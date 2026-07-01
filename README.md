@@ -28,6 +28,56 @@ this skill turns it into a reviewable, billable timesheet.
 
 ---
 
+## The lazy path — let Claude Code set it up for you
+
+Don't want to click through the manual setup below? This repo ships an [`llms.txt`](./llms.txt) — a
+machine-readable runbook for the setup. Just open Claude Code anywhere and paste this — it tells
+Claude where to find everything, so you don't even need to clone first:
+
+```
+Clone https://github.com/Cordedmink2/activitywatch-to-harvest, read its llms.txt, and set up the
+daily-timesheet skill for me on this machine. Walk me through anything you can't do yourself
+(installing ActivityWatch, the browser extension, the browser-profile title tags, the AW
+categories). Ask me for any secrets — don't guess them — and never commit my .env.
+```
+
+Claude will clone the repo, run the install/scaffold scripts, help you create your `.env`, verify
+ActivityWatch is reachable, and talk you through the manual browser steps that only a human can do.
+
+---
+
+## Updating
+
+There's no separate updater — the install script is idempotent, so you update by getting the latest
+repo files and re-running it.
+
+- **If you cloned the repo**, from inside your clone:
+  ```powershell
+  git pull
+  pwsh -File install\install_skill.ps1        # macOS/Linux: ./install/install_skill.sh
+  ```
+- **If you used the lazy path above** (no local clone), just ask Claude Code to *"update the
+  daily-timesheet skill from the latest activitywatch-to-harvest repo"* — it'll fetch the current
+  version and re-run the installer.
+
+Re-running never touches your `.env`, your workspace, or your `.context.md`. Note it **copies over**
+`~/.claude/skills/daily-timesheet` rather than mirroring it, so a file *removed* upstream won't be
+deleted from your copy. For a clean reinstall, delete the skill folder first (back up your `.env`),
+then run the install script.
+
+> **Updating from an early version? Re-run the screenshot setup afterwards.** The install script only
+> copies files — it installs no Python dependencies. Older versions captured a single stitched image
+> with Pillow alone; the current per-monitor capture also needs [mss](https://python-mss.readthedocs.io/).
+> Because the `WorkScreenshots` task points at the in-place script, it starts running the new code on
+> its next tick and will fail with `No module named 'mss'` (silently, into `capture.log`) until `mss`
+> is present. Re-run the screenshot setup once to install it (it also safely re-registers the task):
+>
+> ```powershell
+> pwsh -File "$HOME\.claude\skills\daily-timesheet\scripts\setup_screenshot_pipeline.ps1"
+> ```
+
+---
+
 ## Prerequisites
 
 - **Windows** (the screenshot pipeline + setup scripts target Windows/PowerShell; the skill logic and
@@ -210,24 +260,6 @@ In Claude Code, just ask — the skill triggers on natural phrasing:
 
 It drafts the blocks, shows you the AFK-derived day skeleton as a reality check, flags anything
 uncertain, and asks before posting anything to Harvest.
-
----
-
-## The lazy path — let Claude Code set it up for you
-
-Don't want to click through all of the above? This repo ships an [`llms.txt`](./llms.txt) — a
-machine-readable runbook for the setup. Just open Claude Code anywhere and paste this — it tells
-Claude where to find everything, so you don't even need to clone first:
-
-```
-Clone https://github.com/Cordedmink2/activitywatch-to-harvest, read its llms.txt, and set up the
-daily-timesheet skill for me on this machine. Walk me through anything you can't do yourself
-(installing ActivityWatch, the browser extension, the browser-profile title tags, the AW
-categories). Ask me for any secrets — don't guess them — and never commit my .env.
-```
-
-Claude will clone the repo, run the install/scaffold scripts, help you create your `.env`, verify
-ActivityWatch is reachable, and talk you through the manual browser steps that only a human can do.
 
 ---
 
