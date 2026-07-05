@@ -83,7 +83,7 @@ wait for the user to confirm before moving on.
 
 ### 9. Optional Dataverse catalog (only if the user wants it)
 - If the user creates tickets in a Dataverse org that sync to Harvest: set `DATAVERSE_URL` and
-  `PAC_PROFILE` in `.env` (requires the `pac` CLI authenticated). Otherwise leave both blank — the
+  `PAC_AUTH_PROFILE` in `.env` (requires the `pac` CLI authenticated). Otherwise leave both blank — the
   skill runs Harvest-only and `refresh_catalogs.py` will simply skip the Dataverse step.
 
 ### 10. Screenshot pipeline (you run this — REQUIRED, Windows)

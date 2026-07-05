@@ -42,11 +42,11 @@ _ws = _config("TIMESHEET_WORKSPACE")
 WORKSPACE = Path(_ws).expanduser() if _ws else Path(__file__).resolve().parents[3]
 MCP_DIR = WORKSPACE / ".mcp"
 
-# Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_PROFILE unset in `.env`
+# Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_AUTH_PROFILE unset in `.env`
 # to skip it entirely — the Harvest refresh still runs. Set both to enable ticket-number
 # resolution from your Dataverse org via the `pac` CLI.
 DV_URL = _config("DATAVERSE_URL")
-PAC_PROFILE = _config("PAC_PROFILE")
+PAC_PROFILE = _config("PAC_AUTH_PROFILE")
 
 INCIDENT_FETCHXML = """<fetch>
   <entity name="incident">
@@ -152,7 +152,7 @@ def _active_pac_index(pac_cmd):
 def refresh_dataverse():
     if not DV_URL or not PAC_PROFILE:
         print(
-            "  Skipping Dataverse refresh — DATAVERSE_URL and/or PAC_PROFILE not set in .env.\n"
+            "  Skipping Dataverse refresh — DATAVERSE_URL and/or PAC_AUTH_PROFILE not set in .env.\n"
             "  (This is an optional feature; the Harvest catalog above is all most users need.)"
         )
         return

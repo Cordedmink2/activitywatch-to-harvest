@@ -226,7 +226,7 @@ can enable ticket-number → title lookups. In the same `.env`, set:
 
 ```
 DATAVERSE_URL=https://yourorg.crm6.dynamics.com/
-PAC_PROFILE=YourPacAuthProfileName
+PAC_AUTH_PROFILE=YourPacAuthProfileName
 ```
 
 This requires the [Power Platform CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)
