@@ -177,6 +177,13 @@ def main():
                     help="Local zone offset from UTC in hours (default 12 = NZST; 13 for NZDT)")
     ap.add_argument("--window", help="Zoom HH:MM-HH:MM and include web-watcher detail")
     ap.add_argument("--json", action="store_true", help="Emit JSON instead of text")
+    ap.add_argument("--full", action="store_true",
+                    help="Show every merged span. Default hides sub-threshold spans to save context; "
+                         "the per-category rollup still counts them.")
+    ap.add_argument("--min-span", type=float, default=3.0,
+                    help="Compact (default) text mode hides spans shorter than this many minutes "
+                         "(default 3.0); true !MULTI spans are always kept. The per-category rollup "
+                         "still counts hidden spans. Ignored with --full or --window.")
     args = ap.parse_args()
 
     offset = dt.timedelta(hours=args.utc_offset)
@@ -249,10 +256,24 @@ def main():
         hdr += f"  [zoom {args.window}]"
     print(hdr)
     print(f"  window bucket: {win_bucket}   classes loaded: {len(classes)}")
+    # Compact by default: hide spans shorter than min_span (the rollup still counts
+    # them) so a day collapses to its substantive blocks. A uniform duration floor —
+    # NOT a category filter — because on a thin AW ruleset most real work reads as
+    # "uncategorized", so special-casing that category hides nothing. True !MULTI
+    # spans (>1 category matched) are always kept. --full or --window show everything.
+    show_all = args.full or bool(args.window)
+    hidden = 0
     for s in result["spans"]:
+        keep = show_all or s["min"] >= args.min_span or s["multi"]
+        if not keep:
+            hidden += 1
+            continue
         flag = " !MULTI" if s["multi"] else ""
         top = s["top_titles"][0][0][:64] if s["top_titles"] else ""
         print(f"  {s['start']}-{s['end']}  {s['min']:>5}m  {s['category']:<14}{flag}  {top}")
+    if hidden:
+        print(f"  ... {hidden} sub-{args.min_span:g}min spans hidden (still counted in rollup; "
+              f"use --full or --window HH:MM-HH:MM to see them)")
     print("  --- day totals by category (min) ---")
     for cat, mins in result["rollup_min_by_category"].items():
         print(f"     {cat:<16} {mins}")
