@@ -233,6 +233,8 @@ This requires the [Power Platform CLI](https://learn.microsoft.com/power-platfor
 (`pac`) installed and authenticated. **Leave both blank to skip it** — everything else works
 Harvest-only.
 
+If you instead connect Dataverse through an MCP server (e.g. via the `dataverse` plugin's `dv-connect` skill), register it **scoped locally to this workspace** — run `claude mcp add -s local …` from this folder, never user scope — so a single-env server can't follow you into your other client repos.
+
 ### 10. Set up the screenshot pipeline
 
 This is a **core part of the skill, not optional.** Screenshots are how the skill disambiguates
