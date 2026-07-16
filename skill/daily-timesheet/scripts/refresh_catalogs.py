@@ -35,11 +35,40 @@ def _config(key):
     return file_vals.get(key) or os.environ.get(key)
 
 
-# Workspace root: where `.mcp/` catalogs are written. Defaults to the path four levels up
-# from this script (its location inside the skill folder), but set TIMESHEET_WORKSPACE in
-# `.env` (or as an OS env var) to point it at your actual workspace explicitly.
-_ws = _config("TIMESHEET_WORKSPACE")
-WORKSPACE = Path(_ws).expanduser() if _ws else Path(__file__).resolve().parents[3]
+def _resolve_workspace():
+    """Locate the workspace root where `.mcp/` catalogs are written and read.
+
+    This must land in the SAME directory the reader scripts read from, or refreshes
+    silently write catalogs nowhere anyone looks. Resolution order:
+
+    1. TIMESHEET_WORKSPACE (`.env` or OS env) — explicit wins.
+    2. The current directory, if it already looks like a workspace (`.mcp/` or
+       `Timesheets/`). Matches how the reader scripts (harvest_lookup) resolve it.
+    3. Four levels up from this script, but only if THAT looks like a workspace —
+       correct only when the skill is installed inside the workspace tree.
+
+    If none look right, fail loudly. The alternative — deriving a path from the script's
+    install location and writing there regardless — is exactly the bug this replaces: when
+    the skill lives outside the workspace (e.g. ~/.claude/skills/), that path is not the
+    workspace, and every refresh reports success while the reader keeps seeing stale data.
+    """
+    ws = _config("TIMESHEET_WORKSPACE")
+    if ws:
+        return Path(ws).expanduser()
+    cwd = Path.cwd()
+    if (cwd / ".mcp").is_dir() or (cwd / "Timesheets").is_dir():
+        return cwd
+    guess = Path(__file__).resolve().parents[3]
+    if (guess / ".mcp").is_dir() or (guess / "Timesheets").is_dir():
+        return guess
+    sys.exit(
+        "ERROR: can't locate your timesheet workspace (the directory holding .mcp/ and "
+        "Timesheets/). Run this from that directory, or set TIMESHEET_WORKSPACE in the "
+        "skill .env (or as an OS env var) to its absolute path."
+    )
+
+
+WORKSPACE = _resolve_workspace()
 MCP_DIR = WORKSPACE / ".mcp"
 
 # Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_AUTH_PROFILE unset in `.env`
