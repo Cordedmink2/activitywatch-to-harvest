@@ -24,7 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `SKILL.md` restructured and reduced from 400 to 249 lines.
-- `harvest_lookup.py` no longer falls back to a hardcoded `~/Claude/Work/.mcp` path.
+- `harvest_lookup.py` now checks a `TIMESHEET_WORKSPACE`-relative `.mcp` directory first,
+  ahead of the existing `./.mcp` and `~/Claude/Work/.mcp` fallbacks.
+- `harvest_lookup.py` falls back to a live Harvest time-entries API lookup when a project
+  isn't in the local catalogs (its assignment archived, for example), recovering the
+  project and task ids from entry history instead. New `--no-live` flag skips this and
+  stays cache-only; `--days` controls how far back the fallback looks.
+- `afk_blocks.py` reports a `work_end_blip` when the computed work end is a momentary
+  flicker long after the last substantive activity, so the final block isn't stretched to it.
+- `refresh_catalogs.py`'s Harvest refresh now fetches all pages before removing stale
+  catalog files, instead of deleting first — an API failure mid-refresh leaves the
+  existing catalog intact rather than half-deleted.
 - `refresh_catalogs.py` matches incidents modified in the last 120 days as well as open
   ones, so recently closed tickets still resolve.
 
