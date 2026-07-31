@@ -21,13 +21,15 @@ fi
 
 mkdir -p "$SKILLS_DIR"
 
-echo "Installing daily-timesheet skill..."
+VERSION="$(cat "$SOURCE/VERSION")"
+
+echo "Installing daily-timesheet skill v$VERSION..."
 echo "  from: $SOURCE"
 echo "  to:   $DEST"
 
 if command -v rsync >/dev/null 2>&1; then
   # No --delete: this refreshes files in place, matching the PowerShell installer.
-  rsync -a --exclude='.env' --exclude='__pycache__' "$SOURCE/" "$DEST/"
+  rsync -a --exclude='.env' --exclude='__pycache__' --exclude='.pytest_cache' "$SOURCE/" "$DEST/"
 else
   # cp then prune the bits we never want to ship. The user's own .env lives in
   # $DEST, so stash it across the copy instead of clearing the directory —
@@ -40,13 +42,13 @@ else
   fi
   cp -R "$SOURCE/." "$DEST/"
   rm -f "$DEST/.env"
-  find "$DEST" -type d -name '__pycache__' -prune -exec rm -rf {} +
+  find "$DEST" -type d \( -name '__pycache__' -o -name '.pytest_cache' \) -prune -exec rm -rf {} +
   if [ -n "$saved_env" ]; then
     mv "$saved_env" "$DEST/.env"
   fi
 fi
 
-echo "Done. Skill installed to $DEST"
+echo "Done. daily-timesheet v$VERSION installed to $DEST"
 echo
 echo "Next steps:"
 echo "  1. Scaffold your workspace:  ./install/setup_workspace.sh"

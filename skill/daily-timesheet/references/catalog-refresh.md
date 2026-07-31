@@ -43,15 +43,15 @@ The script's design assumes:
 
 Sometimes a block belongs to new work with no Harvest project yet — the user creates a ticket/case in their backend CRM, which syncs to Harvest as a new project (`project.code` == the ticket id). For Dataverse (user's URL lives in the workspace `.env`):
 
-> **Note:** `create_incident.py` and `read_incidents.py` below are NOT part of this skill's `scripts/` — they live in the user's Dataverse **workspace** `scripts/` directory (alongside that workspace's `auth.py` and `.env`). If they're missing, ask the user to sync them from their workspace before using this path.
+> **Note:** `create_incident.py` and `read_incidents.py` below are NOT part of this skill's `scripts/` — they live in the user's Dataverse **workspace** `scripts/` directory (alongside that workspace's `auth.py` and `.env`). `<workspace>` in the commands below is `TIMESHEET_WORKSPACE`; spell the path out rather than running a bare `scripts/…`, which resolves against the skill folder. If they're missing, ask the user to sync them from their workspace before using this path.
 
 - **Create the case with the tested helper, not a raw API call:**
   ```
-  python scripts/create_incident.py --customer "<client>" --title "<title>"        # dry run — resolves client, prints what it would create
-  python scripts/create_incident.py --customer "<client>" --title "<title>" --yes  # actually creates it, prints the ticket number
+  python "<workspace>/scripts/create_incident.py" --customer "<client>" --title "<title>"        # dry run — resolves client, prints what it would create
+  python "<workspace>/scripts/create_incident.py" --customer "<client>" --title "<title>" --yes  # actually creates it, prints the ticket number
   ```
   It resolves the client name → account GUID, creates the Case via the Dataverse SDK, and reads back the auto-assigned ticket number. The **customer account determines the ticket prefix** (CON→Connexis, CNM→Cone Marshall, WOR→World Vision, …), so you only supply client + title — don't try to set the number. It's a client-facing CRM, so confirm the resolved client + title with the user before adding `--yes`.
-- **Read / look up existing cases:** `python scripts/read_incidents.py` (flags: `--customer`, `--prefix`, `--ticket`, `--search`, `--all`). This is the convenient path for ad-hoc lookups; the bulk `dv_active_incidents.txt` catalog is still built via `pac env fetch` in `refresh_catalogs.py` above.
+- **Read / look up existing cases:** `python "<workspace>/scripts/read_incidents.py"` (flags: `--customer`, `--prefix`, `--ticket`, `--search`, `--all`). This is the convenient path for ad-hoc lookups; the bulk `dv_active_incidents.txt` catalog is still built via `pac env fetch` in `refresh_catalogs.py` above.
 - Under the hood both scripts authenticate via the workspace `scripts/auth.py` device-code token (reads `DATAVERSE_URL`/`TENANT_ID` from `.env`); first run needs a one-time interactive login, then the token caches and refreshes silently. Equivalent raw write is `POST …/api/data/v9.2/incidents` with `title` + `customerid_account@odata.bind=/accounts(<guid>)`.
 - After creating, the new project lags in Harvest (see read-replica lag above) — use `wait_for_project(code)` to get its `project_id`/`task_id` before posting.
 

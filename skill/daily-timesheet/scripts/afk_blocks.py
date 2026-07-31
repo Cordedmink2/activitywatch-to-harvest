@@ -94,6 +94,110 @@ def parse_ts(ts):
     return dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
+# -- Day arithmetic. Pure functions over spans, so they're testable without AW. --
+# A span is (start, end, status, duration_s); `spans` is always chronological.
+
+SOLID_S = 120       # shorter not-afk runs don't count as substantive activity
+BLIP_GAP_S = 600    # gap after the last substantive activity that makes work_end a flicker
+MIN_UNCOVERED_S = 900
+
+
+def to_spans(events):
+    """Deduped AW events -> spans."""
+    spans = []
+    for e in events:
+        s = parse_ts(e["timestamp"])
+        spans.append((s, s + dt.timedelta(seconds=e["duration"]), e["data"].get("status"), e["duration"]))
+    return spans
+
+
+def work_bounds(spans, solid_s=SOLID_S, blip_gap_s=BLIP_GAP_S):
+    """First and last not-afk moment, with the end-of-day blip guard.
+
+    `blip` means work_end came from a momentary flicker (mouse nudge, auto-wake)
+    long after the last substantive activity, so the final block shouldn't be
+    stretched to it. Returns None for a day with no not-afk activity at all.
+    """
+    not_afk = [s for s in spans if s[2] == "not-afk"]
+    if not not_afk:
+        return None
+    work_end = max(s[1] for s in not_afk)
+    last_solid_end = max((s[1] for s in not_afk if s[3] >= solid_s), default=work_end)
+    return {
+        "work_start": min(s[0] for s in not_afk),
+        "work_end": work_end,
+        "last_solid_end": last_solid_end,
+        "blip": (work_end - last_solid_end).total_seconds() >= blip_gap_s,
+        "total_active_s": sum(s[3] for s in not_afk),
+    }
+
+
+def find_breaks(spans, work_start, work_end, threshold_s):
+    """afk spans >= threshold falling within the workday. The big afk spans either
+    side of it aren't breaks - they're not being at work yet, and being done."""
+    return [(s, e, dur) for s, e, status, dur in spans
+            if status == "afk" and dur >= threshold_s and s >= work_start and e <= work_end]
+
+
+def active_spans(spans, threshold_s):
+    """Contiguous not-afk runs: short afk folded in, afk >= threshold splits the run."""
+    out = []
+    cur_start = cur_end = None
+    for s, e, status, dur in spans:
+        if status == "not-afk":
+            if cur_start is None:
+                cur_start, cur_end = s, e
+            else:
+                cur_end = max(cur_end, e)
+        elif dur >= threshold_s and cur_start is not None:
+            out.append((cur_start, cur_end))
+            cur_start = cur_end = None
+    if cur_start is not None:
+        out.append((cur_start, cur_end))
+    return out
+
+
+def active_seconds(spans, lo, hi):
+    """not-afk seconds between lo and hi."""
+    total = 0.0
+    for s, e, status, dur in spans:
+        if status != "not-afk":
+            continue
+        a, b = max(s, lo), min(e, hi)
+        if b > a:
+            total += (b - a).total_seconds()
+    return total
+
+
+def uncovered_segments(spans, active, proposed, min_active_s=MIN_UNCOVERED_S):
+    """Active time the proposed billable blocks leave out - the under-billing check,
+    symmetric to the work_end ceiling that catches over-billing. Segments holding
+    less than min_active_s of activity are block rounding, not missed work.
+
+    Detected breaks already split `active`, so they never fall inside one of its
+    spans - subtracting the proposed blocks alone can't report a break as a miss.
+    """
+    gaps = []
+    for a_start, a_end in active:
+        segments = [(a_start, a_end)]
+        for cs, ce in proposed:
+            nxt = []
+            for s0, e0 in segments:
+                if ce <= s0 or cs >= e0:
+                    nxt.append((s0, e0))
+                    continue
+                if cs > s0:
+                    nxt.append((s0, min(cs, e0)))
+                if ce < e0:
+                    nxt.append((max(ce, s0), e0))
+            segments = nxt
+        for s0, e0 in segments:
+            secs = active_seconds(spans, s0, e0)
+            if secs >= min_active_s:
+                gaps.append((s0, e0, secs))
+    return gaps
+
+
 def main():
     ap = argparse.ArgumentParser(description="Analyze AW AFK watcher for one day.")
     ap.add_argument("date", help="YYYY-MM-DD (local date)")
@@ -133,52 +237,18 @@ def main():
     def to_local(d):
         return (d + offset).strftime("%H:%M:%S")
 
-    # Build canonical spans from deduped afk stream.
-    spans = []  # (start_dt, end_dt, status, dur_s)
-    for e in afk_events:
-        s = parse_ts(e["timestamp"])
-        spans.append((s, s + dt.timedelta(seconds=e["duration"]), e["data"].get("status"), e["duration"]))
-
-    not_afk = [s for s in spans if s[2] == "not-afk"]
-    if not not_afk:
+    spans = to_spans(afk_events)
+    bounds = work_bounds(spans)
+    if bounds is None:
         print(f"No not-afk activity found for {args.date}.")
         return 0
 
-    work_start = not_afk[0][0]
-    work_end = max(s[1] for s in not_afk)  # last moment of genuine activity = end of day
+    work_start, work_end = bounds["work_start"], bounds["work_end"]
+    last_solid_end, work_end_blip = bounds["last_solid_end"], bounds["blip"]
+    total_active_s = bounds["total_active_s"]
 
-    # Blip guard: work_end produced by a momentary not-afk flicker (mouse nudge,
-    # auto-wake) long after the last substantive activity. Report where solid
-    # activity actually ended so the final block isn't stretched to the blip.
-    solid = [s for s in not_afk if s[3] >= 120]
-    last_solid_end = max((s[1] for s in solid), default=work_end)
-    work_end_blip = (work_end - last_solid_end).total_seconds() >= 600
-
-    # Breaks: afk spans >= threshold that fall *within* the workday. The big afk
-    # spans before work_start and after work_end aren't breaks — they're just
-    # "not at work yet / done for the day" — so exclude them.
-    breaks = [(s[0], s[1], s[3]) for s in spans
-              if s[2] == "afk" and s[3] >= args.afk_threshold
-              and s[0] >= work_start and s[1] <= work_end]
-
-    # Active spans: walk chronologically, fold short afk in, split on long afk.
-    active_spans = []
-    cur_start = cur_end = None
-    for s, e, status, dur in spans:
-        if status == "not-afk":
-            if cur_start is None:
-                cur_start, cur_end = s, e
-            else:
-                cur_end = max(cur_end, e)
-        elif dur >= args.afk_threshold:
-            if cur_start is not None:
-                active_spans.append((cur_start, cur_end))
-                cur_start = cur_end = None
-        # short afk: fold in (do nothing — next not-afk extends the span)
-    if cur_start is not None:
-        active_spans.append((cur_start, cur_end))
-
-    total_active_s = sum(s[3] for s in not_afk)
+    breaks = find_breaks(spans, work_start, work_end, args.afk_threshold)
+    active = active_spans(spans, args.afk_threshold)
 
     # Window-watcher tail: does a foreground window run past work end?
     win_tail = None
@@ -202,13 +272,7 @@ def main():
                   file=sys.stderr)
             return 2
         win_dur = (we - ws).total_seconds()
-        overlap = 0.0
-        for s, e, status, dur in spans:
-            if status != "not-afk":
-                continue
-            lo, hi = max(s, ws), min(e, we)
-            if hi > lo:
-                overlap += (hi - lo).total_seconds()
+        overlap = active_seconds(spans, ws, we)
         ratio = overlap / win_dur if win_dur > 0 else 0.0
         band = "active (>=0.7)" if ratio >= 0.7 else ("thin (0.4-0.7)" if ratio >= 0.4 else "mostly idle (<0.4)")
         window_report = {
@@ -236,38 +300,9 @@ def main():
                   file=sys.stderr)
             return 2
 
-        def active_min(lo, hi):
-            tot = 0.0
-            for s, e, status, dur in spans:
-                if status != "not-afk":
-                    continue
-                a2, b2 = max(s, lo), min(e, hi)
-                if b2 > a2:
-                    tot += (b2 - a2).total_seconds()
-            return tot / 60.0
-
-        # Detected breaks (>= threshold) split active_spans, so they never fall *inside*
-        # one — subtracting only the proposed blocks already excludes them as expected gaps.
-        uncovered = []
-        for a_start, a_end in active_spans:
-            segments = [(a_start, a_end)]
-            for cs, ce in prop:
-                nxt = []
-                for s0, e0 in segments:
-                    if ce <= s0 or cs >= e0:
-                        nxt.append((s0, e0))
-                        continue
-                    if cs > s0:
-                        nxt.append((s0, min(cs, e0)))
-                    if ce < e0:
-                        nxt.append((max(ce, s0), e0))
-                segments = nxt
-            for s0, e0 in segments:
-                am = active_min(s0, e0)
-                if am >= 15.0:
-                    uncovered.append({"start": to_local(s0), "end": to_local(e0),
-                                      "active_min": round(am, 1)})
-        covered_active = round(sum(active_min(cs, ce) for cs, ce in prop), 1)
+        uncovered = [{"start": to_local(s0), "end": to_local(e0), "active_min": round(secs / 60, 1)}
+                     for s0, e0, secs in uncovered_segments(spans, active, prop)]
+        covered_active = round(sum(active_seconds(spans, cs, ce) for cs, ce in prop) / 60, 1)
         coverage_report = {
             "proposed_blocks": args.cover,
             "covered_active_min": covered_active,
@@ -284,7 +319,7 @@ def main():
         "total_active_min": round(total_active_s / 60, 1),
         "breaks": [{"start": to_local(s), "end": to_local(e), "min": round(d / 60, 1)} for s, e, d in breaks],
         "active_spans": [{"start": to_local(s), "end": to_local(e),
-                          "min": round((e - s).total_seconds() / 60, 1)} for s, e in active_spans],
+                          "min": round((e - s).total_seconds() / 60, 1)} for s, e in active],
         "window_watcher_tail": win_tail,
         "window_report": window_report,
         "coverage_report": coverage_report,

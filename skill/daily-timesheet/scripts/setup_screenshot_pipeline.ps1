@@ -84,17 +84,19 @@ $rep = (New-ScheduledTaskTrigger -Once -At $start `
     -RepetitionDuration $duration).Repetition
 $trigger.Repetition = $rep
 
-$action    = New-ScheduledTaskAction -Execute $runExe -Argument "`"$CaptureScript`""
+$action    = New-ScheduledTaskAction -Execute $runExe -Argument "`"$CaptureScript`" `"$ScreenshotsDir`""
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
     -LogonType Interactive -RunLevel Limited
 $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -StartWhenAvailable
 
+# Before registering, so an unusable -ScreenshotsDir fails without leaving a task
+# behind that captures into a directory nothing created.
+New-Item -ItemType Directory -Force -Path $ScreenshotsDir | Out-Null
+
 Register-ScheduledTask -TaskName $TaskName -Trigger $trigger -Action $action `
     -Principal $principal -Settings $settings `
     -Description "Workday screenshot grabber for the daily-timesheet skill." -Force | Out-Null
-
-New-Item -ItemType Directory -Force -Path $ScreenshotsDir | Out-Null
 
 Write-Host ""
 Write-Host "Registered '$TaskName': weekdays $StartTime-$EndTime, every ${IntervalSeconds}s -> $ScreenshotsDir"

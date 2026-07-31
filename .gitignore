@@ -2,9 +2,10 @@
 .env
 **/.env
 
-# Python build artifacts
+# Python build and test artifacts
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # User data — these belong in your own workspace, not in this repo
 Timesheets/

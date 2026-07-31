@@ -9,6 +9,9 @@ workday. Run it with pythonw.exe (not python.exe) so no console window flashes.
 task and installs the mss + Pillow dependencies; you normally don't run this
 by hand.
 
+Output directory: first positional argument, else TIMESHEET_SCREENSHOTS_DIR,
+else ~/Pictures/WorkScreenshots.
+
 Folder structure it produces (one file per monitor, left-to-right):
   SCREENSHOTS_DIR\
     2026-06-19\
@@ -29,22 +32,33 @@ import os
 import sys
 import datetime
 
+DEFAULT_SCREENSHOTS_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "WorkScreenshots")
+
+
+def resolve_screenshots_dir(argv=None, env=None):
+    """Where to write. First positional argument wins, then TIMESHEET_SCREENSHOTS_DIR,
+    then ~/Pictures/WorkScreenshots. The scheduled task registered by
+    setup_screenshot_pipeline.ps1 passes its -ScreenshotsDir as that argument."""
+    argv = sys.argv[1:] if argv is None else argv
+    env = os.environ if env is None else env
+    if argv and argv[0].strip():
+        return argv[0]
+    return env.get("TIMESHEET_SCREENSHOTS_DIR", "").strip() or DEFAULT_SCREENSHOTS_DIR
+
+
+SCREENSHOTS_DIR = resolve_screenshots_dir()
+
 # Under pythonw.exe there is no console: sys.stdout / sys.stderr are None and
 # any print() would crash. Redirect them to a log file so prints are safe.
 if sys.stdout is None or sys.stderr is None:
-    _log_dir = os.path.join(os.path.expanduser("~"), "Pictures", "WorkScreenshots")
-    os.makedirs(_log_dir, exist_ok=True)
-    _log_fh = open(os.path.join(_log_dir, "capture.log"), "a", encoding="utf-8", buffering=1)
+    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+    _log_fh = open(os.path.join(SCREENSHOTS_DIR, "capture.log"), "a", encoding="utf-8", buffering=1)
     sys.stdout = _log_fh
     sys.stderr = _log_fh
 
 # mss / Pillow are imported lazily inside take_screenshots() so this module
 # stays importable (and order_monitors stays unit-testable) on machines where
 # only pytest is installed.
-
-# -- Configuration ----------------------------------------------------------
-SCREENSHOTS_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "WorkScreenshots")
-# ---------------------------------------------------------------------------
 
 
 def order_monitors(monitors):

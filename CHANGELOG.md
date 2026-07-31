@@ -5,6 +5,42 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-07-31
+
+### Fixed
+- `setup_screenshot_pipeline.ps1 -ScreenshotsDir` created the directory you asked for and then
+  registered a task that ignored it: `screenshot_capture.py` always wrote to
+  `~/Pictures/WorkScreenshots`. The directory is now passed to the capture script, which takes
+  it as its first argument (or from `TIMESHEET_SCREENSHOTS_DIR`).
+- `references/catalog-refresh.md` and `references/new-client-work.md` wrote the Dataverse case
+  helpers as `python scripts/create_incident.py`. `SKILL.md` defines that shape as relative to
+  the skill folder, but those two scripts live in the user's workspace, so the documented
+  command resolved to a path that doesn't exist. Both are now written as explicit
+  `<workspace>/scripts/…` paths.
+- Both installers copied `.pytest_cache/` into the installed skill.
+
+### Added
+- `skill/daily-timesheet/VERSION`, reported by both installers and checked against this
+  changelog by the test suite, so an installed copy can be identified.
+- `.gitattributes`. Windows sets `core.autocrlf=true` by default, so a fresh clone rewrote
+  `install/*.sh` with CRLF endings and `bash` failed on the shebang's trailing `\r`. Shell
+  scripts now check out LF everywhere.
+- Unit tests for `afk_blocks.py`, covering work bounds, the end-of-day blip guard, break
+  detection, active-span folding and the coverage check.
+
+### Changed
+- `afk_blocks.py`'s day arithmetic moved out of `main()` into `to_spans`, `work_bounds`,
+  `find_breaks`, `active_spans`, `active_seconds` and `uncovered_segments`. Same output; the
+  logic is now reachable without a running ActivityWatch.
+
+### Upgrading
+Re-copy the skill:
+
+    pwsh -File install\install_skill.ps1
+
+If you passed `-ScreenshotsDir` before, re-run `setup_screenshot_pipeline.ps1` with it — the
+existing scheduled task still has the old argument-free command line.
+
 ## [0.2.2] - 2026-07-31
 
 ### Fixed

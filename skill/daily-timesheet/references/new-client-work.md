@@ -7,15 +7,15 @@ Rare path: a block belongs to new work with no Harvest project. The user creates
 Use the tested helper rather than hand-rolling a Web API call:
 
 ```
-python scripts/create_incident.py --customer "<client>" --title "<title>"
+python "<workspace>/scripts/create_incident.py" --customer "<client>" --title "<title>"
 ```
 
 (dry run — confirm the resolved client + title, then re-run with `--yes`).
 
-- **`create_incident.py` / `read_incidents.py` are NOT shipped in this skill** — they live in the user's Dataverse workspace `scripts/` (they auth via that workspace's `auth.py` + `.env`). If they're missing there, ask the user to sync them before offering this path.
+- **`create_incident.py` / `read_incidents.py` are NOT shipped in this skill** — they live in the user's Dataverse workspace `scripts/` (they auth via that workspace's `auth.py` + `.env`), so `<workspace>` above is `TIMESHEET_WORKSPACE`, not the skill folder every other `python scripts/…` command resolves against. If they're missing there, ask the user to sync them before offering this path.
 - **Dataverse auth may not work headless.** On Windows the `dataverse` CLI keeps its refresh token in the WAM broker and the cached RT can't be silently redeemed by the Python scripts. When a run prints a device-code URL, it needs an interactive login — **ask the user to run that one command in their own terminal** and complete the sign-in once; then take the printed ticket number and do the Harvest billing yourself (Harvest posting is always headless). Do NOT loop trying to make headless silent auth work — it's a dead end on this setup, and a background run just hangs on the device code.
 - Confirm the resolved customer + title before the case is created. The **customer account determines the ticket prefix** (CON→Connexis, CNM→Cone Marshall, …), so you only supply client + title and the CRM assigns the number.
-- For ad-hoc ticket lookups: `python scripts/read_incidents.py --customer "<client>"` (or `--ticket <code>` / `--search <text>`).
+- For ad-hoc ticket lookups: `python "<workspace>/scripts/read_incidents.py" --customer "<client>"` (or `--ticket <code>` / `--search <text>`).
 
 Full mechanism (auth, replica lag) is in `references/catalog-refresh.md`.
 

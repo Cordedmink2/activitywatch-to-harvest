@@ -28,16 +28,18 @@ if (-not (Test-Path $source)) {
 
 New-Item -ItemType Directory -Force -Path $SkillsDir | Out-Null
 
-Write-Host "Installing daily-timesheet skill..." -ForegroundColor Cyan
+$version = (Get-Content (Join-Path $source "VERSION") -Raw).Trim()
+
+Write-Host "Installing daily-timesheet skill v$version..." -ForegroundColor Cyan
 Write-Host "  from: $source"
 Write-Host "  to:   $dest"
 
-# robocopy mirrors the tree; /XF .env keeps any local secrets out, /XD __pycache__ skips build artifacts.
-# Exit codes 0-7 are success for robocopy; 8+ are real errors.
-robocopy $source $dest /E /XF .env /XD __pycache__ | Out-Null
+# robocopy mirrors the tree; /XF .env keeps any local secrets out, /XD skips build
+# and test scratch directories. Exit codes 0-7 are success for robocopy; 8+ are real errors.
+robocopy $source $dest /E /XF .env /XD __pycache__ .pytest_cache | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 
-Write-Host "Done. Skill installed to $dest" -ForegroundColor Green
+Write-Host "Done. daily-timesheet v$version installed to $dest" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Scaffold your workspace:  pwsh -File install\setup_workspace.ps1"
