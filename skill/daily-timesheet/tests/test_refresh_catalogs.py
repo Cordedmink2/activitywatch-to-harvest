@@ -1,38 +1,41 @@
 """Guards that the Dataverse config stays environment-driven.
 
-Reads the source as text: importing the module runs _resolve_workspace() at
-import time, which exits when no workspace is found.
+Reads the source as text: importing the module resolves the workspace at import
+time, which exits when no workspace is found.
 """
 
 import re
 from pathlib import Path
 
-SOURCE = (Path(__file__).resolve().parents[1] / "scripts" / "refresh_catalogs.py").read_text(
-    encoding="utf-8"
-)
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+SOURCE = (SCRIPTS / "refresh_catalogs.py").read_text(encoding="utf-8")
 
 TENANT_URL = re.compile(r"https://[a-z0-9-]+\.crm\d*\.dynamics\.com", re.IGNORECASE)
 
 
 def test_no_hardcoded_dataverse_org():
-    match = TENANT_URL.search(SOURCE)
-    assert match is None, f"hardcoded Dataverse org {match.group(0)!r}; it belongs in .env"
+    for path in sorted(SCRIPTS.glob("*.py")):
+        match = TENANT_URL.search(path.read_text(encoding="utf-8"))
+        assert match is None, f"{path.name} hardcodes Dataverse org {match.group(0)!r}; it belongs in .env"
 
 
 def test_no_config_reader_with_default():
     # The replaced _env(key, default) reader let an unset key fall back to a
-    # baked-in org. _config(key) returns None instead.
+    # baked-in org. config(key) returns None instead.
     assert "_env(" not in SOURCE
 
 
 def test_dataverse_settings_read_from_config():
-    assert 'DV_URL = _config("DATAVERSE_URL")' in SOURCE
-    assert 'PAC_PROFILE = _config("PAC_AUTH_PROFILE")' in SOURCE
+    assert 'DV_URL = config("DATAVERSE_URL")' in SOURCE
+    assert 'PAC_PROFILE = config("PAC_AUTH_PROFILE")' in SOURCE
 
 
 def test_workspace_resolution_can_fail_loudly():
-    assert "def _resolve_workspace()" in SOURCE
-    assert "sys.exit(" in SOURCE
+    # An unresolved workspace must stop the refresh, not fall back to a guessed path.
+    assert "WORKSPACE = find_workspace()" in SOURCE
+    assert "if WORKSPACE is None:" in SOURCE
+    guard = SOURCE.index("if WORKSPACE is None:")
+    assert "sys.exit(" in SOURCE[guard:SOURCE.index("MCP_DIR", guard)]
 
 
 def test_dataverse_refresh_skips_when_unconfigured():

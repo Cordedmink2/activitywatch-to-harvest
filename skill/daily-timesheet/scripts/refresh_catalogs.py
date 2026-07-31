@@ -21,61 +21,29 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding="utf-8")
 
-from harvest_client import request as harvest_request, _parse_env_file, ENV_PATH
+from harvest_client import request as harvest_request, config, find_workspace
 
-
-def _config(key):
-    """Read an optional setting from the skill `.env` file, falling back to OS env vars."""
-    file_vals = _parse_env_file(ENV_PATH) if ENV_PATH.exists() else {}
-    return file_vals.get(key) or os.environ.get(key)
-
-
-def _resolve_workspace():
-    """Locate the workspace root where `.mcp/` catalogs are written and read.
-
-    This must land in the SAME directory the reader scripts read from, or refreshes
-    silently write catalogs nowhere anyone looks. Resolution order:
-
-    1. TIMESHEET_WORKSPACE (`.env` or OS env) — explicit wins.
-    2. The current directory, if it already looks like a workspace (`.mcp/` or
-       `Timesheets/`). Matches how the reader scripts (harvest_lookup) resolve it.
-    3. Four levels up from this script, but only if THAT looks like a workspace —
-       correct only when the skill is installed inside the workspace tree.
-
-    If none look right, fail loudly. The alternative — deriving a path from the script's
-    install location and writing there regardless — is exactly the bug this replaces: when
-    the skill lives outside the workspace (e.g. ~/.claude/skills/), that path is not the
-    workspace, and every refresh reports success while the reader keeps seeing stale data.
-    """
-    ws = _config("TIMESHEET_WORKSPACE")
-    if ws:
-        return Path(ws).expanduser()
-    cwd = Path.cwd()
-    if (cwd / ".mcp").is_dir() or (cwd / "Timesheets").is_dir():
-        return cwd
-    guess = Path(__file__).resolve().parents[3]
-    if (guess / ".mcp").is_dir() or (guess / "Timesheets").is_dir():
-        return guess
+# Writer and reader share find_workspace() so a refresh cannot write catalogs into one
+# directory while harvest_lookup.py reads another. Unresolved is fatal here: writing to a
+# guessed path would report success while the reader kept seeing stale data.
+WORKSPACE = find_workspace()
+if WORKSPACE is None:
     sys.exit(
         "ERROR: can't locate your timesheet workspace (the directory holding .mcp/ and "
         "Timesheets/). Run this from that directory, or set TIMESHEET_WORKSPACE in the "
         "skill .env (or as an OS env var) to its absolute path."
     )
-
-
-WORKSPACE = _resolve_workspace()
 MCP_DIR = WORKSPACE / ".mcp"
 
 # Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_AUTH_PROFILE unset in `.env`
 # to skip it entirely — the Harvest refresh still runs. Set both to enable ticket-number
 # resolution from your Dataverse org via the `pac` CLI.
-DV_URL = _config("DATAVERSE_URL")
-PAC_PROFILE = _config("PAC_AUTH_PROFILE")
+DV_URL = config("DATAVERSE_URL")
+PAC_PROFILE = config("PAC_AUTH_PROFILE")
 
 INCIDENT_FETCHXML = """<fetch>
   <entity name="incident">

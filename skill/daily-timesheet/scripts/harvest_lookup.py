@@ -25,6 +25,8 @@ import json
 import os
 import sys
 
+from harvest_client import find_workspace
+
 for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigure
     try:
         _s.reconfigure(encoding="utf-8")
@@ -33,17 +35,20 @@ for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigu
 
 
 def find_catalog_dir(explicit):
+    """Locate the `.mcp/` directory holding the catalogs.
+
+    Delegates to harvest_client.find_workspace(), the same resolver refresh_catalogs.py
+    writes through, so the reader and the writer cannot disagree about where catalogs
+    live. Falls back to the current directory when the workspace can't be resolved:
+    a missing catalog is not fatal here, since main() reports the path it looked in
+    and recovers via the live time-entries API.
+    """
     if explicit:
         return explicit
-    override = os.environ.get("TIMESHEET_WORKSPACE")  # same override refresh_catalogs.py honours
-    cands = ([os.path.join(override, ".mcp")] if override else []) + [
-        os.path.join(os.getcwd(), ".mcp"),
-        os.path.join(os.path.expanduser("~"), "Claude", "Work", ".mcp"),
-    ]
-    for cand in cands:
-        if os.path.isdir(cand):
-            return cand
-    return os.path.join(os.getcwd(), ".mcp")
+    ws = find_workspace()
+    if ws is None:
+        return os.path.join(os.getcwd(), ".mcp")
+    return str(ws / ".mcp")
 
 
 def iter_assignments(mcp_dir):
@@ -91,7 +96,8 @@ def lookup_from_entries(query, days=180, task_filter=None):
 
     Returns matches in the same shape as lookup(), with source='time_entries' and
     each task carrying the billable flag observed on the most recent entry using it.
-    Imported lazily so cache-only lookups keep working without .env/network.
+    Only this path needs credentials — harvest_client reads `.env` on first request(),
+    so cache-only lookups still work without one.
     """
     import datetime
 

@@ -5,6 +5,34 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-31
+
+### Fixed
+- `harvest_lookup.py` read `TIMESHEET_WORKSPACE` from OS environment variables only, while
+  `refresh_catalogs.py` read it from the skill `.env`. Setting it in `.env` — the way
+  `.env.example` documents — left refreshes writing catalogs to one directory and lookups
+  reading another, so a lookup reported no match against a stale or absent catalog. Both
+  now resolve through one shared function.
+
+### Changed
+- `harvest_client.py` gains `config(key)` and `find_workspace()`; `refresh_catalogs.py`'s
+  private copies of both are gone. `find_workspace()` returns `None` when it cannot resolve
+  a workspace — a refresh stops with an error rather than write to a guessed path, and a
+  lookup falls back to the live time-entries API.
+- Workspace auto-detection no longer includes a `~/Claude/Work/.mcp` fallback. It now checks
+  the current directory and the directory the skill is installed under, taking whichever
+  already contains `.mcp/` or `Timesheets/`.
+
+### Upgrading
+Re-copy the skill:
+
+    pwsh -File install\install_skill.ps1
+
+If you relied on the removed `~/Claude/Work` fallback — that is, you ran the skill from
+somewhere else and never set `TIMESHEET_WORKSPACE` — set it in `.env` to your workspace's
+absolute path. Anything that already sets it, or that runs from the workspace itself, is
+unaffected.
+
 ## [0.2.0] - 2026-07-31
 
 ### Added

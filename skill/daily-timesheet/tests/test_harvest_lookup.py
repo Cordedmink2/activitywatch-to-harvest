@@ -3,6 +3,7 @@ import pytest
 
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "scripts")
 sys.path.insert(0, SCRIPTS)
+import harvest_client as hc
 import harvest_lookup as hl
 
 
@@ -49,3 +50,33 @@ def test_cli_exit_nonzero_on_no_match(tmp_path):
     r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "harvest_lookup.py"),
                         "NOPE", "--mcp-dir", str(tmp_path)], capture_output=True, text=True)
     assert r.returncode != 0
+
+
+def test_catalog_dir_honours_workspace_from_env_file(tmp_path, monkeypatch):
+    """The reader must read TIMESHEET_WORKSPACE the way the writer does.
+
+    It used to check os.environ only, so setting the workspace the documented way — in
+    the skill `.env` — sent refreshes to one directory and lookups to another, and the
+    lookup silently reported no match against a stale or empty catalog.
+    """
+    ws = tmp_path / "ws"
+    (ws / ".mcp").mkdir(parents=True)
+    env = tmp_path / ".env"
+    env.write_text(f"TIMESHEET_WORKSPACE={ws}\n", encoding="utf-8")
+    monkeypatch.setattr(hc, "ENV_PATH", env)
+    monkeypatch.delenv("TIMESHEET_WORKSPACE", raising=False)
+
+    assert hl.find_catalog_dir(None) == str(ws / ".mcp")
+
+
+def test_explicit_mcp_dir_wins_over_configured_workspace(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_text(f"TIMESHEET_WORKSPACE={tmp_path / 'ws'}\n", encoding="utf-8")
+    monkeypatch.setattr(hc, "ENV_PATH", env)
+    assert hl.find_catalog_dir("/explicit") == "/explicit"
+
+
+def test_reader_shares_the_writers_resolver():
+    # Guards against a private copy of the resolution logic reappearing here: the two
+    # copies drifting apart is what caused the bug above.
+    assert hl.find_workspace is hc.find_workspace

@@ -1,8 +1,9 @@
-"""Shared Harvest API helper for the daily-timesheet skill.
+"""Shared Harvest API and configuration helper for the daily-timesheet skill.
 
-Two functions:
   load_creds() -> (account_id, api_key)
   request(method, path, body=None, query=None) -> dict (parsed JSON) or raises RuntimeError
+  config(key) -> str | None            — optional setting from `.env`, else OS env
+  find_workspace() -> Path | None      — the directory holding `.mcp/`
 
 Credentials resolution order:
   1. `.env` file at the skill root (next to SKILL.md). Simple `KEY=VALUE` lines,
@@ -70,6 +71,40 @@ def _parse_env_file(path: Path) -> dict:
             v = v[1:-1]
         out[k.strip()] = v
     return out
+
+
+def config(key: str) -> str | None:
+    """Read an optional setting from the skill `.env`, falling back to OS env vars.
+
+    Returns None when the key is unset anywhere; callers decide whether that is fatal.
+    """
+    file_vals = _parse_env_file(ENV_PATH) if ENV_PATH.exists() else {}
+    return file_vals.get(key) or os.environ.get(key)
+
+
+def find_workspace() -> Path | None:
+    """Locate the workspace root holding the `.mcp/` catalogs, or None if it can't be found.
+
+    The writer (refresh_catalogs.py) and the readers (harvest_lookup.py) both resolve
+    the workspace through here, so a refresh cannot write catalogs into one directory
+    while a lookup reads another. Resolution order:
+
+    1. TIMESHEET_WORKSPACE, from the skill `.env` or an OS env var — explicit wins.
+    2. The current directory, if it already looks like a workspace (`.mcp/` or `Timesheets/`).
+    3. The directory the skill is installed under, if that looks like a workspace —
+       correct only when the skill lives inside the workspace tree.
+
+    Returning None instead of guessing is deliberate: deriving a path from the install
+    location and using it regardless is how refreshes used to report success while
+    writing catalogs nowhere the reader would look.
+    """
+    ws = config("TIMESHEET_WORKSPACE")
+    if ws:
+        return Path(ws).expanduser()
+    for cand in (Path.cwd(), SKILL_ROOT.parents[1]):
+        if (cand / ".mcp").is_dir() or (cand / "Timesheets").is_dir():
+            return cand
+    return None
 
 
 def load_creds() -> tuple[str, str]:
