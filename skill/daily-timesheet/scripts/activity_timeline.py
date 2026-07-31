@@ -19,7 +19,7 @@ Two modes:
   * --window HH:MM-HH:MM -> zoom one section AND fold in the web watchers
                             (firefox + chrome) URLs/titles for it.
 
-No third-party deps — stdlib urllib, like the sibling helpers.
+No third-party deps — stdlib urllib, via the shared aw_client.py.
 
 Usage:
   python scripts/activity_timeline.py 2026-06-19
@@ -32,9 +32,10 @@ import datetime as dt
 import json
 import re
 import sys
-import urllib.request
 
-AW_BASE = "http://localhost:5600/api/0"
+from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get, parse_ts,
+                       pick_bucket, utc_bounds)
+
 NOISE_FLOOR = 5    # drop sub-5s events (tab-switch noise), per SKILL.md
 GAP_FOLD = 60      # inter-event gaps shorter than this don't break a span (seconds)
 
@@ -45,43 +46,11 @@ for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigu
         pass
 
 
-def _get(path):
-    with urllib.request.urlopen(AW_BASE + path, timeout=15) as r:
-        return json.load(r)
-
-
-def discover_bucket(prefix):
-    buckets = _get("/buckets/")
-    cands = [b for b in buckets if b.startswith(prefix)]
-    cands.sort(key=lambda b: ("_" not in b, b))  # prefer hostname-suffixed live buckets
-    return cands[0] if cands else None
-
-
-def fetch_events(bucket, start_utc, end_utc):
-    if not bucket:
-        return []
-    q = f"/buckets/{bucket}/events?start={start_utc}&end={end_utc}&limit=10000"
-    return _get(q)
-
-
-def dedupe_heartbeats(events):
-    best = {}
-    for e in events:
-        ts = e["timestamp"]
-        if ts not in best or e["duration"] > best[ts]["duration"]:
-            best[ts] = e
-    return sorted(best.values(), key=lambda e: e["timestamp"])
-
-
-def parse_ts(ts):
-    return dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-
-
 def load_classes():
     """Return [(label, compiled_regex), ...] from AW settings 'classes'.
     Skips non-regex rules (e.g. parent categories with type 'none')."""
     try:
-        settings = _get("/settings")
+        settings = get("/settings")
     except Exception:
         return []
     out = []
@@ -154,13 +123,6 @@ def category_rollup(events, classes):
     return {k: round(v / 60, 1) for k, v in sorted(totals.items(), key=lambda kv: -kv[1])}
 
 
-def _utc_bounds(local_date, offset):
-    local_start = dt.datetime.combine(local_date, dt.time(0, 0))
-    start_utc = (local_start - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_utc = (local_start + dt.timedelta(days=1) - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return start_utc, end_utc
-
-
 def _parse_window(window, local_date, offset):
     a, b = window.split("-", 1)
     ws = (dt.datetime.combine(local_date, dt.datetime.strptime(a.strip(), "%H:%M").time())
@@ -193,9 +155,10 @@ def main():
         print(f"ERR bad date '{args.date}', expected YYYY-MM-DD", file=sys.stderr)
         return 2
 
-    start_utc, end_utc = _utc_bounds(local_date, offset)
+    start_utc, end_utc = utc_bounds(local_date, offset)
     try:
-        win_bucket = discover_bucket("aw-watcher-window_")
+        buckets = get("/buckets/")
+        win_bucket = pick_bucket(buckets, "aw-watcher-window_")
         win_events = fetch_events(win_bucket, start_utc, end_utc)
     except Exception as e:
         print(f"ERR ActivityWatch unreachable at {AW_BASE} ({e})", file=sys.stderr)
@@ -220,7 +183,7 @@ def main():
         web_rows = []
         for pref in ("aw-watcher-web-firefox_", "aw-watcher-web-chrome_"):
             try:
-                b = discover_bucket(pref)
+                b = pick_bucket(buckets, pref)
                 for e in dedupe_heartbeats(fetch_events(b, start_utc, end_utc)):
                     if e["duration"] < NOISE_FLOOR:
                         continue

@@ -18,6 +18,10 @@
 
 .EXAMPLE
   pwsh -File setup_screenshot_pipeline.ps1 -StartTime 09:00 -EndTime 18:00 -IntervalSeconds 300
+
+.EXAMPLE
+  pwsh -File setup_screenshot_pipeline.ps1 -DryRun
+  # prints the task it would register and exits; installs nothing, registers nothing
 #>
 [CmdletBinding()]
 param(
@@ -26,7 +30,12 @@ param(
     [string]$EndTime        = "20:00",
     [int]   $IntervalSeconds = 150,
     [string]$ScreenshotsDir = "",
-    [string]$CaptureScript  = ""
+    [string]$CaptureScript  = "",
+
+    # Build and report the task definition without installing packages or registering
+    # it. The capture directory is still created: whether it can be is part of what a
+    # dry run is checking, and the real run has to fail there before it registers.
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,22 +60,17 @@ Write-Host "Capture script : $CaptureScript"
 Write-Host "Python (run)   : $runExe"
 if (-not (Test-Path $CaptureScript)) { throw "Capture script not found: $CaptureScript" }
 
-# --- Ensure Pillow is installed -------------------------------------------
-Write-Host "Checking Pillow..."
-& $pipExe -c "import PIL" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Installing Pillow (user scope)..."
-    & $pipExe -m pip install --user --quiet Pillow
-    if ($LASTEXITCODE -ne 0) { throw "Failed to install Pillow." }
-}
-
-# --- Ensure mss is installed (per-monitor capture) ------------------------
-Write-Host "Checking mss..."
-& $pipExe -c "import mss" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Installing mss (user scope)..."
-    & $pipExe -m pip install --user --quiet mss
-    if ($LASTEXITCODE -ne 0) { throw "Failed to install mss." }
+# --- Ensure Pillow and mss are installed (mss does the per-monitor capture) ---
+foreach ($pkg in @("PIL:Pillow", "mss:mss")) {
+    $importName, $pipName = $pkg -split ":"
+    Write-Host "Checking $pipName..."
+    & $pipExe -c "import $importName" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        if ($DryRun) { Write-Host "  would install $pipName (user scope)"; continue }
+        Write-Host "Installing $pipName (user scope)..."
+        & $pipExe -m pip install --user --quiet $pipName
+        if ($LASTEXITCODE -ne 0) { throw "Failed to install $pipName." }
+    }
 }
 
 # --- Build the trigger: weekly Mon-Fri, repeating every IntervalSeconds ----
@@ -93,6 +97,23 @@ $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
 # Before registering, so an unusable -ScreenshotsDir fails without leaving a task
 # behind that captures into a directory nothing created.
 New-Item -ItemType Directory -Force -Path $ScreenshotsDir | Out-Null
+
+if ($DryRun) {
+    # Reported off the built objects, not the variables that fed them, so the report
+    # reflects what would actually be registered - argument quoting included.
+    Write-Host ""
+    Write-Host "DRYRUN Task name           : $TaskName"
+    Write-Host "DRYRUN Execute             : $($action.Execute)"
+    Write-Host "DRYRUN Arguments           : $($action.Arguments)"
+    Write-Host "DRYRUN Days bitmask        : $($trigger.DaysOfWeek)   (Sunday = 1, doubling to Saturday = 64)"
+    Write-Host "DRYRUN Start boundary      : $($trigger.StartBoundary)"
+    Write-Host "DRYRUN Repetition interval : $($trigger.Repetition.Interval)"
+    Write-Host "DRYRUN Repetition duration : $($trigger.Repetition.Duration)"
+    Write-Host "DRYRUN Screenshots dir     : $ScreenshotsDir"
+    Write-Host ""
+    Write-Host "Dry run: nothing installed, no task registered."
+    exit 0
+}
 
 Register-ScheduledTask -TaskName $TaskName -Trigger $trigger -Action $action `
     -Principal $principal -Settings $settings `

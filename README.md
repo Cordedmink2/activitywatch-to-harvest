@@ -317,6 +317,7 @@ activitywatch-to-harvest/
 │   └── scripts/              # Harvest + ActivityWatch + screenshot helpers (stdlib Python)
 │       ├── activity_timeline.py  # categorized window timeline from AW category rules
 │       ├── afk_blocks.py         # AFK-anchored day skeleton (work_start/end, breaks)
+│       ├── aw_client.py          # shared ActivityWatch REST helpers for the two above
 │       ├── harvest_lookup.py     # project_id/task_id lookup across .mcp catalogs
 │       └── ...                   # harvest_post/patch/list, refresh_catalogs, screenshot_capture
 └── install/                  # install_skill + setup_workspace (PowerShell + bash)

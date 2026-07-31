@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -175,16 +176,108 @@ def test_screenshot_task_passes_the_capture_directory_to_the_script():
         f"capture script and directory are the wrong way round:\n  {argument.strip()}")
 
 
-def test_screenshot_task_is_registered_only_after_its_directory_exists():
+DRY_RUN_TASK = "DailyTimesheetDryRunProbe"
+
+
+def probe_task_state():
+    res = subprocess.run(
+        [WINPS, "-NoProfile", "-Command",
+         f"if (Get-ScheduledTask -TaskName '{DRY_RUN_TASK}' -ErrorAction SilentlyContinue) "
+         "{ 'REGISTERED' } else { 'absent' }"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    return res.stdout.strip()
+
+
+@pytest.fixture
+def dry_run_setup():
+    """Runs the screenshot setup with -DryRun under a throwaway task name: it builds the
+    real scheduled-task objects and prints them, installing and registering nothing.
+
+    Unregisters that task on the way out. Should a regression ever make -DryRun register,
+    the tests below would leave the machine taking screenshots on a schedule.
+    """
+    def run(*args):
+        return subprocess.run(
+            [WINPS, "-NoProfile", "-File", str(SCREENSHOT_SETUP), "-DryRun",
+             "-TaskName", DRY_RUN_TASK, *args],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+    yield run
+    subprocess.run(
+        [WINPS, "-NoProfile", "-Command",
+         f"Unregister-ScheduledTask -TaskName '{DRY_RUN_TASK}' -Confirm:$false "
+         "-ErrorAction SilentlyContinue"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+
+def dry_run_field(stdout, field):
+    """Pull one `DRYRUN <field>: <value>` line out of the report."""
+    match = re.search(rf"^DRYRUN {re.escape(field)}\s*: (.*)$", stdout, re.M)
+    assert match, f"no DRYRUN {field} line in:\n{stdout}"
+    return match.group(1).strip()
+
+
+@requires_winps
+def test_dry_run_registers_no_task(dry_run_setup, tmp_path):
+    """The switch exists so the rest of these tests can inspect a real task definition
+    without touching the machine's Task Scheduler."""
+    res = dry_run_setup("-ScreenshotsDir", str(tmp_path / "shots"))
+    assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
+    assert probe_task_state() == "absent", "-DryRun registered a scheduled task"
+
+
+@requires_winps
+def test_dry_run_launches_the_capture_script_with_the_directory_after_it(dry_run_setup, tmp_path):
+    """-ScreenshotsDir used to only create the folder: the capture script was launched
+    with no argument and wrote to its own hardcoded default instead.
+
+    Read off the built action rather than the source text, so the quoting that carries a
+    path containing spaces is covered too.
+    """
+    shots = tmp_path / "shots dir with spaces"
+    res = dry_run_setup("-ScreenshotsDir", str(shots))
+    assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
+    capture = SKILL / "scripts" / "screenshot_capture.py"
+    assert dry_run_field(res.stdout, "Arguments") == f'"{capture}" "{shots}"'
+    assert Path(dry_run_field(res.stdout, "Execute")).name in ("pythonw.exe", "python.exe")
+
+
+@requires_winps
+def test_dry_run_repeats_across_the_requested_workday(dry_run_setup, tmp_path):
+    """The repetition is grafted on from a throwaway -Once trigger; if that idiom breaks,
+    the task fires once a week instead of every few minutes."""
+    res = dry_run_setup("-ScreenshotsDir", str(tmp_path / "shots"),
+                        "-StartTime", "09:00", "-EndTime", "17:00", "-IntervalSeconds", "300")
+    assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
+    assert dry_run_field(res.stdout, "Repetition interval") == "PT5M"
+    assert dry_run_field(res.stdout, "Repetition duration") == "PT8H"
+    bitmask = int(dry_run_field(res.stdout, "Days bitmask").split()[0])
+    weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    assert [d for i, d in enumerate(weekdays) if bitmask & (1 << i)] == \
+        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], "not a weekdays-only trigger"
+
+    # Task Scheduler normalizes the boundary to UTC, so compare it back in local time.
+    boundary = datetime.fromisoformat(dry_run_field(res.stdout, "Start boundary"))
+    local = boundary.astimezone() if boundary.tzinfo else boundary
+    assert local.strftime("%H:%M") == "09:00", f"first run is not at -StartTime: {boundary}"
+
+
+@requires_winps
+def test_setup_creates_the_capture_directory_before_it_would_register(dry_run_setup, tmp_path):
     """An unusable -ScreenshotsDir used to leave a registered task pointing at a
-    directory that was never created, because the mkdir came after the register."""
-    lines = SCREENSHOT_SETUP.read_text(encoding="utf-8-sig").splitlines()
-    mkdir = [i for i, ln in enumerate(lines) if "New-Item" in ln and "$ScreenshotsDir" in ln]
-    # Tolerates indentation: this call gains an if/try before it sooner or later.
-    register = [i for i, ln in enumerate(lines) if ln.lstrip().startswith("Register-ScheduledTask")]
-    assert mkdir, "the capture directory is never created"
-    assert register, "no Register-ScheduledTask call found"
-    assert mkdir[0] < register[0], "the task is registered before the capture directory is created"
+    directory that was never created, because the mkdir came after the register.
+
+    Q: doesn't exist, so the mkdir throws; reaching the register line anyway would print
+    the report. -DryRun keeps the failure case from registering a real task either way.
+    """
+    ok = dry_run_setup("-ScreenshotsDir", str(tmp_path / "shots"))
+    assert (tmp_path / "shots").is_dir(), "the capture directory is never created"
+
+    bad = dry_run_setup("-ScreenshotsDir", r"Q:\no-such-drive\shots")
+    assert bad.returncode != 0, "an uncreatable capture directory was accepted"
+    assert "DRYRUN Arguments" in ok.stdout, "the dry-run report never printed"
+    assert "DRYRUN Arguments" not in bad.stdout, (
+        f"registration was reached despite the directory failing:\n{bad.stdout}")
 
 
 def ensure_pytest_cache():

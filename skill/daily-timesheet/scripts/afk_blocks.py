@@ -19,7 +19,7 @@ What it computes (all times rendered in the user's local zone):
     past work end (that gap is the left-in-focus trap, not real work).
   - active_ratio for an arbitrary --window HH:MM-HH:MM (the Step 3 validation).
 
-No third-party deps — stdlib urllib, like the sibling harvest_*.py helpers.
+No third-party deps — stdlib urllib, via the shared aw_client.py.
 
 Usage:
   python scripts/afk_blocks.py 2026-05-28
@@ -34,9 +34,10 @@ import argparse
 import datetime as dt
 import json
 import sys
-import urllib.request
 
-AW_BASE = "http://localhost:5600/api/0"
+from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get, parse_ts,
+                       pick_bucket, utc_bounds)
+
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
 
 
@@ -58,40 +59,10 @@ def parse_range(rng, local_date, offset):
     return ws, we
 
 
-def _get(path):
-    with urllib.request.urlopen(AW_BASE + path, timeout=15) as r:
-        return json.load(r)
-
-
 def discover_buckets():
-    """Return (afk_bucket, window_bucket). Prefer hostname-suffixed live buckets."""
-    buckets = _get("/buckets/")
-    def pick(prefix):
-        cands = [b for b in buckets if b.startswith(prefix)]
-        # hostname-suffixed buckets (contain '_') are the live ones
-        cands.sort(key=lambda b: ("_" not in b, b))
-        return cands[0] if cands else None
-    return pick("aw-watcher-afk_"), pick("aw-watcher-window_")
-
-
-def fetch_events(bucket, start_utc, end_utc):
-    q = f"/buckets/{bucket}/events?start={start_utc}&end={end_utc}&limit=10000"
-    return _get(q)
-
-
-def dedupe_heartbeats(events):
-    """AW extends an ongoing event by re-emitting it with the same timestamp and a
-    longer duration. Keep the longest duration per timestamp so we don't double-count."""
-    best = {}
-    for e in events:
-        ts = e["timestamp"]
-        if ts not in best or e["duration"] > best[ts]["duration"]:
-            best[ts] = e
-    return sorted(best.values(), key=lambda e: e["timestamp"])
-
-
-def parse_ts(ts):
-    return dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    """Return (afk_bucket, window_bucket) from one bucket listing."""
+    buckets = get("/buckets/")
+    return pick_bucket(buckets, "aw-watcher-afk_"), pick_bucket(buckets, "aw-watcher-window_")
 
 
 # -- Day arithmetic. Pure functions over spans, so they're testable without AW. --
@@ -222,10 +193,7 @@ def main():
         print(f"ERR bad date '{args.date}', expected YYYY-MM-DD", file=sys.stderr)
         return 2
 
-    # Local-midnight boundaries -> UTC range.
-    local_start = dt.datetime.combine(local_date, dt.time(0, 0))
-    start_utc = (local_start - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_utc = (local_start + dt.timedelta(days=1) - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start_utc, end_utc = utc_bounds(local_date, offset)
 
     try:
         afk_bucket, win_bucket = discover_buckets()

@@ -5,6 +5,30 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-07-31
+
+### Added
+- `scripts/aw_client.py`: the ActivityWatch request, bucket-discovery, heartbeat-dedupe
+  and timestamp helpers `afk_blocks.py` and `activity_timeline.py` each carried their own
+  copy of. Both now import them, so a fix lands in one place instead of one script
+  silently keeping the old behaviour.
+- `setup_screenshot_pipeline.ps1 -DryRun`: builds and prints the scheduled task it would
+  register — command line, weekday schedule, repetition, capture directory — then stops
+  without installing packages or registering anything. The capture directory is still
+  created, so a dry run also tells you whether `-ScreenshotsDir` is usable.
+
+### Changed
+- `activity_timeline.py` reads the bucket list once per run instead of once per watcher
+  it looks for (four requests down to one).
+- The screenshot-setup tests now assert against a real task definition rather than
+  pattern-matching the script's source, so argument quoting is covered too.
+
+### Upgrading
+Re-copy the skill. The two ActivityWatch scripts now need `aw_client.py` beside them, so
+running them from a half-updated `scripts/` folder fails on the import.
+
+    pwsh -File install\install_skill.ps1
+
 ## [0.2.3] - 2026-07-31
 
 ### Fixed
