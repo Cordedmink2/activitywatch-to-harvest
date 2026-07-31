@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Sets up the workday screenshot grabber: installs the Pillow + mss dependencies and
   registers ONE Windows scheduled task that fires screenshot_capture.py every
@@ -25,18 +25,27 @@ param(
     [string]$StartTime      = "08:30",
     [string]$EndTime        = "20:00",
     [int]   $IntervalSeconds = 150,
-    [string]$ScreenshotsDir = (Join-Path $HOME "Pictures\WorkScreenshots"),
-    [string]$CaptureScript  = (Join-Path $PSScriptRoot "screenshot_capture.py")
+    [string]$ScreenshotsDir = "",
+    [string]$CaptureScript  = ""
 )
 
 $ErrorActionPreference = "Stop"
 
+# Resolved here, not as param() defaults: Windows PowerShell 5.1 leaves $PSScriptRoot
+# empty while binding parameters, so a default built from it fails before the script runs.
+if (-not $CaptureScript)  { $CaptureScript  = Join-Path $PSScriptRoot "screenshot_capture.py" }
+if (-not $ScreenshotsDir) { $ScreenshotsDir = Join-Path $env:USERPROFILE "Pictures\WorkScreenshots" }
+
 # --- Resolve the Python interpreter (prefer pythonw so no console flashes) ---
-$pyw = (Get-Command pythonw.exe -ErrorAction SilentlyContinue)?.Source
-$py  = (Get-Command python.exe  -ErrorAction SilentlyContinue)?.Source
+# Spelled out with if/else rather than ?. and ?? so this parses under Windows
+# PowerShell 5.1, which is all a stock Windows box has.
+$pywCmd = Get-Command pythonw.exe -ErrorAction SilentlyContinue
+$pyCmd  = Get-Command python.exe  -ErrorAction SilentlyContinue
+$pyw = if ($pywCmd) { $pywCmd.Source } else { $null }
+$py  = if ($pyCmd)  { $pyCmd.Source }  else { $null }
 if (-not $pyw -and -not $py) { throw "Python not found on PATH. Install Python 3 first." }
-$runExe = $pyw ?? $py
-$pipExe = $py  ?? $pyw   # use python.exe for pip if available
+$runExe = if ($pyw) { $pyw } else { $py }
+$pipExe = if ($py)  { $py }  else { $pyw }   # use python.exe for pip if available
 
 Write-Host "Capture script : $CaptureScript"
 Write-Host "Python (run)   : $runExe"
@@ -69,7 +78,7 @@ if ($duration.TotalMinutes -le 0) { throw "EndTime must be after StartTime." }
 $trigger = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At $start
 # Attach repetition by borrowing it from a throwaway -Once trigger (the standard
-# PowerShell idiom — the Weekly trigger has no direct repetition parameter).
+# PowerShell idiom - the Weekly trigger has no direct repetition parameter).
 $rep = (New-ScheduledTaskTrigger -Once -At $start `
     -RepetitionInterval (New-TimeSpan -Seconds $IntervalSeconds) `
     -RepetitionDuration $duration).Repetition

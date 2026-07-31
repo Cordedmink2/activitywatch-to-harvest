@@ -5,6 +5,37 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-07-31
+
+### Fixed
+- `setup_screenshot_pipeline.ps1` could not run under Windows PowerShell 5.1 at all: it used the
+  pwsh-7-only `?.` and `??` operators (a parse error on 5.1), and built its `-CaptureScript`
+  default from `$PSScriptRoot`, which 5.1 leaves empty while binding parameters. Both defaults
+  now resolve in the body, spelled out with `if`/`else`.
+- `setup_workspace.ps1` failed to parse under Windows PowerShell 5.1. The file was UTF-8 without
+  a BOM, so 5.1 read its em dashes as mojibake and lost a string terminator. All three `.ps1`
+  files are now ASCII with a UTF-8 BOM.
+- `install_skill.sh` deleted the user's `.env` when re-run on a machine without `rsync`: the
+  fallback path cleared the whole destination directory first. It now copies in place and keeps
+  any existing `.env`, matching what the README documents and what the PowerShell installer does.
+
+### Changed
+- The `rsync` path in `install_skill.sh` no longer passes `--delete`, so both copy paths refresh
+  files in place rather than mirroring — the behaviour the README describes.
+- `README.md` prerequisites now state that the `pwsh -File` commands need PowerShell 7 (not on a
+  stock Windows box) and that `powershell.exe -File` works as a substitute.
+- `SKILL.md` says where the `python scripts/…` commands resolve from: the skill folder, not the
+  workspace the session runs in.
+
+### Added
+- `tests/` at the repo root: guards that every `.ps1` parses and runs under Windows PowerShell 5.1
+  and that an installer re-run preserves the user's `.env`.
+
+### Upgrading
+Re-copy the skill; the screenshot setup script is the file that changed.
+
+    pwsh -File install\install_skill.ps1
+
 ## [0.2.1] - 2026-07-31
 
 ### Fixed

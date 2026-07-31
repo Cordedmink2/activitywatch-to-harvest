@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Scaffold a workspace for the daily-timesheet skill.
 
@@ -32,10 +32,10 @@ foreach ($d in @("Timesheets", "daily_exports", ".mcp")) {
 
 $contextDest = Join-Path $Workspace "Timesheets\.context.md"
 if (Test-Path $contextDest) {
-  Write-Host "  kept     Timesheets\.context.md (already exists — not overwritten)" -ForegroundColor Yellow
+  Write-Host "  kept     Timesheets\.context.md (already exists - not overwritten)" -ForegroundColor Yellow
 } elseif (Test-Path $template) {
   Copy-Item $template $contextDest
-  Write-Host "  seeded   Timesheets\.context.md (from template — edit it next)" -ForegroundColor Green
+  Write-Host "  seeded   Timesheets\.context.md (from template - edit it next)" -ForegroundColor Green
 } else {
   Write-Host "  WARNING  template not found at $template; create Timesheets\.context.md by hand" -ForegroundColor Red
 }

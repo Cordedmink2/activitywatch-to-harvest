@@ -91,6 +91,9 @@ then run the install script.
 
 - **Windows** (the screenshot pipeline + setup scripts target Windows/PowerShell; the skill logic and
   the `.sh` install scripts work cross-platform, but screenshots are Windows-only as shipped).
+- **PowerShell 7** (`pwsh`) for the commands below. Windows ships only Windows PowerShell 5.1, where
+  `pwsh` doesn't exist — install it with `winget install Microsoft.PowerShell`, or substitute
+  `powershell.exe -File …` in every command (the scripts run under 5.1 too).
 - **Python 3.10+** on your `PATH` (`python --version`).
 - **[Claude Code](https://claude.com/claude-code)** installed.
 - A **Harvest** account you can create a personal access token for.

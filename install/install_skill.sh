@@ -26,14 +26,24 @@ echo "  from: $SOURCE"
 echo "  to:   $DEST"
 
 if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete --exclude='.env' --exclude='__pycache__' "$SOURCE/" "$DEST/"
+  # No --delete: this refreshes files in place, matching the PowerShell installer.
+  rsync -a --exclude='.env' --exclude='__pycache__' "$SOURCE/" "$DEST/"
 else
-  rm -rf "$DEST"
+  # cp then prune the bits we never want to ship. The user's own .env lives in
+  # $DEST, so stash it across the copy instead of clearing the directory —
+  # clearing it destroyed the Harvest token they had already filled in.
   mkdir -p "$DEST"
-  # cp then prune the bits we never want to ship
+  saved_env=""
+  if [ -f "$DEST/.env" ]; then
+    saved_env="$(mktemp)"
+    cp "$DEST/.env" "$saved_env"
+  fi
   cp -R "$SOURCE/." "$DEST/"
   rm -f "$DEST/.env"
   find "$DEST" -type d -name '__pycache__' -prune -exec rm -rf {} +
+  if [ -n "$saved_env" ]; then
+    mv "$saved_env" "$DEST/.env"
+  fi
 fi
 
 echo "Done. Skill installed to $DEST"

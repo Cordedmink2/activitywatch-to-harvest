@@ -1,10 +1,10 @@
-<#
+﻿<#
 .SYNOPSIS
   Install the daily-timesheet skill into your Claude Code skills folder.
 
 .DESCRIPTION
   Copies skill\daily-timesheet from this repo to ~\.claude\skills\daily-timesheet.
-  Never copies a .env (yours stays local) or __pycache__. Safe to re-run — it
+  Never copies a .env (yours stays local) or __pycache__. Safe to re-run - it
   refreshes the skill files in place.
 
 .EXAMPLE

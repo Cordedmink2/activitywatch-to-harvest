@@ -42,6 +42,8 @@ This skill is **shareable** — sort every fact by who it applies to. Don't use 
 
 **Timezone:** AW stores UTC; all scripts take `--utc-offset` (default 12; **13 during NZ daylight saving**). User timezone from `## Preferences` in `.context.md`, default `Pacific/Auckland`.
 
+**Running the scripts:** every `python scripts/…` command below is relative to *this skill's own folder*, not the workspace. The session's working directory is the workspace, so prefix them with the skill path — `python "$HOME/.claude/skills/daily-timesheet/scripts/afk_blocks.py" <date>` (Windows: `$HOME\.claude\skills\daily-timesheet\scripts\…`). Catalog paths resolve from the workspace, so run them *from* the workspace directory.
+
 ### Reading the screenshot folder (Windows)
 
 List with PowerShell `Get-ChildItem` — the Bash `cmd dir` and `Glob` routes return empty for the `Pictures` path even when it's full:
