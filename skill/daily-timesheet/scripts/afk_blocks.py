@@ -38,7 +38,24 @@ import urllib.request
 
 AW_BASE = "http://localhost:5600/api/0"
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
-NOISE_FLOOR = 5           # drop sub-5s events (tab-switch noise), per SKILL.md
+
+
+def parse_local_time(s):
+    """Parse 'HH:MM' or 'HH:MM:SS' to a datetime.time."""
+    s = s.strip()
+    fmt = "%H:%M:%S" if s.count(":") == 2 else "%H:%M"
+    return dt.datetime.strptime(s, fmt).time()
+
+
+def parse_range(rng, local_date, offset):
+    """Parse 'HH:MM-HH:MM' (seconds optional) to an aware UTC (start, end) pair.
+    Raises ValueError on bad format or a reversed/empty range."""
+    a, b = rng.split("-", 1)
+    ws = (dt.datetime.combine(local_date, parse_local_time(a)) - offset).replace(tzinfo=dt.timezone.utc)
+    we = (dt.datetime.combine(local_date, parse_local_time(b)) - offset).replace(tzinfo=dt.timezone.utc)
+    if we <= ws:
+        raise ValueError(f"end must be after start in range '{rng}'")
+    return ws, we
 
 
 def _get(path):
@@ -130,6 +147,13 @@ def main():
     work_start = not_afk[0][0]
     work_end = max(s[1] for s in not_afk)  # last moment of genuine activity = end of day
 
+    # Blip guard: work_end produced by a momentary not-afk flicker (mouse nudge,
+    # auto-wake) long after the last substantive activity. Report where solid
+    # activity actually ended so the final block isn't stretched to the blip.
+    solid = [s for s in not_afk if s[3] >= 120]
+    last_solid_end = max((s[1] for s in solid), default=work_end)
+    work_end_blip = (work_end - last_solid_end).total_seconds() >= 600
+
     # Breaks: afk spans >= threshold that fall *within* the workday. The big afk
     # spans before work_start and after work_end aren't breaks — they're just
     # "not at work yet / done for the day" — so exclude them.
@@ -172,13 +196,10 @@ def main():
     window_report = None
     if args.window:
         try:
-            a, b = args.window.split("-", 1)
-            ws = (dt.datetime.combine(local_date, dt.datetime.strptime(a.strip(), "%H:%M").time())
-                  - offset).replace(tzinfo=dt.timezone.utc)
-            we = (dt.datetime.combine(local_date, dt.datetime.strptime(b.strip(), "%H:%M").time())
-                  - offset).replace(tzinfo=dt.timezone.utc)
-        except Exception:
-            print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM", file=sys.stderr)
+            ws, we = parse_range(args.window, local_date, offset)
+        except Exception as e:
+            print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM (seconds optional): {e}",
+                  file=sys.stderr)
             return 2
         win_dur = (we - ws).total_seconds()
         overlap = 0.0
@@ -209,14 +230,10 @@ def main():
                 part = part.strip()
                 if not part:
                     continue
-                a, b = part.split("-", 1)
-                cs = (dt.datetime.combine(local_date, dt.datetime.strptime(a.strip(), "%H:%M").time())
-                      - offset).replace(tzinfo=dt.timezone.utc)
-                ce = (dt.datetime.combine(local_date, dt.datetime.strptime(b.strip(), "%H:%M").time())
-                      - offset).replace(tzinfo=dt.timezone.utc)
-                prop.append((cs, ce))
-        except Exception:
-            print(f"ERR bad --cover '{args.cover}', expected HH:MM-HH:MM,...", file=sys.stderr)
+                prop.append(parse_range(part, local_date, offset))
+        except Exception as e:
+            print(f"ERR bad --cover '{args.cover}', expected HH:MM-HH:MM,... (seconds optional): {e}",
+                  file=sys.stderr)
             return 2
 
         def active_min(lo, hi):
@@ -263,6 +280,7 @@ def main():
         "afk_bucket": afk_bucket,
         "work_start": to_local(work_start),
         "work_end": to_local(work_end),
+        "work_end_blip": ({"last_solid_end": to_local(last_solid_end)} if work_end_blip else None),
         "total_active_min": round(total_active_s / 60, 1),
         "breaks": [{"start": to_local(s), "end": to_local(e), "min": round(d / 60, 1)} for s, e, d in breaks],
         "active_spans": [{"start": to_local(s), "end": to_local(e),
@@ -280,6 +298,9 @@ def main():
     print(f"  bucket:      {afk_bucket}")
     print(f"  work start:  {result['work_start']}")
     print(f"  WORK END:    {result['work_end']}   <- end of day; do not bill past this")
+    if work_end_blip:
+        print(f"  BLIP:        work_end is a momentary flicker; last substantive activity "
+              f"ended {result['work_end_blip']['last_solid_end']} -> end the final block there")
     print(f"  active time: {result['total_active_min']} min total")
     if win_tail:
         flag = "  <- left-in-focus trap, NOT work" if win_tail["gap_past_work_end_min"] > 1 else ""

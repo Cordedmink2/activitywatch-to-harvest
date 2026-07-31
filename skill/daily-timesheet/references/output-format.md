@@ -41,7 +41,7 @@ The `Timesheets/<date>_timesheet.md` is an *optional* internal-audit artefact. G
 - **Break rows**: *only* for breaks ≥17.5 min (or the user's overridden threshold). Render `*Break*` in italic, `—` em-dash in the Client column. Shorter AFK gaps fold silently into the surrounding work block.
 - **Client column**: short canonical name as defined in `.context.md`, not the long Harvest client name.
 - **Description (markdown column)**: 1 sentence, concrete, internal-audit style. The markdown file stays local — so it can mention tools, tickets, file names, participants if useful for review. Match the user's own tone (read existing files in `Timesheets/` or their Harvest history for examples).
-- **Harvest `notes` field is different.** Those get sent to clients with invoices — keep them **short (5–15 words), outcome-focused, no internal app/file/tool names**. See `.context.md` "How I bill" section (if present) for the user's specific examples.
+- **Harvest `notes` field is different.** Those get sent to clients with invoices — follow `classification-rules.md` "Writing the Harvest note"; the user's own examples are in `.context.md` "How I bill".
 - **Support tickets**: prefix description with `[Support] ` for tickets matching the support pattern (e.g. trailing `S` if defined in `.context.md`).
 - **Notes section**: 3-6 bullets typically. Cover splits, judgment calls, exclusions. Skip trivial observations.
 

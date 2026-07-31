@@ -8,6 +8,10 @@ those additions rather than letting them accumulate elsewhere.
 You can hand-edit this file at any time. The skill never overwrites it without
 showing you the diff first.
 
+Keep it lean: only *your* facts belong here — generic heuristics live in the skill
+itself, and the skill checks this file against a size budget (default 14,000 bytes,
+see SKILL.md Step 11) after every edit and compacts when it's exceeded.
+
 ---
 
 ## Preferences
@@ -96,52 +100,38 @@ the shared patterns here and the rule for splitting.
 
 ---
 
-## How I bill (description style + project selection)
+## How I bill (overrides + examples)
 
-Your own conventions. The skill applies these when proposing entries.
+The generic conventions (client-readable outcome-focused notes, bill by ticket not
+by window, stale-ticket→new-case, catalog caveats) live in the skill's
+classification rubric — don't restate them here. Only *your* overrides and voice:
 
-**Description style — client-readable, 5–15 words, outcome-focused.** Most
-descriptions get sent to clients with the invoice. Lead with the *result*, not the
-tools or files. Don't name specific code files, internal app names, or chat partners
-unless essential.
-
-Real examples from your entries (paste 3–5 here once you have them):
+Real note examples from your entries (paste 3–5 here once you have them):
 - "<example outcome description>"
 - "<example outcome description>"
 - "<example outcome description>"
 
-**Bill by ticket / work item, not by window or app.** One sustained block of work
-on one ticket = one Harvest entry, even when the surface switched between VS Code,
-Power Apps, Teams, browser. Don't fragment by window-title change.
-
-**Ticket-catalog caveat.** If you maintain a dump of all active tickets, remember
-that catalog existence ≠ today's billing target. A ticket may exist with a
-thematically-matching name but the day's work bills somewhere else.
-
-**Codebase path is a codebase signal, not a billing signal.** A repo can serve
-multiple Harvest projects. Use the work-item context to pick the project.
+Per-project conventions:
+- **<Project code> default task**: `<task name>` — <when it applies>
+- **Codebase `<repo path>`** serves multiple projects (`<code>`, `<code>`) — pick by work item
 
 ---
 
 ## Personal browsing patterns to exclude (do not bill)
 
-List anything that's *clearly* personal so the skill drops it from time blocks
-automatically. Be specific — generic categories invite false positives.
+The rubric's generic categories (travel, social media, news/shopping/email, timer
+overlays, home admin) already apply. List only the *specific* recognizers seen on
+your machine — specific patterns avoid false positives:
 
-- Flight / travel searches (Google Flights, destination image searches, travel guides)
-- Social media (personal scrolling on FB / IG / X / LinkedIn)
-- News, weather, shopping, personal email
-- Pomodoro timer pages (timer overlay only — not work itself)
-- Home admin pages (router admin, smart home, NAS, etc.)
+- <site / search pattern, e.g. "Google Flights 'Christchurch to …'">
+- <recurring personal page>
 
 ---
 
 ## Notes on inference
 
-Any standing rules that don't fit the categories above. Examples:
+Standing user-specific rules that don't fit the categories above. Examples:
 
-- **Edge profile in title is a strong client signal.** Pattern: `... - <ProfileName> - <YourName> - Microsoft Edge`. Treat profile name as the client unless this file overrides.
-- **Teams meeting names** are reliable block boundaries.
-- **ActivityWatch noise**: the Power Platform admin center page polls in the background and produces lots of 0-duration events. Ignore short blips.
-- **Harvest itself** (Timesheet tab in browser) → internal admin, not billable client work.
-- **Pure `claude.exe` time** accompanying timesheet-automation files (`Claude/Scheduled/`, `Pictures/WorkScreenshots/`, `Timesheets/`) → internal admin. `claude.exe` adjacent to a billable client's app stack should be attributed to that client.
+- **Harvest itself** (Timesheet tab in browser) → `<your internal-admin project>`, not billable client work.
+- **Internal-admin project** for the rubric's terminal-adjacency rule = `<project>`. Timesheet-automation paths on this machine: `<paths>`.
+- **Recurring meeting `<name>`** → `<project · task>` (your canonical attribution).

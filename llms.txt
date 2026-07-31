@@ -114,3 +114,6 @@ wait for the user to confirm before moving on.
 - `references/context.md.example` — the `.context.md` template.
 - `references/catalog-refresh.md` — how the `.mcp/` catalogs are built/refreshed.
 - `references/output-format.md` — the markdown timesheet format.
+- `references/setup.md` — first-run setup checklist.
+- `references/activitywatch.md` — the ActivityWatch buckets and events the skill reads.
+- `references/new-client-work.md` — raising a ticket for work with no matching project.

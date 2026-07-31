@@ -5,8 +5,8 @@ Goal: for each proposed time block, pick a `(client, project_id, task_id, billab
 **`Timesheets/.context.md` is the source of truth.** It holds the per-user facts:
 - Active client profiles + signals (Edge profile names, URLs, ChatGPT projects, VS Code workspaces, repo paths, SharePoint subdomains, ticket-number prefixes)
 - Internal-colleague + external-contact names
-- Billing conventions (description style, default tasks, the "bill by ticket not by window" rule, etc.)
-- Personal-browsing exclusions
+- Billing-convention *overrides* (default tasks, per-project conventions, note-style examples in the user's voice)
+- User-specific personal-browsing recognizers (on top of the generic exclusion categories below)
 - Preferences (AFK threshold, lunch window, timezone, etc.)
 
 This file contains only the **generic heuristics** for *applying* `.context.md` to event data. If a rule below contradicts `.context.md`, `.context.md` wins.
@@ -28,7 +28,7 @@ A trailing `S` (or other suffix) on a ticket number often indicates **Support wo
 
 ### 2. Edge profile in window title (HIGH confidence for browser activity)
 
-Windows ending in `… - <ProfileName> - <UserDisplayName> - Microsoft Edge` (or older format `… - <ProfileName> - Microsoft Edge`): the profile name maps directly to a client. See `.context.md` "Active client projects" sections for the current profile → client mapping. If a profile isn't listed there but window content otherwise indicates a known client, follow the content signal. New profiles → propose adding them to `.context.md`.
+Windows ending in `… - <ProfileName> - <UserDisplayName> - Microsoft Edge` (or older format `… - <ProfileName> - Microsoft Edge`): the profile name maps directly to a client. (`<UserDisplayName>` is the user's Edge profile display name — discover it from window titles in the first session.) See `.context.md` "Active client projects" sections for the current profile → client mapping. If a profile isn't listed there but window content otherwise indicates a known client, follow the content signal. New profiles → propose adding them to `.context.md`.
 
 ### 3. Teams chat / call titles (HIGH confidence for Teams events)
 
@@ -45,6 +45,10 @@ VS Code workspaces, Obsidian vaults, repo paths, ChatGPT project names, and othe
 
 **Codebase ≠ Harvest project.** A single client codebase can serve multiple Harvest projects. The repo path tells you the client family; the work item context (active ticket, commit message, who's being supported, what's being released) tells you the specific Harvest project.
 
+**Focused window ≠ active attention (autonomous agents + multi-monitor).** The window-watcher logs only the *foreground* window. When a Claude Code agent runs unattended (`auto mode`, a background agent) in a VS Code window, that window counts as "focused" for the agent's whole runtime — while the user's real work is a *different* client's session on another monitor. This inflates the `activity_timeline.py` rollup minutes for the agent's workspace and drops the parallel client work. Signal: a screenshot showing `auto mode on ← 1 agent` or `Waiting for … background agent to finish`. Action: when one workspace dominates the rollup on a multi-monitor day, read the *other* monitors (`_m1`/`_m3`) at that timestamp before trusting the per-category minutes, and treat that day's per-client hours as a user-confirmed split rather than a rollup readout.
+
+**Long agent-CLI sessions poison the window title.** A running `claude` session keeps one editor tab in focus (`CLAUDE.md`, `AGENTS.md`, a plan `.md`) for its whole duration while the actual work happens in the terminal, the browser, or on another monitor. The *file name* in such a title is not a work signal and will mis-attribute whole blocks. The VS Code *workspace* tag (`… - <Workspace> - Visual Studio Code`) stays valid, but when a block is titled with these files, resolve the client from screenshots — and check every monitor, not just the one showing the focused app.
+
 ### 5. URL pattern (MEDIUM confidence)
 
 URLs in browser tabs (Edge / Firefox / Chrome) expose Dynamics environments, Azure DevOps orgs, SharePoint subdomains, ChatGPT project slugs, etc. — see `.context.md` for the user's URL → client mapping. The URL fingerprint is usually unambiguous; if a new URL pattern appears that maps to a known client, propose adding it to `.context.md`.
@@ -57,23 +61,59 @@ Pure `claude.exe` / `WindowsTerminal.exe` (or other AI-assist clients) — apply
 - Terminal adjacent to timesheet-automation paths (`Claude/Scheduled/`, `Pictures/WorkScreenshots/`, `Timesheets/`) → the user's internal-admin project.
 - Claude Code task names visible in terminal titles (e.g. `✳ <slug>`) are useful signals but **the slug usually names a feature, not a client** — e.g. `hardcode-confidential-team-lookups` tells you *what* is being worked on, not *who* it's for. Triangulate with the surrounding Edge profile, repo path, or open Dataverse environment to pin the client. If the slug is the only signal you have and you can't triangulate, flag the block 🔸 and ask.
 
+## Interleaved days — find the switch point, don't average
+
+The costliest real-world misattributions are long blocks on days where the user alternated between two clients: the whole block gets billed to whichever client *dominates* the category rollup, and the other client's hours land on the wrong invoice.
+
+**Triggers — treat the block as interleaved when any of these hold:**
+- The day rollup shows ≥2 clients with ≥30 min each, and a single proposed block is >1 hr
+- The zoomed timeline alternates between two clients' signals within the block
+- Any `!MULTI` span, or a block titled by an agent-session file (`CLAUDE.md`, `AGENTS.md`, plan `.md`s)
+- An autonomous agent ran during the block (see "Focused window ≠ active attention" above)
+
+**Procedure:**
+1. Zoom the timeline over the block (`activity_timeline.py <date> --window …`) and note every point where the client signal flips.
+2. Probe screenshots economically: start with ~3 spread across the block (start / middle / end), then densify only around detected flips until each switch point is bracketed to ~10 min. Check the other monitors at every probe, and record which client's work is on screen.
+3. Locate the **switch point(s)**: the boundary between runs of consistent client evidence. Split the block there. A switch point is a real boundary even with no AFK gap — client A until 16:10 and client B after is two entries, at whatever timestamps the evidence shows.
+4. Attribute each sub-block to its own client. Never bill the whole block to the rollup-dominant client while a second client shows ≥15 min of evidence inside it — if the evidence can't pin the switch point, ask the user rather than averaging.
+5. If the two "clients" are actually work vs. personal/upskilling/internal interleaved, the same procedure applies — carve out the non-billable or internal runs, and say so in the presentation.
+6. **A named Teams meeting recurring in fragments through the block is its own sub-block** (the user attending while multitasking) — carve it out with its own attribution per signal §3, even though no single fragment is long. The parallel coding stays with its own client.
+
 ## Task (Harvest sub-category) selection
 
-The user's default task (and any per-project conventions) live in `.context.md`. Generic fallback mapping (used when `.context.md` doesn't override):
+**This table is the single authoritative mapping** — `SKILL.md` does not carry its own copy. Resolution order:
 
-| Block content | Task choice |
+1. **`.context.md` overrides win.** Check the user's "How I bill" / preferences section first — it typically sets a default task (e.g. `Gen - Development/Configuration`) and per-project conventions (e.g. a specific default task for the internal-admin project, or a hardcoded `project · task` pair under a client's section). A per-client hardcoded task beats the activity mapping below — e.g. if the client entry pins `Gen - Development/Configuration`, a design-doc-heavy block still bills there, not to Documentation.
+2. **The task follows the block's *dominant* activity**, not its incidental surfaces. A dev block that included reading docs and a 5-min chat is still Development/Configuration. Only give a block a meeting task when the block *is* a call/meeting.
+3. Generic mapping when `.context.md` doesn't decide it:
+
+| Dominant block activity | Task choice |
 |---|---|
-| Mostly Teams meeting / call | `Gen - Meeting` |
-| Code / config / build / deploy | `Gen - Development/Configuration` |
+| A Teams meeting / call | `Gen - Meeting` |
+| Code / config / build / deploy / bug fixing | `Gen - Development/Configuration` |
 | Docs / wiki / SOW writing | `Gen - Documentation` |
 | Project management, planning, backlog grooming | `Gen - Project Management` |
 | Testing, QA, smoke tests | `Gen - Testing` |
-| Pure read-only analysis | `Gen - Investigation` |
-| Harvest itself, internal admin tooling | `No Display` or NB equivalent |
+| Sustained pure read-only analysis, **no edits at all** | `Gen - Investigation` (rare — any config/code change makes it Development/Configuration) |
+| Harvest itself, internal admin tooling | `No Display` or the project's NB equivalent |
 
-If the project's `task_assignments[]` doesn't include the task you'd pick, fall back to `Gen - General Consulting`. Don't invent new tasks.
+4. Pick only from the project's actual `task_assignments[]` (via `harvest_lookup.py`). If the task you'd pick isn't assigned, fall back to `Gen - Issue Resolution` for investigation-type work, else `Gen - General Consulting`. Don't invent tasks.
 
-The `(NB)` variants are non-billable. Use them when the block is internal/admin/training even though it sits inside a client-coded project.
+## Billing conventions (defaults — `.context.md` overrides win)
+
+- **Bill by ticket / work item, not by window or app.** One sustained block of work on one ticket = one Harvest entry, even when the surface switched between IDE, browser, Teams, and admin portals. Don't fragment by window-title change.
+- **A matching ticket/case older than ~1 week → make a NEW case, don't reuse it.** The old case is likely closed or already invoiced. Create a fresh one (`references/new-client-work.md`) and bill to that; only reuse a genuinely recent / still-open ticket.
+
+## Writing the Harvest note (description)
+
+Notes go to clients on invoices — `SKILL.md` carries the hard rule (client-readable, SOW test). Style defaults:
+
+- **5–15 words, outcome-focused.** Lead with the result, not the tools or files: "Resolved the certificate import interface bug", not "Debugged CreateCertificateRequestsHandler.cs".
+- **Reference the specific work item** (e.g. `US1031`, `Bug 1127`) over just the parent SOW. The numbers surface in CRM record titles, ADO URLs (`_workitems/edit/<id>`), and PR titles (`feat(SOW15 #1031): …`). Name the parent SOW only as context, never as a substitute for the work item.
+- **Internal artefact names leak via the file or tool in focus — translate before writing the note.** Code file names → the client process they serve ("complaint creation process", not `ComplaintRaisedService.cs`); repo/knowledge tooling (wiki scripts, knowledge base) → the project area it serves, or "project documentation"; agent/config files (`AGENTS.md`, `CLAUDE.md`, plan `.md`s) → never named.
+- The user's own voice and worked examples: `.context.md` "How I bill".
+
+**Billable status comes from the task assignment, not the task name.** `task_assignments[N].billable` in the catalog is authoritative. The `(NB)` suffix is a naming convention hint — some non-billable tasks (e.g. everything under an internal admin project) don't carry it. When the block is internal/admin/training, pick a task whose `billable: false` in the catalog.
 
 ## Confidence rating
 
@@ -83,4 +123,11 @@ The `(NB)` variants are non-billable. Use them when the block is internal/admin/
 
 ## Exclusions (NEVER bill)
 
-See `Timesheets/.context.md` "Personal browsing patterns to exclude" (or equivalent section). Apply per the source of truth.
+Generic categories, always excluded:
+
+- Flight/travel searches and holiday planning
+- Social media scrolling (FB / IG / X / LinkedIn), news, weather, shopping, personal email
+- Pomodoro/timer overlay pages (the timer isn't the work)
+- Home admin (router, smart home, NAS)
+
+`Timesheets/.context.md` "Personal browsing patterns to exclude" adds the user's specific recognizers on top and wins on any conflict.

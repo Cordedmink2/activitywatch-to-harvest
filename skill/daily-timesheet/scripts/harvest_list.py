@@ -11,7 +11,7 @@ Output (sorted by date, then start time, 24h):
 import os
 import sys
 
-from harvest_client import request
+from harvest_client import parse_time_to_minutes, request
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding="utf-8")
@@ -22,24 +22,15 @@ def to_24h(t: str | None) -> str:
     """Normalize Harvest time strings ('8:15am', '12:21pm', '08:15') to 'HH:MM' (24h).
 
     Returns '--:--' for missing input, or the original string if unparseable.
+    Parsing itself is harvest_client.parse_time_to_minutes — one source of truth.
     """
     if not t:
         return "--:--"
-    raw = t.strip().lower()
-    suffix = ""
-    if raw.endswith("am") or raw.endswith("pm"):
-        suffix = raw[-2:]
-        raw = raw[:-2].strip()
     try:
-        h_str, m_str = raw.split(":")
-        h, m = int(h_str), int(m_str)
-    except (ValueError, IndexError):
+        minutes = parse_time_to_minutes(t)
+    except ValueError:
         return t
-    if suffix == "pm" and h != 12:
-        h += 12
-    if suffix == "am" and h == 12:
-        h = 0
-    return f"{h:02d}:{m:02d}"
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
 def sort_key(entry: dict) -> tuple:

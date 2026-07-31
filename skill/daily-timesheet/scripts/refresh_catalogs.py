@@ -82,7 +82,10 @@ INCIDENT_FETCHXML = """<fetch>
     <attribute name="ticketnumber" />
     <attribute name="title" />
     <attribute name="modifiedon" />
-    <filter><condition attribute="statecode" operator="eq" value="0" /></filter>
+    <filter type="or">
+      <condition attribute="statecode" operator="eq" value="0" />
+      <condition attribute="modifiedon" operator="last-x-days" value="120" />
+    </filter>
     <order attribute="ticketnumber" />
   </entity>
 </fetch>
@@ -99,12 +102,9 @@ def refresh_harvest():
     """
     MCP_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Clear stale page files first — if a prior run produced more pages than this
-    # one, the leftover _p{n}.json files would be read as stale data by consumers
-    # that glob harvest_assignments*.json.
-    for old in MCP_DIR.glob("harvest_assignments*.json"):
-        old.unlink()
-
+    # Fetch every page into memory BEFORE touching the existing files, so an API
+    # failure mid-refresh leaves the old catalog intact rather than half-deleted.
+    pages = []
     page = 1
     while True:
         try:
@@ -114,17 +114,24 @@ def refresh_harvest():
                 query={"per_page": 100, "page": page},
             )
         except RuntimeError as e:
-            sys.exit(f"ERROR: Harvest API on page {page}: {e}")
-
-        out_name = "harvest_assignments.json" if page == 1 else f"harvest_assignments_p{page}.json"
-        with open(MCP_DIR / out_name, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-        n = len(payload.get("project_assignments", []))
-        print(f"  ✓ Page {page}: {n} project assignments → {out_name}")
-
+            sys.exit(f"ERROR: Harvest API on page {page}: {e} (existing catalog left untouched)")
+        pages.append(payload)
         if not payload.get("next_page"):
             break
         page += 1
+
+    # Clear stale page files — if a prior run produced more pages than this one,
+    # leftover _p{n}.json files would be read as stale data by consumers that
+    # glob harvest_assignments*.json.
+    for old in MCP_DIR.glob("harvest_assignments*.json"):
+        old.unlink()
+
+    for i, payload in enumerate(pages, start=1):
+        out_name = "harvest_assignments.json" if i == 1 else f"harvest_assignments_p{i}.json"
+        with open(MCP_DIR / out_name, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        n = len(payload.get("project_assignments", []))
+        print(f"  ✓ Page {i}: {n} project assignments → {out_name}")
 
     total = payload.get("total_entries", "?")
     print(f"  Done. Total entries reported by Harvest: {total} (best-effort; see docstring on replica lag)")

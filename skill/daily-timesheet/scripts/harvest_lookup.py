@@ -6,6 +6,13 @@ several files (harvest_assignments.json, _p2.json, ...). A naive "read the
 latest file" lookup misses projects on other pages — this searches every page
 and de-dupes projects that appear on more than one.
 
+When the catalog has no match, the lookup falls back to the user's own recent
+time entries via the live API. The assignments endpoint only returns *active*
+assignments, so a project whose assignment was archived (common for short-lived
+ticket-synced projects) disappears from the catalog even though it exists and
+has entries against it — the user's entry history is the reliable place to
+recover its project_id and task ids. Disable with --no-live (e.g. offline).
+
 Usage:
   python scripts/harvest_lookup.py NLS-CR202
   python scripts/harvest_lookup.py "Short Courses"
@@ -28,8 +35,12 @@ for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigu
 def find_catalog_dir(explicit):
     if explicit:
         return explicit
-    for cand in [os.path.join(os.getcwd(), ".mcp"),
-                 os.path.join(os.path.expanduser("~"), "Claude", "Work", ".mcp")]:
+    override = os.environ.get("TIMESHEET_WORKSPACE")  # same override refresh_catalogs.py honours
+    cands = ([os.path.join(override, ".mcp")] if override else []) + [
+        os.path.join(os.getcwd(), ".mcp"),
+        os.path.join(os.path.expanduser("~"), "Claude", "Work", ".mcp"),
+    ]
+    for cand in cands:
         if os.path.isdir(cand):
             return cand
     return os.path.join(os.getcwd(), ".mcp")
@@ -75,19 +86,72 @@ def lookup(query, mcp_dir, task_filter=None):
     return matches
 
 
+def lookup_from_entries(query, days=180, task_filter=None):
+    """Search the user's own recent time entries for a project the catalog misses.
+
+    Returns matches in the same shape as lookup(), with source='time_entries' and
+    each task carrying the billable flag observed on the most recent entry using it.
+    Imported lazily so cache-only lookups keep working without .env/network.
+    """
+    import datetime
+
+    from harvest_client import request
+
+    q = query.lower()
+    frm = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+    projects = {}  # project_id -> {code, name, tasks: {task_id: {...}}}
+    page = 1
+    while True:
+        payload = request("GET", "/time_entries", query={"from": frm, "per_page": 100, "page": page})
+        for e in payload.get("time_entries", []):
+            p = e.get("project") or {}
+            code = p.get("code") or ""
+            name = p.get("name") or ""
+            if not (code.lower() == q or q in code.lower() or q in name.lower()):
+                continue
+            t = e.get("task") or {}
+            tname = t.get("name") or ""
+            if task_filter and task_filter.lower() not in tname.lower():
+                continue
+            proj = projects.setdefault(p.get("id"), {"code": code, "project_id": p.get("id"), "name": name, "tasks": {}})
+            # Entries arrive newest-first; keep the first (most recent) billable flag per task.
+            proj["tasks"].setdefault(t.get("id"), {"id": t.get("id"), "name": tname, "billable": bool(e.get("billable"))})
+        if not payload.get("next_page"):
+            break
+        page += 1
+    matches = [{**m, "tasks": list(m["tasks"].values()), "source": "time_entries"} for m in projects.values()]
+    matches.sort(key=lambda m: (m["code"].lower() != q, m["code"]))
+    return matches
+
+
 def main():
     ap = argparse.ArgumentParser(description="Look up a Harvest project + tasks by code/name.")
     ap.add_argument("query", help="project code (exact) or code/name fragment")
     ap.add_argument("--task", help="filter task rows by name substring (case-insensitive)")
     ap.add_argument("--mcp-dir", help="directory holding harvest_assignments*.json")
-    ap.add_argument("--json", action="store_true", help="emit JSON instead of machine-readable output")
+    ap.add_argument("--json", action="store_true", help="emit JSON instead of the human-readable listing")
+    ap.add_argument("--no-live", action="store_true", help="cache only; skip the time-entries API fallback")
+    ap.add_argument("--days", type=int, default=180, help="how far back the time-entries fallback looks")
     args = ap.parse_args()
 
     mcp_dir = find_catalog_dir(args.mcp_dir)
     matches = lookup(args.query, mcp_dir, args.task)
+    fell_back = False
+    if not matches and not args.no_live:
+        try:
+            matches = lookup_from_entries(args.query, args.days, args.task)
+            fell_back = True
+        except Exception as e:
+            print(f"WARN time-entries fallback failed: {e}", file=sys.stderr)
     if not matches:
-        print(f"ERR no project matching '{args.query}' in {mcp_dir}", file=sys.stderr)
+        print(f"ERR no project matching '{args.query}' in {mcp_dir} or recent time entries", file=sys.stderr)
         return 1
+    if fell_back:
+        print(
+            "NOTE not in assignments catalog (assignment likely archived); "
+            f"recovered from own time entries, last {args.days} days",
+            file=sys.stderr,
+        )
     if args.json:
         print(json.dumps(matches, indent=2))
         return 0

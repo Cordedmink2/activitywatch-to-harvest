@@ -43,6 +43,8 @@ The script's design assumes:
 
 Sometimes a block belongs to new work with no Harvest project yet — the user creates a ticket/case in their backend CRM, which syncs to Harvest as a new project (`project.code` == the ticket id). For Dataverse (user's URL lives in the workspace `.env`):
 
+> **Note:** `create_incident.py` and `read_incidents.py` below are NOT part of this skill's `scripts/` — they live in the user's Dataverse **workspace** `scripts/` directory (alongside that workspace's `auth.py` and `.env`). If they're missing, ask the user to sync them from their workspace before using this path.
+
 - **Create the case with the tested helper, not a raw API call:**
   ```
   python scripts/create_incident.py --customer "<client>" --title "<title>"        # dry run — resolves client, prints what it would create

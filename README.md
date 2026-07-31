@@ -71,7 +71,10 @@ Re-running never touches your `.env`, your workspace, or your `.context.md`. Not
 deleted from your copy. For a clean reinstall, delete the skill folder first (back up your `.env`),
 then run the install script.
 
-> **Updating from an early version? Re-run the screenshot setup afterwards.** The install script only
+> **Updating from an earlier version?** See [CHANGELOG.md](./CHANGELOG.md) for what changed in
+> each release and whether you need to act.
+>
+> **Re-run the screenshot setup afterwards.** The install script only
 > copies files — it installs no Python dependencies. Older versions captured a single stitched image
 > with Pillow alone; the current per-monitor capture also needs [mss](https://python-mss.readthedocs.io/).
 > Because the `WorkScreenshots` task points at the in-place script, it starts running the new code on
@@ -277,6 +280,9 @@ uncertain, and asks before posting anything to Harvest.
 - **`skill/daily-timesheet/references/classification-rules.md`** — the generic rubric the skill uses
   to turn signals into a `(client, project, task, billable)` decision.
 - **`skill/daily-timesheet/references/output-format.md`** — the markdown timesheet template.
+- **`skill/daily-timesheet/references/setup.md`** — first-run setup the skill walks you through.
+- **`skill/daily-timesheet/references/activitywatch.md`** — what the skill reads out of ActivityWatch.
+- **`skill/daily-timesheet/references/new-client-work.md`** — raising a new ticket for unmatched work.
 - Thresholds (AFK break length, lunch window, default task) are overridable in `.context.md` under
   `## Preferences`.
 
@@ -298,12 +304,13 @@ uncertain, and asks before posting anything to Harvest.
 ```
 activitywatch-to-harvest/
 ├── README.md                 # you are here
+├── CHANGELOG.md              # what changed in each release
 ├── llms.txt                  # machine-readable setup runbook for Claude Code
 ├── LICENSE                   # MIT
 ├── skill/daily-timesheet/    # the skill itself (installed into ~/.claude/skills)
 │   ├── SKILL.md              # the skill's instructions
 │   ├── .env.example          # credential + optional-config template
-│   ├── references/           # classification rules, context template, formats
+│   ├── references/           # classification rules, setup, context template, formats
 │   └── scripts/              # Harvest + ActivityWatch + screenshot helpers (stdlib Python)
 │       ├── activity_timeline.py  # categorized window timeline from AW category rules
 │       ├── afk_blocks.py         # AFK-anchored day skeleton (work_start/end, breaks)
