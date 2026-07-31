@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `setup_screenshot_pipeline.ps1 -ScreenshotsDir` created the directory you asked for and then
   registered a task that ignored it: `screenshot_capture.py` always wrote to
   `~/Pictures/WorkScreenshots`. The directory is now passed to the capture script, which takes
-  it as its first argument (or from `TIMESHEET_SCREENSHOTS_DIR`).
+  it as its first argument, else `TIMESHEET_SCREENSHOTS_DIR` from `.env` (resolved through the
+  same helper as every other setting), else the default.
 - `references/catalog-refresh.md` and `references/new-client-work.md` wrote the Dataverse case
   helpers as `python scripts/create_incident.py`. `SKILL.md` defines that shape as relative to
   the skill folder, but those two scripts live in the user's workspace, so the documented

@@ -35,26 +35,28 @@ import datetime
 DEFAULT_SCREENSHOTS_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "WorkScreenshots")
 
 
-def resolve_screenshots_dir(argv=None, env=None):
-    """Where to write. First positional argument wins, then TIMESHEET_SCREENSHOTS_DIR,
-    then ~/Pictures/WorkScreenshots. The scheduled task registered by
+def configured_screenshots_dir():
+    """TIMESHEET_SCREENSHOTS_DIR from the skill `.env`, else an OS env var.
+
+    Goes through the same resolver as every other setting so a value put in `.env`
+    - the only config mechanism the skill documents - isn't silently ignored.
+    Imported here rather than at module scope to keep this script importable on a
+    machine that only has pytest; harvest_client is stdlib-only, so this is cheap.
+    """
+    from harvest_client import config
+    return config("TIMESHEET_SCREENSHOTS_DIR")
+
+
+def resolve_screenshots_dir(argv, configured):
+    """Where to write: the first positional argument, else the configured setting,
+    else ~/Pictures/WorkScreenshots. The scheduled task registered by
     setup_screenshot_pipeline.ps1 passes its -ScreenshotsDir as that argument."""
-    argv = sys.argv[1:] if argv is None else argv
-    env = os.environ if env is None else env
     if argv and argv[0].strip():
         return argv[0]
-    return env.get("TIMESHEET_SCREENSHOTS_DIR", "").strip() or DEFAULT_SCREENSHOTS_DIR
+    if configured and configured.strip():
+        return configured
+    return DEFAULT_SCREENSHOTS_DIR
 
-
-SCREENSHOTS_DIR = resolve_screenshots_dir()
-
-# Under pythonw.exe there is no console: sys.stdout / sys.stderr are None and
-# any print() would crash. Redirect them to a log file so prints are safe.
-if sys.stdout is None or sys.stderr is None:
-    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-    _log_fh = open(os.path.join(SCREENSHOTS_DIR, "capture.log"), "a", encoding="utf-8", buffering=1)
-    sys.stdout = _log_fh
-    sys.stderr = _log_fh
 
 # mss / Pillow are imported lazily inside take_screenshots() so this module
 # stays importable (and order_monitors stays unit-testable) on machines where
@@ -68,9 +70,9 @@ def order_monitors(monitors):
     return sorted(real, key=lambda m: m["left"])
 
 
-def take_screenshots():
+def take_screenshots(dest):
     today = datetime.date.today().strftime("%Y-%m-%d")
-    folder = os.path.join(SCREENSHOTS_DIR, today)
+    folder = os.path.join(dest, today)
     os.makedirs(folder, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%H-%M-%S")
 
@@ -91,8 +93,18 @@ def take_screenshots():
 
 
 if __name__ == "__main__":
+    dest = resolve_screenshots_dir(sys.argv[1:], configured_screenshots_dir())
+
+    # Under pythonw.exe there is no console: sys.stdout / sys.stderr are None and
+    # any print() would crash. Redirect them to a log file so prints are safe.
+    if sys.stdout is None or sys.stderr is None:
+        os.makedirs(dest, exist_ok=True)
+        _log_fh = open(os.path.join(dest, "capture.log"), "a", encoding="utf-8", buffering=1)
+        sys.stdout = _log_fh
+        sys.stderr = _log_fh
+
     try:
-        take_screenshots()
+        take_screenshots(dest)
         sys.exit(0)
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)

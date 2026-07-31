@@ -82,6 +82,19 @@ def test_work_bounds_returns_none_for_a_day_with_no_activity():
     assert ab.work_bounds(ab.to_spans([ev("09:00", 480, "afk")])) is None
 
 
+def test_work_bounds_reports_only_bounds():
+    """The whole-day activity total is not a bound - it belongs to its own function,
+    where it gets tested rather than riding along untested inside this struct."""
+    bounds = ab.work_bounds(ab.to_spans([ev("09:00", 60, "not-afk")]))
+    assert set(bounds) == {"work_start", "work_end", "last_solid_end", "blip"}
+
+
+def test_total_active_seconds_sums_only_not_afk_time():
+    spans = ab.to_spans([ev("09:00", 60, "not-afk"), ev("10:00", 30, "afk"),
+                         ev("10:30", 45, "not-afk")])
+    assert ab.total_active_seconds(spans) == (60 + 45) * 60
+
+
 def test_find_breaks_ignores_afk_outside_the_workday():
     """The long afk before the first and after the last activity isn't a break."""
     spans = ab.to_spans([

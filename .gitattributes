@@ -1,12 +1,7 @@
 # Windows sets core.autocrlf=true by default. Without these rules a clone there
 # rewrites the shell scripts with CRLF endings and bash fails on the shebang's
-# trailing \r before it runs a single line.
-* text=auto
+# trailing \r before it runs a line. LF for everything, so a new file type can't
+# reintroduce that; PowerShell is the one platform-native exception.
+* text=auto eol=lf
 
-*.sh   text eol=lf
-*.py   text eol=lf
-*.md   text eol=lf
-*.ps1  text eol=crlf
-
-VERSION text eol=lf
-LICENSE text eol=lf
+*.ps1 text eol=crlf

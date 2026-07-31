@@ -155,25 +155,36 @@ def test_readme_states_which_powershell_is_needed():
     )
 
 
+SCREENSHOT_SETUP = SKILL / "scripts" / "setup_screenshot_pipeline.ps1"
+
+
 def test_screenshot_task_passes_the_capture_directory_to_the_script():
     """-ScreenshotsDir used to only create the folder: the capture script was launched
-    with no argument and wrote to its own hardcoded default instead."""
-    src = (SKILL / "scripts" / "setup_screenshot_pipeline.ps1").read_text(encoding="utf-8-sig")
+    with no argument and wrote to its own hardcoded default instead.
+
+    Order matters as much as presence - the capture script has to be argv[0] and the
+    directory argv[1], which is the contract resolve_screenshots_dir() reads.
+    """
+    src = SCREENSHOT_SETUP.read_text(encoding="utf-8-sig")
     action = [ln for ln in src.splitlines() if "New-ScheduledTaskAction" in ln]
     assert action, "no scheduled-task action found in the setup script"
-    assert "$ScreenshotsDir" in action[0], (
-        f"-ScreenshotsDir never reaches the capture script:\n  {action[0].strip()}"
-    )
+    argument = action[0]
+    assert "$ScreenshotsDir" in argument, (
+        f"-ScreenshotsDir never reaches the capture script:\n  {argument.strip()}")
+    assert argument.index("$CaptureScript") < argument.index("$ScreenshotsDir"), (
+        f"capture script and directory are the wrong way round:\n  {argument.strip()}")
 
 
 def test_screenshot_task_is_registered_only_after_its_directory_exists():
     """An unusable -ScreenshotsDir used to leave a registered task pointing at a
     directory that was never created, because the mkdir came after the register."""
-    src = (SKILL / "scripts" / "setup_screenshot_pipeline.ps1").read_text(encoding="utf-8-sig")
-    lines = src.splitlines()
-    mkdir = next(i for i, ln in enumerate(lines) if "New-Item" in ln and "$ScreenshotsDir" in ln)
-    register = next(i for i, ln in enumerate(lines) if ln.startswith("Register-ScheduledTask"))
-    assert mkdir < register, "the task is registered before the capture directory is created"
+    lines = SCREENSHOT_SETUP.read_text(encoding="utf-8-sig").splitlines()
+    mkdir = [i for i, ln in enumerate(lines) if "New-Item" in ln and "$ScreenshotsDir" in ln]
+    # Tolerates indentation: this call gains an if/try before it sooner or later.
+    register = [i for i, ln in enumerate(lines) if ln.lstrip().startswith("Register-ScheduledTask")]
+    assert mkdir, "the capture directory is never created"
+    assert register, "no Register-ScheduledTask call found"
+    assert mkdir[0] < register[0], "the task is registered before the capture directory is created"
 
 
 def ensure_pytest_cache():
@@ -183,30 +194,45 @@ def ensure_pytest_cache():
     cache.mkdir(exist_ok=True)
     (cache / "CACHEDIR.TAG").write_text(
         "Signature: 8a477f597d28d172789f06886806bc55\n", encoding="utf-8")
-    return cache
 
 
-@requires_bash
-def test_sh_install_excludes_pytest_cache(tmp_path):
+@pytest.fixture(scope="module", params=["sh", "ps"])
+def installed(request, tmp_path_factory):
+    """One real install per shell, shared by the assertions below.
+
+    Each installer run costs about a second, so the tests inspect different parts of
+    the same run rather than paying for a fresh install apiece.
+    """
+    shell = request.param
+    if shell == "sh" and not BASH:
+        pytest.skip("bash not available")
+    if shell == "ps" and not WINPS:
+        pytest.skip("Windows PowerShell 5.1 not available")
+
     ensure_pytest_cache()
-    skills = tmp_path / "skills"
-    subprocess.run([BASH, posix(INSTALL / "install_skill.sh"), posix(skills)],
-                   capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
-    assert not (skills / "daily-timesheet" / ".pytest_cache").exists(), \
-        "pytest scratch data shipped into the install"
+    skills = tmp_path_factory.mktemp(f"skills_{shell}")
+    cmd = ([BASH, posix(INSTALL / "install_skill.sh"), posix(skills)] if shell == "sh"
+           else [WINPS, "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"),
+                 "-SkillsDir", str(skills)])
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert res.returncode == 0, f"{shell} installer exited {res.returncode}:\n{res.stdout}{res.stderr}"
+    return res, skills / "daily-timesheet"
 
 
-@requires_winps
-def test_ps_install_excludes_pytest_cache(tmp_path):
-    ensure_pytest_cache()
-    skills = tmp_path / "skills"
-    res = subprocess.run(
-        [WINPS, "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"), "-SkillsDir", str(skills)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace")
-    assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
-    assert (skills / "daily-timesheet" / "SKILL.md").is_file(), "skill files missing after install"
-    assert not (skills / "daily-timesheet" / ".pytest_cache").exists(), \
-        "pytest scratch data shipped into the install"
+def test_install_copies_the_skill(installed):
+    _, dest = installed
+    assert (dest / "SKILL.md").is_file(), "skill files missing after install"
+
+
+def test_install_excludes_pytest_cache(installed):
+    _, dest = installed
+    assert not (dest / ".pytest_cache").exists(), "pytest scratch data shipped into the install"
+
+
+def test_install_reports_the_version_it_installed(installed):
+    res, _ = installed
+    assert latest_changelog_version() in res.stdout, \
+        f"installer never says which version it installed:\n{res.stdout}"
 
 
 def latest_changelog_version() -> str:
@@ -228,25 +254,6 @@ def test_version_marker_matches_the_changelog():
     """A marker that drifts from the changelog is worse than none."""
     version = (SKILL / "VERSION").read_text(encoding="utf-8").strip()
     assert version == latest_changelog_version()
-
-
-@requires_bash
-def test_sh_install_reports_the_version_it_installed(tmp_path):
-    res = subprocess.run([BASH, posix(INSTALL / "install_skill.sh"), posix(tmp_path / "skills")],
-                         capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
-    assert latest_changelog_version() in res.stdout, \
-        f"installer never says which version it installed:\n{res.stdout}"
-
-
-@requires_winps
-def test_ps_install_reports_the_version_it_installed(tmp_path):
-    res = subprocess.run(
-        [WINPS, "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"),
-         "-SkillsDir", str(tmp_path / "skills")],
-        capture_output=True, text=True, encoding="utf-8", errors="replace")
-    assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
-    assert latest_changelog_version() in res.stdout, \
-        f"installer never says which version it installed:\n{res.stdout}"
 
 
 @pytest.mark.parametrize("script", ["install/install_skill.sh", "install/setup_workspace.sh"])

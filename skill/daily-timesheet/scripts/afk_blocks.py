@@ -111,7 +111,7 @@ def to_spans(events):
     return spans
 
 
-def work_bounds(spans, solid_s=SOLID_S, blip_gap_s=BLIP_GAP_S):
+def work_bounds(spans):
     """First and last not-afk moment, with the end-of-day blip guard.
 
     `blip` means work_end came from a momentary flicker (mouse nudge, auto-wake)
@@ -122,14 +122,18 @@ def work_bounds(spans, solid_s=SOLID_S, blip_gap_s=BLIP_GAP_S):
     if not not_afk:
         return None
     work_end = max(s[1] for s in not_afk)
-    last_solid_end = max((s[1] for s in not_afk if s[3] >= solid_s), default=work_end)
+    last_solid_end = max((s[1] for s in not_afk if s[3] >= SOLID_S), default=work_end)
     return {
         "work_start": min(s[0] for s in not_afk),
         "work_end": work_end,
         "last_solid_end": last_solid_end,
-        "blip": (work_end - last_solid_end).total_seconds() >= blip_gap_s,
-        "total_active_s": sum(s[3] for s in not_afk),
+        "blip": (work_end - last_solid_end).total_seconds() >= BLIP_GAP_S,
     }
+
+
+def total_active_seconds(spans):
+    """Whole-day not-afk time."""
+    return sum(dur for _, _, status, dur in spans if status == "not-afk")
 
 
 def find_breaks(spans, work_start, work_end, threshold_s):
@@ -169,10 +173,10 @@ def active_seconds(spans, lo, hi):
     return total
 
 
-def uncovered_segments(spans, active, proposed, min_active_s=MIN_UNCOVERED_S):
+def uncovered_segments(spans, active, proposed):
     """Active time the proposed billable blocks leave out - the under-billing check,
     symmetric to the work_end ceiling that catches over-billing. Segments holding
-    less than min_active_s of activity are block rounding, not missed work.
+    less than MIN_UNCOVERED_S of activity are block rounding, not missed work.
 
     Detected breaks already split `active`, so they never fall inside one of its
     spans - subtracting the proposed blocks alone can't report a break as a miss.
@@ -183,17 +187,17 @@ def uncovered_segments(spans, active, proposed, min_active_s=MIN_UNCOVERED_S):
         for cs, ce in proposed:
             nxt = []
             for s0, e0 in segments:
-                if ce <= s0 or cs >= e0:
+                if ce <= s0 or cs >= e0:   # no overlap: segment survives whole
                     nxt.append((s0, e0))
                     continue
-                if cs > s0:
-                    nxt.append((s0, min(cs, e0)))
-                if ce < e0:
-                    nxt.append((max(ce, s0), e0))
+                if cs > s0:                # keep the part before the block
+                    nxt.append((s0, cs))
+                if ce < e0:                # keep the part after it
+                    nxt.append((ce, e0))
             segments = nxt
         for s0, e0 in segments:
             secs = active_seconds(spans, s0, e0)
-            if secs >= min_active_s:
+            if secs >= MIN_UNCOVERED_S:
                 gaps.append((s0, e0, secs))
     return gaps
 
@@ -245,7 +249,7 @@ def main():
 
     work_start, work_end = bounds["work_start"], bounds["work_end"]
     last_solid_end, work_end_blip = bounds["last_solid_end"], bounds["blip"]
-    total_active_s = bounds["total_active_s"]
+    total_active_s = total_active_seconds(spans)
 
     breaks = find_breaks(spans, work_start, work_end, args.afk_threshold)
     active = active_spans(spans, args.afk_threshold)
