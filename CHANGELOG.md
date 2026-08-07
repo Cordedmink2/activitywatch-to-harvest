@@ -5,6 +5,29 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-08-07
+
+### Fixed
+- `SKILL.md`'s Step 8 confirmation example showed a trailing-`S` ticket
+  (`CON2020S`) without the `[Support]` tag its own documented rule requires —
+  the example now matches the rule.
+- `SKILL.md`'s screenshot-delegation guidance pointed to a procedure
+  "above" that wasn't in that file; now cites
+  `classification-rules.md`'s "Interleaved days" section directly.
+- `references/activitywatch.md` and `references/setup.md` described bucket
+  selection as picking by `last_updated` alone, omitting that a suffixed
+  bucket is always preferred over an unsuffixed one regardless of recency —
+  both now state the full two-part rule.
+- `scripts/aw_client.py`'s `pick_bucket()` docstring shortened and corrected
+  to match the two-part rule above.
+
+### Changed
+- `references/classification-rules.md`: merged two adjacent paragraphs that
+  ended on the same remedy, and genericized an example hostname
+  (`HOST-OLD`/`HOST-NEW`) so it no longer names this user's real machine in
+  a doc meant to be shareable across users.
+- `SKILL.md`: removed a duplicated sentence about the AFK-settled rule.
+
 ## [0.2.5] - 2026-08-07
 
 ### Fixed
