@@ -133,6 +133,7 @@ For any 🔸 block (low confidence, thin ratio, or ambiguous attribution):
 - **AFK status is settled by the AFK watcher** — never re-infer active/idle from screenshots. Screenshots and zooms answer only *which client/project*.
 1. **Zoom the timeline first:** `python scripts/activity_timeline.py <date> --window HH:MM-HH:MM` folds in Firefox/Chrome web-watcher rows — richer URL/title signals without opening images.
 2. **Then screenshots**, for generic apps that don't name their client (XrmToolBox, bare VS Code, terminals): find the nearest `HH-MM-SS_mN.png` to the ambiguous timestamps, read the env URL / workspace / repo / ticket on screen. Different clients in different screenshots within one block → split the block (switch-point protocol).
+   - **When several blocks need screenshot-checking, delegate the reading to a cheap subagent** (e.g. `Agent` with `model: "haiku"`) rather than reading every capture in the main session — image tokens add up fast across a multi-day backfill, and this is a plain read-what's-on-screen task a smaller model handles fine. Give the subagent no conversation context of its own, so its prompt must carry: the screenshot directory and exact timestamps to check (all monitors — `_m1`/`_m2`/…), the signal list from `.context.md`, the AFK-settled rule above, and classification-rules.md's "Interleaved days" probe-economically procedure (3 spread, densify around flips) if any block needs a switch point. It reports **raw signals per capture** (app, environment URL, ticket numbers, Edge profile, workspace) — never a billing verdict; attribution against `.context.md` stays with the main session.
 3. **Still ambiguous → ask the user**, showing which screenshots you checked, what you saw, and the candidate clients.
 - **Never silently bill an abandoned-task block.** Setup/sign-in/install work that ended without a client deliverable and a pivot elsewhere → surface it; default to internal-admin non-billable unless the user says otherwise.
 
@@ -187,7 +188,7 @@ Then show:
 
 > "Ready to post to Harvest. This will create N time entries:
 > - 0.5 hrs · [Adaptable Consulting Limited] · Adaptable Internal — Team Standup
-> - 0.75 hrs · [Connexis] · CON2020S Connexis Fabrics Copy job — Gen - Investigation
+> - 0.75 hrs · [Connexis] · CON2020S Connexis Fabrics Copy job — Gen - Investigation [Support]
 >
 > Proceed? (yes / no / edit block <n>)"
 

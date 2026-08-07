@@ -20,15 +20,10 @@ def get(path):
 
 
 def pick_bucket(buckets, prefix):
-    """Bucket id starting with `prefix`, or None. Buckets are hostname-suffixed
-    (`aw-watcher-afk_HOST`); an unsuffixed one is a leftover, so any suffixed
-    candidate beats it regardless of recency. Among suffixed candidates, a machine
-    rename/reimage leaves the old HOST bucket behind still matching the prefix but
-    no longer updating — picking alphabetically-first silently reads that stale
-    bucket once the new host's suffix happens to sort after the old one. Break
-    the tie by `last_updated` instead, so the actively-reporting host wins.
-
-    Takes an already-fetched `{bucket_id: {...}}` listing (as returned by
+    """Bucket id starting with `prefix`, or None. Prefers a hostname-suffixed match
+    over an unsuffixed leftover; among suffixed candidates, breaks ties by
+    `last_updated` so a stale post-reimage bucket loses to the actively-reporting
+    host. Takes an already-fetched `{bucket_id: {...}}` listing (as returned by
     `GET /buckets/`) so a caller wanting several buckets pays for one such call
     rather than one per prefix."""
     cands = [b for b in buckets if b.startswith(prefix)]
