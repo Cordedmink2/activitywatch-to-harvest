@@ -1,6 +1,7 @@
 ---
 name: daily-timesheet
-description: Use when the user wants to fill in, review, regenerate, or backfill a timesheet, log time to Harvest, or asks any date-scoped "what did I do / summarise yesterday / what was I working on Friday" question. Auto-relevant whenever the user mentions Harvest, ActivityWatch, daily_exports, or Timesheets/, even without the word "timesheet". Targets a workspace containing `Timesheets/.context.md`, `daily_exports/`, and `.mcp/` catalogs — the user supplies these on their own machine.
+description: Use when the user wants to fill in, review, regenerate, or backfill a timesheet, log time to Harvest, or asks any date-scoped "what did I do / what was I working on Friday" question. Auto-relevant whenever Harvest, ActivityWatch, daily_exports, or Timesheets/ is mentioned, even without the word "timesheet".
+disable-model-invocation: true
 ---
 
 # daily-timesheet

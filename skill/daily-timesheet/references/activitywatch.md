@@ -4,7 +4,7 @@ The bundled scripts (`afk_blocks.py`, `activity_timeline.py`) wrap this API and 
 
 ## Endpoints
 
-- Discover buckets: `GET http://localhost:5600/api/0/buckets/` returns `{bucket_id: {...}}`. The hostname-suffixed buckets (e.g. `aw-watcher-window_ACL-113359`) are the live ones.
+- Discover buckets: `GET http://localhost:5600/api/0/buckets/` returns `{bucket_id: {...}}`. Buckets are hostname-suffixed (e.g. `aw-watcher-window_<HOST>`). A machine rename or reimage leaves the old-host buckets in the listing, no longer updating — `aw_client.py`'s `pick_bucket()` picks by `last_updated`, not alphabetically, so a stale old-host bucket won't get silently selected once the new one starts reporting.
 - Pull events: `GET http://localhost:5600/api/0/buckets/<bucket_id>/events?start=<ISO-UTC>&end=<ISO-UTC>&limit=10000`. Events have `timestamp` (UTC), `duration` (seconds), `data` (varies by watcher).
 
 ## Buckets (`<host>` = machine hostname, discover via buckets endpoint)

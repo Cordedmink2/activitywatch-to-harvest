@@ -20,13 +20,21 @@ def get(path):
 
 
 def pick_bucket(buckets, prefix):
-    """First bucket id starting with `prefix`, or None. Buckets are hostname-suffixed
-    (`aw-watcher-afk_HOST`); an unsuffixed one is a leftover, so it sorts last.
+    """Bucket id starting with `prefix`, or None. Buckets are hostname-suffixed
+    (`aw-watcher-afk_HOST`); an unsuffixed one is a leftover, so any suffixed
+    candidate beats it regardless of recency. Among suffixed candidates, a machine
+    rename/reimage leaves the old HOST bucket behind still matching the prefix but
+    no longer updating — picking alphabetically-first silently reads that stale
+    bucket once the new host's suffix happens to sort after the old one. Break
+    the tie by `last_updated` instead, so the actively-reporting host wins.
 
-    Takes an already-fetched listing so a caller wanting several buckets pays for
-    one `get("/buckets/")` rather than one per prefix."""
-    cands = sorted((b for b in buckets if b.startswith(prefix)), key=lambda b: ("_" not in b, b))
-    return cands[0] if cands else None
+    Takes an already-fetched `{bucket_id: {...}}` listing (as returned by
+    `GET /buckets/`) so a caller wanting several buckets pays for one such call
+    rather than one per prefix."""
+    cands = [b for b in buckets if b.startswith(prefix)]
+    if not cands:
+        return None
+    return max(cands, key=lambda b: ("_" in b, buckets[b].get("last_updated") or ""))
 
 
 def fetch_events(bucket, start_utc, end_utc):

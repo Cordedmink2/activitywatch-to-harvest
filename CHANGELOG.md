@@ -5,6 +5,32 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-08-07
+
+### Fixed
+- `aw_client.py`'s `pick_bucket()` picked the alphabetically-first hostname-suffixed
+  bucket, which silently kept reading a dead old-host bucket after a machine rename or
+  reimage — the new host's suffix can sort after the old one. Now breaks ties by
+  `last_updated` among suffixed candidates (an unsuffixed leftover still always loses),
+  so a renamed/reimaged machine's buckets resolve correctly with no config change.
+
+### Added
+- `references/setup.md`: an "After a machine reimage or replacement" checklist covering
+  the four things a reimage breaks at once — the screenshot scheduled task's Python path
+  and packages, a stale `TIMESHEET_WORKSPACE` in `.env`, missing `pac auth` profiles, and
+  the AW hostname suffix.
+- `references/classification-rules.md`: a rule to verify a `*.md` window title actually
+  lives in the client's repo (`git log --follow` / find) before trusting it as content —
+  a Claude Code skill's own reference doc can be open in any workspace and looks like
+  client documentation otherwise.
+
+### Changed
+- `references/activitywatch.md` notes that bucket discovery breaks ties by
+  `last_updated`, not alphabetically, and drops the stale example hostname.
+- `SKILL.md`'s frontmatter description shortened, and `disable-model-invocation: true`
+  added — the skill now runs only on explicit `/daily-timesheet` invocation rather than
+  the model deciding to trigger it.
+
 ## [0.2.4] - 2026-07-31
 
 ### Added

@@ -53,6 +53,15 @@ Keep them useful by:
 - Adding missing clients as new rules when new work starts — the timeline's `uncategorized` spans are the indicator.
 - A client-level regex on window titles fundamentally cannot catch *work-content* overrides (e.g. work for client A done under client B's Edge profile). Those overrides must be captured as manual rules in `.context.md` under the relevant client section and resolved during classification.
 
+## After a machine reimage or replacement
+
+A reimage/replacement machine keeps the same user profile path but breaks several things at once, from one underlying cause (new OS install, new hostname):
+
+1. **Scheduled screenshot task points at a dead interpreter.** Its `Execute` path is whatever Python was installed on the old image — check `Get-ScheduledTaskInfo -TaskName WorkScreenshots` for a non-zero `LastTaskResult` (file-not-found is `2147942402`). If the interpreter path changed, `Set-ScheduledTaskAction` with the new `pythonw.exe` path, then re-run `scripts/screenshot_capture.py` once by hand to confirm it isn't *also* missing `mss`/`Pillow` (a fresh Python install has neither) — `pip install mss Pillow` for that interpreter if the capture log shows `No module named ...`.
+2. **`TIMESHEET_WORKSPACE` in `.env` may point at a path that no longer exists.** `find_workspace()` returns it verbatim with no existence check, so a stale value silently breaks every catalog lookup (`harvest_lookup.py`, `refresh_catalogs.py`) while Harvest-API-only scripts (`harvest_list.py`) keep working and mask the problem. Verify the path with `Test-Path`, not by assuming a script's success means the workspace resolved correctly.
+3. **`pac auth` profiles don't carry over.** `pac auth list` after a reimage typically keeps client-environment profiles (if the user re-logged into those separately) but drops the Adaptable-CRM profile the skill's `.env` names — `refresh_catalogs.py`'s Dataverse half fails with `AuthProfileNameDoesNotExist`. Recreating it (`pac auth create --name <PAC_PROFILE> --environment <DATAVERSE_URL>`) is an interactive login — confirm with the user before running it, per the Dataverse-headless convention in their `.context.md`.
+4. **AW hostname suffix changes** (e.g. `ACL-113359` → `ACL-114622`) — no action needed as of the `pick_bucket()` fix in `aw_client.py` (picks by `last_updated`, not alphabetically), but a stale hostname hardcoded anywhere in `.context.md` prose is worth correcting so it doesn't mislead a reader.
+
 ## Ongoing `.context.md` updates
 
 When a run discovers a *new* fact that should live in `.context.md` (a new client signal, a new colleague, a new exclusion pattern, a clarified billing preference), **propose** the addition at the end of the session. Show the user the exact diff and ask before writing. Don't silently mutate their file.

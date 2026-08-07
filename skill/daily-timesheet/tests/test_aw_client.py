@@ -66,13 +66,30 @@ def test_parse_ts_reads_the_z_suffix_on_python_310(monkeypatch):
 
 
 def test_pick_bucket_prefers_the_hostname_suffixed_bucket():
-    """`aw-watcher-web-chrome` (no host) is a stale leftover; the `_HOST` one is live."""
-    buckets = ["aw-watcher-web-chrome", "aw-watcher-web-chrome_ACL-113359"]
+    """`aw-watcher-web-chrome` (no host) is a stale leftover; the `_HOST` one is live —
+    even when the leftover happens to have the more recent `last_updated`, since a
+    real leftover bucket can still receive occasional writes."""
+    buckets = {
+        "aw-watcher-web-chrome": {"last_updated": "2026-08-07T00:00:00+00:00"},
+        "aw-watcher-web-chrome_ACL-113359": {"last_updated": "2026-08-01T00:00:00+00:00"},
+    }
     assert aw.pick_bucket(buckets, "aw-watcher-web-chrome") == "aw-watcher-web-chrome_ACL-113359"
 
 
+def test_pick_bucket_prefers_the_more_recently_updated_host_on_a_rename():
+    """A machine rename/reimage leaves the old host's bucket behind, still matching
+    the prefix. Alphabetical order would pick `_ACL-113359` here (it sorts first);
+    `_ACL-114622` is the one actually reporting and must win instead."""
+    buckets = {
+        "aw-watcher-afk_ACL-113359": {"last_updated": "2026-08-04T03:49:59+00:00"},
+        "aw-watcher-afk_ACL-114622": {"last_updated": "2026-08-07T01:56:22+00:00"},
+    }
+    assert aw.pick_bucket(buckets, "aw-watcher-afk_") == "aw-watcher-afk_ACL-114622"
+
+
 def test_pick_bucket_returns_none_when_no_bucket_matches():
-    assert aw.pick_bucket(["aw-watcher-afk_HOST"], "aw-watcher-window_") is None
+    buckets = {"aw-watcher-afk_HOST": {"last_updated": "2026-08-07T00:00:00+00:00"}}
+    assert aw.pick_bucket(buckets, "aw-watcher-window_") is None
 
 
 def test_fetch_events_makes_no_request_for_a_missing_bucket(monkeypatch):

@@ -49,6 +49,8 @@ VS Code workspaces, Obsidian vaults, repo paths, ChatGPT project names, and othe
 
 **Long agent-CLI sessions poison the window title.** A running `claude` session keeps one editor tab in focus (`CLAUDE.md`, `AGENTS.md`, a plan `.md`) for its whole duration while the actual work happens in the terminal, the browser, or on another monitor. The *file name* in such a title is not a work signal and will mis-attribute whole blocks. The VS Code *workspace* tag (`… - <Workspace> - Visual Studio Code`) stays valid, but when a block is titled with these files, resolve the client from screenshots — and check every monitor, not just the one showing the focused app.
 
+**A doc file in the title can belong to a skill, not the client.** Before treating a `*.md` window title as client content (e.g. a design or reference doc that isn't obviously `CLAUDE.md`/`AGENTS.md`/a plan file), check whether the file actually lives in the client's repo — `git log --follow -- <path>` or a plain find. A Claude Code skill's own reference file (methodology docs, checklists) can be open in the editor while a *different* workspace has focus, and its name alone will look like project documentation. If the file isn't in the client's tree, it's the same poisoning as above: resolve the block from screenshots or surrounding signals instead.
+
 ### 5. URL pattern (MEDIUM confidence)
 
 URLs in browser tabs (Edge / Firefox / Chrome) expose Dynamics environments, Azure DevOps orgs, SharePoint subdomains, ChatGPT project slugs, etc. — see `.context.md` for the user's URL → client mapping. The URL fingerprint is usually unambiguous; if a new URL pattern appears that maps to a known client, propose adding it to `.context.md`.
