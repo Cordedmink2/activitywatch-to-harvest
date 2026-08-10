@@ -5,6 +5,60 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-08-11
+
+### Fixed
+- `setup_screenshot_pipeline.ps1` baked the resolved absolute interpreter path
+  into the scheduled task. A Python upgrade, reinstall, or move between
+  per-machine and per-user install left the task pointing at a path that no
+  longer exists, and every trigger from that moment failed `0x80070002` —
+  silently, with the task still reporting `Ready`. Observed in the wild: a
+  full afternoon of captures lost with no error surfaced. Setup now prefers
+  the version-independent launcher (`pyw.exe`).
+- The same script's dependency check ran through a bare `python.exe`, which on
+  Windows is usually the Store app-execution stub. The Pillow/mss imports then
+  failed on every run, so setup reinstalled both packages each time and exited
+  non-zero. It now resolves through the launcher (`py.exe`).
+
+### Added
+- `TESTING.md` — the improvement record for this skill: test method, why rules
+  are worded as they are, and options already tried and rejected. Read before
+  editing `SKILL.md`; ignored on a normal run. Keeps settled decisions and
+  negative results out of the operating instructions.
+- `references/setup.md` gained a **Health check — captures stopped** section:
+  a dead capture task fails silently, so it documents the
+  `LastTaskResult` probe and reads `0x80070002` as "interpreter path moved".
+
+### Changed
+- `SKILL.md` Step 3 now compares the last screenshot's timestamp against
+  `work_end` while indexing. A short capture folder looks identical whether the
+  user stopped working or the grabber died; `work_end` separates them. Blocks
+  after a capture failure are flagged as having no screenshot fallback, so they
+  reach the user rather than being resolved on thinner evidence than the
+  operator realises.
+- `SKILL.md` no longer treats `python` in its own commands as a literal. It
+  names the Windows Store-stub signature (help text plus exit code 49) as a
+  missing interpreter rather than a broken script, and sends the machine's
+  answer to `.context.md`.
+- `SKILL.md`'s `--cover` guard said "billed entries", which read as excluding
+  non-billable ones and invited passing an *excluded* stretch to the check —
+  the one input that makes the guard report clean while under-billing goes
+  unnoticed. Both copies (Step 6 guard, Step 8 checklist) now say "every entry
+  Step 9 will post, non-billable included".
+- `SKILL.md` Step 8 gained a skeleton-freshness check for days billed while
+  still in progress, or sessions that cross midnight: `work_end` advances and
+  late spans appear, moving both the last block's end and the coverage
+  denominator.
+
+### Upgrading
+- **Re-run `pwsh -File scripts/setup_screenshot_pipeline.ps1`** after updating.
+  The `WorkScreenshots` task stores its command line at registration and is not
+  re-registered by a skill update, so an existing install keeps the old,
+  breakable interpreter path until setup runs again.
+- Check an existing install first with
+  `Get-ScheduledTaskInfo -TaskName WorkScreenshots`: a `LastTaskResult` of
+  `0x80070002` means captures are already silently dead.
+
 ## [0.2.6] - 2026-08-07
 
 ### Fixed

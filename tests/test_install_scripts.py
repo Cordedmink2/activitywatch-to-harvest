@@ -239,7 +239,12 @@ def test_dry_run_launches_the_capture_script_with_the_directory_after_it(dry_run
     assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
     capture = SKILL / "scripts" / "screenshot_capture.py"
     assert dry_run_field(res.stdout, "Arguments") == f'"{capture}" "{shots}"'
-    assert Path(dry_run_field(res.stdout, "Execute")).name in ("pythonw.exe", "python.exe")
+    # pyw.exe (the version-independent launcher) is preferred over a versioned
+    # pythonw.exe: the action stores an absolute path, so a Python reinstall moves
+    # the versioned directory and every trigger then fails 0x80070002, silently.
+    assert Path(dry_run_field(res.stdout, "Execute")).name in (
+        "pyw.exe", "pythonw.exe", "python.exe"
+    )
 
 
 @requires_winps

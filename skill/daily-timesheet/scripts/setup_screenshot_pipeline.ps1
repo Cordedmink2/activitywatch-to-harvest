@@ -53,8 +53,17 @@ $pyCmd  = Get-Command python.exe  -ErrorAction SilentlyContinue
 $pyw = if ($pywCmd) { $pywCmd.Source } else { $null }
 $py  = if ($pyCmd)  { $pyCmd.Source }  else { $null }
 if (-not $pyw -and -not $py) { throw "Python not found on PATH. Install Python 3 first." }
-$runExe = if ($pyw) { $pyw } else { $py }
-$pipExe = if ($py)  { $py }  else { $pyw }   # use python.exe for pip if available
+
+# The task action stores an absolute path, so prefer the version-independent
+# launcher: a Python upgrade or reinstall moves the versioned install directory
+# and the baked-in path then fails 0x80070002 silently, every trigger.
+$launcher = Join-Path $env:SystemRoot "pyw.exe"
+$runExe = if (Test-Path $launcher) { $launcher } elseif ($pyw) { $pyw } else { $py }
+# Same reasoning for pip, plus: a bare `python.exe` on PATH is often the Windows
+# Store app-execution stub, which fails every import check and would reinstall
+# the packages on each run. The launcher resolves to the real install.
+$pyLauncher = Join-Path $env:SystemRoot "py.exe"
+$pipExe = if (Test-Path $pyLauncher) { $pyLauncher } elseif ($py) { $py } else { $pyw }
 
 Write-Host "Capture script : $CaptureScript"
 Write-Host "Python (run)   : $runExe"

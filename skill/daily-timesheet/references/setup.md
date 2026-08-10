@@ -16,6 +16,27 @@ This installs Pillow + mss if needed and registers a single scheduled task (`Wor
 
 > **If a previous `WorkScreenshots` task was registered as Administrator**, re-running setup from a normal shell fails with `Access is denied`. Run the setup command from an **elevated** PowerShell once to replace it; afterward the task points at the in-place skill script and ordinary skill updates need no further elevation.
 
+### Health check — captures stopped
+
+A dead capture task fails *silently*: the task stays `Ready`, no error surfaces, and the
+only symptom is a screenshot folder that stops part-way through a day (which looks
+identical to the user having stopped work — see `SKILL.md` Step 3).
+
+```powershell
+Get-ScheduledTaskInfo -TaskName WorkScreenshots | Select-Object LastRunTime, LastTaskResult, NextRunTime
+```
+
+`LastTaskResult` of `0` is healthy. **`0x80070002` (file not found) means the interpreter
+path moved** — the task action stores an absolute path, so a Python upgrade, reinstall, or
+switch between per-machine and per-user install breaks it, and every trigger from that
+moment on fails. Confirm with `(Get-ScheduledTask -TaskName WorkScreenshots).Actions`, then
+re-run `setup_screenshot_pipeline.ps1` to re-register against the current interpreter.
+Setup prefers the version-independent launcher (`pyw.exe`) precisely so this survives a
+reinstall; a task registered by an older setup may still hold a versioned path.
+
+Verify the fix by running the task once (`Start-ScheduledTask -TaskName WorkScreenshots`)
+and confirming new PNGs appear for every monitor.
+
 ## First-run: `Timesheets/.context.md`
 
 If `Timesheets/.context.md` doesn't exist:

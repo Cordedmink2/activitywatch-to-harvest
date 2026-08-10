@@ -47,6 +47,8 @@ This skill is **shareable** — sort every fact by who it applies to. Don't use 
 
 **Running the scripts:** every `python scripts/…` command below is relative to *this skill's own folder*, not the workspace. The session's working directory is the workspace, so prefix them with the skill path — `python "$HOME/.claude/skills/daily-timesheet/scripts/afk_blocks.py" <date>` (Windows: `$HOME\.claude\skills\daily-timesheet\scripts\…`). Catalog paths resolve from the workspace, so run them *from* the workspace directory.
 
+`python` in those commands means *the interpreter this machine actually uses*, not the literal string. Check `.context.md` first — if it records one, use it and don't re-probe. Otherwise resolve it once during Step 0 and reuse it for the whole run. On Windows a bare `python` is often the Store app-execution stub, whose tell is a **help message about installing from the Microsoft Store and exit code 49** — that is a missing interpreter, not a broken script, so don't debug the script. `py` (the launcher) is the usual working answer there. Record the resolved answer in `.context.md` → Machine so the next run skips the probe.
+
 ### Reading the screenshot folder (Windows)
 
 List with PowerShell `Get-ChildItem` — the Bash `cmd dir` and `Glob` routes return empty for the `Pictures` path even when it's full:
@@ -88,6 +90,8 @@ Read in parallel:
 - `python scripts/afk_blocks.py <date>` — the day skeleton (work_start, work_end, breaks, active spans)
 - `python scripts/activity_timeline.py <date>` — merged window spans tagged with the AW client category, plus per-category rollup. **Compact output is the default and is enough** — do NOT reach for `--full` routinely; zoom specific blocks later with `--window HH:MM-HH:MM`. Loading the full raw timeline for a mostly-single-client day is the main cause of context bloat.
 - Screenshot index: list `~/Pictures/WorkScreenshots/<date>/` filenames (PowerShell, per above). Don't open PNGs yet.
+  - **Compare the last capture's timestamp against `work_end` before moving on.** A short index is ambiguous on its own — it looks the same whether the user stopped working or the capture died mid-day — and `work_end` is what separates the two. If captures stop well before `work_end`, say so *now*, in the Step 6 skeleton line, and treat every block after that point as having no screenshot fallback: those are the blocks that will need the user, so flag them 🔸 on weaker evidence than you otherwise would. Finding this out at Step 5, when a block is already ambiguous, is too late to plan around.
+  - A dead capture task is *maintenance*, not classification — don't fix it mid-timesheet. Note it, finish the day, raise it at Step 11. `references/setup.md` has the health check.
 
 The two scripts complement each other: AFK anchors the time boundaries; the timeline shows what happened inside them. Don't derive either by hand from raw events — hand-derivation is where end-of-day and break errors come from. (Sole exception: AW unreachable and working from `compact.jsonl` — apply the manual blocking spec in `references/activitywatch.md`.)
 
@@ -153,7 +157,7 @@ Flag uncertain blocks 🔸 below the table. End-of-day and breaks are determinis
 
 1. **Outer block edges are the script's spans, transcribed verbatim.** A block starts at an active-span start and ends at a break start / `work_end` — don't hand-tidy or merge those edges. *Interior* splits (classification boundaries at a client switch, meeting, or work-item change) are allowed and expected — they must sit strictly inside a script span and be evidence-based, and adjacent sub-blocks must tile the span exactly. Shrunk-and-re-merged thin blocks (Step 3) are the one sanctioned exception to verbatim edges. Entries post as start/end times and Harvest derives the hours — the Duration column is informational, so don't distort boundaries to make durations land on neat quarters; the only hard rule is no entry under 0.25 hr. If an outer edge doesn't match a script span (and isn't a documented shrink), that's a transcription bug, not a judgment call.
 2. **No block ends after `work_end`.** Shrink any that do.
-3. **Billed blocks must cover the active spans.** Pass the *proposed billed entries* (post-shrink, exactly what Step 8 will post):
+3. **Logged blocks must cover the active spans.** Pass *every entry Step 9 will post* — post-shrink, non-billable ones (standups, internal admin, machine setup) included, since they account for active time just as billable ones do. A stretch you are *excluding* is declared under the table as a known exclusion and never passed here: feeding it to `--cover` makes the guard report clean while the under-billing it exists to catch goes unnoticed.
    ```
    python scripts/afk_blocks.py <date> --cover "08:30-09:00,09:30-12:30,13:45-17:06"
    ```
@@ -176,7 +180,8 @@ Harvest is the system of record; the user often doesn't need the markdown file. 
 
 First self-check every line of the proposal:
 
-- [ ] `--cover` run and clean (no unexplained UNCOVERED)
+- [ ] `--cover` run and clean (no unexplained UNCOVERED) — pass **every entry Step 9 will post, non-billable ones included**; a stretch you're excluding is declared under the table, never fed to `--cover` to make it look covered
+- [ ] Skeleton still current — if the day was still in progress when you read it, or the session has since crossed midnight, re-run `afk_blocks.py <date>` before posting. An open day's `work_end` advances and late spans appear, which moves both the final block's end and the coverage denominator
 - [ ] No block past `work_end`; no block crossing a script break
 - [ ] Every `project_id`/`task_id` came from `harvest_lookup.py`; billable flag checked
 - [ ] Task = dominant activity per the rubric, `.context.md` overrides applied
@@ -246,6 +251,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `references/output-format.md` — timesheet .md template
 - `references/catalog-refresh.md` — refreshing `.mcp/` catalogs
 - `references/new-client-work.md` — billing work that has no Harvest project yet (Dataverse case creation)
+- `TESTING.md` — **for changing this skill, not for running it.** Test records, why rules are worded as they are, and options already tried and rejected. Read it before editing `SKILL.md` so you don't re-add something that was measured unnecessary; ignore it on a normal run.
 - `scripts/afk_blocks.py` — deterministic day skeleton: work_start/work_end/breaks/active spans/active_ratio; `--window`, `--json`, `--utc-offset`, `--afk-threshold`, `--cover "HH:MM-HH:MM,..."` coverage check
 - `scripts/activity_timeline.py` — categorized window timeline + rollup; `--window HH:MM-HH:MM` zoom folds in web watchers; flags `uncategorized`/`!MULTI`; `--utc-offset`, `--json`
 - `scripts/harvest_lookup.py` — project/task id lookup across ALL catalog pages, live-entry fallback for archived projects (a miss after the fallback = genuinely unknown project; a cache refresh won't help); `--task`, `--mcp-dir`, `--json`, `--no-live`, `--days`
