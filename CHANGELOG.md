@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-08-12
+
+### Changed
+- `TESTING.md` — records the first measured two-arm fresh-agent test in this
+  skill, and the change it **rejected**. The worry was that `SKILL.md` routes
+  `references/activitywatch.md` only as a raw-API reference, while its
+  lock-screen fragmentation note matters during ordinary Step 3 blocking with
+  ActivityWatch up. Six reps across a control arm and a treatment arm carrying
+  an extra Step 3 pointer produced identical output, and all six named
+  `references/activitywatch.md` unprompted with the correct expectation of its
+  contents, working from the reference index alone. The pointer was not added.
+  Two new open gaps are recorded from the same run, both with the fixture flaw
+  that prevents them being settled yet written into their entries.
+
 ## [0.2.8] - 2026-08-12
 
 ### Added
