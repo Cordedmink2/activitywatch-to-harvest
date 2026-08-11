@@ -5,6 +5,32 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-08-12
+
+### Added
+- `classification-rules.md` — **Interleaved days step 7: some days have no
+  switch point to find.** Two workspaces with an agent session in each, focus
+  alternating every 1–3 minutes for hours, is genuinely parallel work: the
+  existing procedure hunts a boundary that does not exist and burns screenshots
+  doing it. Step 7 says to stop hunting, ask as step 4 already requires, and —
+  only when the user hands the split back — allocate proportionally from a
+  per-window tally, placing each boundary where that client's corroborating
+  evidence clusters. The resulting boundary must be presented as an allocation
+  rather than an observed switch.
+
+### Changed
+- `activitywatch.md` — the lock-screen note now covers the consequence that
+  bites: a lock fragments the AFK record into chunks that each fall under the
+  break threshold, so `afk_blocks.py` reports `breaks: (none)` for a day that
+  plainly had them. Such stretches surface as sub-0.4 `active_ratio` windows
+  with a matching gap in the captures, and are excluded under the `<0.4` band
+  rather than by inventing a break the script never reported.
+- `classification-rules.md` — "Focused window ≠ active attention" gained the
+  mirror-image case on the AFK side: a low `active_ratio` while an agent runs
+  is supervision, not absence, and supervised agent time is billable. Check the
+  other monitors for the agent's output before shrinking a thin block or
+  dropping a stretch on ratio alone.
+
 ## [0.2.7] - 2026-08-11
 
 ### Fixed
