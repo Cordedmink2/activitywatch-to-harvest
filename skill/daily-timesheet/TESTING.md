@@ -122,6 +122,46 @@ from existing text needs no rule, and the index line is sufficient routing. **Th
 addition to `activitywatch.md` itself stays** — reps wanted the file to *confirm* against,
 and it now states what they expect to find.
 
+> **Amended 2026-08-12, same day, after the granularity run below.** This entry's evidence
+> is weaker than "6/6" makes it sound, and the rejection should be treated as provisional.
+> The fixture handed every rep three pre-computed sub-0.4 `--window` ratios, which flags the
+> anomaly for them — the routing job the pointer would have done. Re-run on a fixture giving
+> only the default `afk_blocks.py` output, **0 of 4 reps named `activitywatch.md`**: one
+> derived the lock unaided, one said "sleep/resume", one said "watcher artifact", and one got
+> it exactly backwards, treating an empty `breaks` list as affirmative evidence the user was
+> never away. The pointer stays out for now because the granularity fix (below) removes the
+> billing consequence, but "the index line is sufficient routing" is not established. See the
+> reopened gap under Open gaps.
+
+### "Tile the span exactly" scoped to billed sub-blocks — `SKILL.md` Step 6 guard 1
+**Rung 1, measured both directions. 2026-08-12.**
+
+On a day with no breaks, `afk_blocks.py` returns one span covering the whole day. Guard 1
+said interior sub-blocks "must tile the span exactly" — so a stretch excluded under Step 3's
+`<0.4` band had nowhere to go, and the span-level ratio (0.74 on the fixture) passes `≥0.7`
+while hiding three nearly-dead stretches. The two rules pointed opposite ways and the doc
+never said which won.
+
+**Method.** Same fictional day as the entry above, with the pre-computed `--window` ratios
+**removed** — deciding to compute them is the behaviour under test — and Step 6 guard 1
+added, since omitting it was what made the earlier run's rounding results meaningless.
+Correct answer 6.5 hr; the trap answer bills the whole 8.21-hr span.
+
+**Control (guard 1 as written), 4 reps: 8.21 / 8.21 / 6.52 / 6.52.** Two reps over-billed by
+1.7 hr. Reps 1 and 3 reasoned from the *same* 0.74 to opposite conclusions, which is the
+definition of wording that binds nothing. Rep 1 was explicit about the mechanism: *"shrinking
+an interior sub-block would break the exact tiling Step 6 requires"*, and pre-committed to
+`<0.4` "not authorising me to drop it".
+
+**Treatment (guard 1 with the tiling scope stated), 4 reps: 6.51 / 6.51 / 6.51 / 6.51.**
+Unanimous, and every rep cited the scoping sentence as its reason. Baseline held: all four
+still declared the ~100 min as a known exclusion and put the question to the user, none
+invented a break, none silently dropped the time — so it did not trade over-billing for
+under-billing.
+
+Guard 3 already said an excluded stretch is "declared under the table and never passed to
+`--cover`"; guard 1 contradicted it. Guard 1 now defers, and points at guard 3.
+
 ## Rejected
 
 - **A Step 3 pointer to the lock-screen quirk.** Measured 6/6 against a control arm — see
@@ -135,20 +175,20 @@ and it now states what they expect to find.
 
 ## Open gaps
 
-- **Step 3 never states the granularity at which `active_ratio` is validated — untested,
-  and the obvious test is booby-trapped.** On the 2026-08-12 fixture the whole-span ratio
-  is 363.0/492.5 = **0.74, which passes the ≥0.7 band** and would bill 8.2 h instead of
-  6.5 h. 5 of 6 reps named this as a trap and rejected it by reasoning *against* Step 3's
-  own "the skeleton is arithmetic — take it verbatim". That looks like a doc contradiction
-  worth fixing, **but this run cannot settle it**: the fixture handed every rep
-  pre-computed per-stretch `--window` ratios, which is precisely the decision under test.
-  Re-run with only the default `afk_blocks.py` output before writing any rule. Over-billing
-  by 1.7 h is a worse failure than the one that prompted the test.
-- **Rounding variance is probably a fixture artifact.** Block 4 (52.5 min = 0.875 hr) came
-  back 0.75 twice, 1.00 twice, and "won't round without `output-format.md`" twice — three
-  confident answers, which normally means the wording binds nothing. But Step 6 guard 1
-  (durations are informational; don't distort boundaries to hit quarters) was **not in the
-  fixture**. Re-test with it before treating this as a real defect.
+- **REOPENED: does anything route an agent to `activitywatch.md` when the anomaly is not
+  pre-flagged?** On the de-hinted fixture, **0 of 4** reps named it, and one inverted the
+  meaning of an empty `breaks` list outright. The granularity fix removes the *billing*
+  consequence — all 4 treatment reps excluded the stretches correctly without ever
+  identifying screen lock — so this is no longer urgent, but the rejection above rests on a
+  fixture that did the pointer's work. Before re-testing a pointer, decide what it would buy
+  now that the money is safe: probably only the quality of the question put to the user.
+- **Rounding is untested, not defective.** The earlier 0.75/1.00/"won't round" spread came
+  from a fixture missing Step 6 guard 1. With guard 1 present, all 8 reps of the second run
+  declined to round at all and reported informational durations — which is what guard 1 asks
+  for. No defect visible; no test designed specifically for it.
+- **Every result in this file comes from one fixture** (a fictional two-client day with three
+  lock-shaped stretches). It exercises breaks/idle/attribution and nothing else. Backfill,
+  meetings, support tickets, and single-client days are unmeasured.
 - The earlier three `SKILL.md` changes (interpreter, capture-health, skeleton freshness)
   remain unvalidated against a control.
 - The Step 8 skeleton-freshness line is rung 2 and may be unnecessary; it has a

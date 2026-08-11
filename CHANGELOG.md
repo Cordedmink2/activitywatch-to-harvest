@@ -5,6 +5,31 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-12
+
+### Fixed
+- **Step 6 guard 1 could force idle time onto a client invoice.** On a day with
+  no breaks, `afk_blocks.py` returns a single span covering the whole day. Guard 1
+  required interior sub-blocks to "tile the span exactly", which left a stretch
+  excluded under Step 3's `<0.4` band with nowhere to go — while the span-level
+  ratio passed `>=0.7` by averaging the dead time away. Guard 1 now states that
+  tiling governs adjacent *billed* sub-blocks, and defers to guard 3: an excluded
+  stretch is declared under the table, not tiled over.
+
+  Measured both directions on a fixture whose correct answer is 6.5 hr. Control
+  (guard 1 as written), 4 reps: **8.21 / 8.21 / 6.52 / 6.52** — half of them
+  over-billing by 1.7 hr, with two reps reasoning from the same span ratio to
+  opposite conclusions. Treatment, 4 reps: **6.51 / 6.51 / 6.51 / 6.51**.
+  Every treatment rep still declared the excluded time and put a question to the
+  user, so the fix does not trade over-billing for under-billing.
+
+### Changed
+- `TESTING.md` — records the run above, and **amends the 0.2.9 entry**, whose
+  "6/6" result overstated its evidence: that fixture pre-supplied the ratios that
+  flag the anomaly. On a fixture without them, 0 of 4 reps reached
+  `references/activitywatch.md`. The pointer stays out because this release removes
+  the billing consequence, but the routing claim is reopened rather than settled.
+
 ## [0.2.9] - 2026-08-12
 
 ### Changed
