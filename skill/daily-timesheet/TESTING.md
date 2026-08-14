@@ -274,6 +274,63 @@ produced a plausible-looking wrong answer rather than an error.**
 A tenth turned up while testing the ninth: `refresh_dataverse` counted lines with an
 unclosed `open()`. Same family as the HTTPError leak above, found the same way.
 
+### A test's result depended on where the checkout sat
+Found by the release mirror, not by the suite. `test_edge_catalogs.py` asserted
+`find_workspace() is None` as a precondition, having repointed only the cwd.
+`find_workspace()` also walks `SKILL_ROOT.parents[1:3]`, so the test passed from
+`~/.claude/skills/` and failed from the public checkout at
+`~/Admin/activitywatch-to-harvest/skill/` — `~/Admin` is a real workspace, and the walk
+resolved to it. The suite structurally could not catch this: it only ever runs from one
+leg at a time, and it is `publish.ps1` running it from the *other* leg that made the
+dependency visible.
+
+Fixed by pinning `SKILL_ROOT` alongside the cwd. Every other site asserting on workspace
+resolution already did this (`test_harvest_client.py`'s `isolated` fixture,
+`test_review_findings.py`); the conftest `workspace` fixture needs no pin, because
+`find_workspace()` consults `Path.cwd()` first and that fixture chdirs into a tree that
+already contains `Timesheets/`. **A test whose precondition is "nothing resolves" has to
+neutralise every source the resolver reads, not just the obvious one.**
+
+### Three test docstrings outlived the fixes they described
+Found by reading the four subagent-written `test_edge_*.py` modules line by line after
+0.4.0 shipped — 95 of the suite's tests, previously audited only mechanically. All three
+claims described defects fixed *in that same release*:
+
+- `test_patch_refuses_the_same_flag_given_twice` still said "this one does not, and the
+  request goes out", while its own assertion proved nothing was sent.
+- `_collect_the_unclosed_error_response()` in `test_edge_harvest_api.py`, and a
+  `filterwarnings("ignore::ResourceWarning")` mark in `test_edge_catalogs.py`, both stated
+  that `request()` reads the error body and never closes it. It closes it — see the entry
+  above. The suppression was the worse half: it blinded that test to a *future* leak.
+
+Same shape as the `--cover` two-copies entry above, and the same lesson — **search for the
+rule, not the wording.** Both fixes were written up here, in this file, while their other
+copies in the test docstrings were left saying the old thing. A green suite cannot see
+this class at all: a stale docstring passes every run, so only reading catches it.
+
+The suppression is now a positive no-leak test mirroring `test_edge_timeline.py`'s
+AW-side one, so a re-introduced leak fails the run instead of being ignored. Also fixed
+alongside: `test_list_renders_a_missing_project_code_or_task_name_as_a_question_mark`
+carried a one-case `parametrize`, covering only the both-missing shape when
+`harvest_list`'s code and task fallbacks are independent, and asserted `count("?") == 2`
+across the whole line — which cannot tell a missing code from a missing task.
+
+### The rollup gives ambiguous minutes wholly to one client — pinned, not fixed
+`category_rollup` credits `cats[0]`, so an event whose title matches two clients puts all
+of its minutes on whichever rule AW ordered first, and the other client contributes
+nothing to the totals a day's split is argued from. Found by reading, 2026-08-14: the
+behaviour was already encoded in a rollup assertion, but no test or doc named it — the
+shape `tests/README.md` warns about in goldens ("a golden alone would happily record a
+bug"), occurring in a hand-written assertion instead.
+
+Left as-is. The compensating control is the span: the same event sets `multi`, the span
+renders `!MULTI`, and Step 4 sends the reader to investigate every one before billing.
+**Splitting the minutes was considered and rejected** — a title matching two rules says
+nothing about how the time actually divided, so a split is invented precision, and it
+would put a plausible wrong number where a flagged one is now. Pinned by a named test
+across both class orderings, so a reordering, or a change that drops `!MULTI` from the
+rendering, has to confront it.
+
 ### A late flicker manufactures a second break — pinned, not fixed
 `find_breaks` bounds itself by `work_end`, so when `work_end` comes from an end-of-day
 blip, the preceding evening idle falls *inside* the workday and is reported as a break.

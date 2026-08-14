@@ -5,6 +5,32 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-08-14
+
+Documentation and test-suite corrections found by reading the four `test_edge_*.py`
+modules line by line. No script behaviour changed.
+
+### Fixed
+- **Three test docstrings described defects 0.4.0 had already fixed** — a `harvest_patch`
+  guard documented as absent while the test's own assertion proved it fires, and two
+  claims that `harvest_client.request()` reads an error body without closing it. The
+  `ResourceWarning` suppression that accompanied them is replaced by a positive no-leak
+  test mirroring the ActivityWatch-side one, so a re-introduced leak fails the run instead
+  of being ignored. A stale docstring passes every run; only reading catches this class.
+- **`harvest_list`'s missing-metadata test covered one of four shapes.** Its `parametrize`
+  carried a single case, and it asserted on a count of `?` across the whole line, which
+  cannot tell a missing project code from a missing task name. The project and task
+  fallbacks are independent, so each is now exercised alone and asserted per column.
+
+### Changed
+- `TESTING.md` records the `SKILL_ROOT` location-dependency bug found during the 0.4.0
+  release — a test whose result depended on which checkout it ran from, which the suite
+  structurally could not catch and the release mirror did.
+- The timeline rollup's first-match-wins attribution for ambiguous spans is now pinned by
+  a named test in both class orderings, and recorded as considered-and-kept. An event
+  matching two clients credits all of its minutes to whichever rule ActivityWatch ordered
+  first; `!MULTI` on the span is the compensating control.
+
 ## [0.4.0] - 2026-08-14
 
 ### Added

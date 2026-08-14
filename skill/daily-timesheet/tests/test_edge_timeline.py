@@ -256,6 +256,33 @@ def test_the_primary_category_is_the_first_matching_class_in_settings_order():
     assert at.build_window_spans(evs, CONNEXIS_FIRST)[0]["category"] == "Connexis"
 
 
+def test_the_rollup_gives_an_ambiguous_event_wholly_to_its_primary_category():
+    """Pinned, not endorsed. `category_rollup` credits `cats[0]` and nothing else, so an
+    event whose title matches two clients puts 100% of its minutes on whichever rule AW
+    ordered first — the other client contributes nothing to the totals at all, as the two
+    orderings below show.
+
+    Nothing splits the minutes and nothing in the rollup marks them as contested, which
+    matters because the rollup is the number a day's split between clients is argued from.
+    The compensating control is the *span*: the same event sets `multi`, the span renders
+    `!MULTI`, and Step 4 sends the reader to investigate every one before billing. That is
+    the only thing between this attribution and a wrong invoice, so a change that reorders
+    the classes, or drops `!MULTI` from the rendering, has to confront this test.
+
+    Deliberately not "fixed" by splitting the time: a title matching two rules says nothing
+    about how the minutes actually divided, so any split would be invented precision — a
+    plausible wrong number in place of a flagged one.
+    """
+    evs = [_ev(0, 600, "msedge.exe", "NZLS board vs Connexis migration")]
+
+    assert at.category_rollup(evs, NZLS_FIRST) == {"NZLS": 10.0}
+    assert at.category_rollup(evs, CONNEXIS_FIRST) == {"Connexis": 10.0}
+
+    span = at.build_window_spans(evs, NZLS_FIRST)[0]
+    assert sorted(span["categories"]) == ["Connexis", "NZLS"]
+    assert span["multi"] is True, "the flag is the only signal that the rollup is contested"
+
+
 def test_a_span_accumulates_every_category_matched_by_the_events_merged_into_it():
     """`category` names one client; `categories` is the honest list. Merging is what makes
     them diverge, and if the second client's name were dropped at the merge the span would

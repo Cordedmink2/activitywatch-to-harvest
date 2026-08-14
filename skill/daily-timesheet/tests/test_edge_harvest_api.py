@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import gc
+import re
 import threading
 import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,26 +28,6 @@ from support import run_cli
 
 POST_ARGS = ["48084036", "20753151", "2026-08-12", "09:00", "10:30", "Wrote the edge tests"]
 ENTRY_ID = "2988748904"
-
-
-def _collect_the_unclosed_error_response():
-    """Reap the `HTTPError` that `request()` reads but never closes — quietly, and here.
-
-    `urllib.error.HTTPError` inherits `tempfile._TemporaryFileWrapper` (via
-    `urllib.response.addbase`), so an instance that is never `close()`d warns
-    `ResourceWarning: Implicitly cleaning up <HTTPError 422: ...>` from a `__del__` when
-    it is finally collected. `harvest_client.request()` does `e.read()` and drops the
-    object, so every failed request leaves one behind.
-
-    A warning raised inside `__del__` is *unraisable*: under this repo's
-    `filterwarnings = error` it fails whichever test the collector happens to interrupt,
-    not the one that made the mess. Collecting it deliberately at the end of the two
-    tests that provoke it keeps the blast radius here. Not asserted on, because the
-    moment of collection is not under this file's control — see the report notes.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ResourceWarning)
-        gc.collect()
 
 
 # ======================================================================================
@@ -127,7 +108,6 @@ def test_post_turns_an_api_rejection_into_an_err_line_not_a_traceback(live_harve
     assert "Task is not assigned" in r.err
     assert "Traceback" not in r.err
     assert r.out == ""
-    _collect_the_unclosed_error_response()
 
 
 # ======================================================================================
@@ -162,6 +142,34 @@ def test_an_http_error_becomes_a_runtime_error_carrying_status_and_body(live_har
 
     assert str(exc.value).startswith("422 ")
     assert "Task is not assigned" in str(exc.value)
+
+
+def test_a_failed_request_does_not_leak_its_error_response(live_harvest):
+    """`urllib`'s `HTTPError` *is* the response — it owns a spooled temp file, so an
+    exception whose body is read and then dropped without being closed leaves the handle
+    for the garbage collector, whose destructor raises
+    `ResourceWarning: Implicitly cleaning up <HTTPError 422: ...>`.
+
+    A warning raised inside `__del__` is *unraisable*: under this suite's
+    `filterwarnings = error` it fails whichever test the collector happened to interrupt,
+    in a file with no connection to the request that made the mess. Three independent
+    agents hit exactly that and each blamed a different test.
+
+    `request()` closes it with `with e:`. This is the test that says it must keep doing
+    so — the Harvest-side twin of `test_edge_timeline.py`'s
+    `test_an_unavailable_settings_endpoint_does_not_leak_the_error_response`. Collecting
+    inside the recorder is what removes the GC-timing ambiguity: the object is either
+    closed by now or it warns here, in the test that owns it.
+    """
+    live_harvest({("POST", "/time_entries"): (422, {"message": "Task is not assigned"})})
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(RuntimeError):
+            hc.request("POST", "/time_entries", body={"project_id": 1})
+        gc.collect()
+
+    assert [w for w in caught if issubclass(w.category, ResourceWarning)] == []
 
 
 def test_a_huge_error_body_is_capped_at_300_characters(live_harvest):
@@ -262,13 +270,14 @@ def test_patch_accepts_hours_on_its_own(live_harvest):
 
 
 def test_patch_refuses_the_same_flag_given_twice(live_harvest):
-    """`--notes 'a' --notes 'b'` writes only 'b' and exits 0, so the caller believes both
-    landed. A repeated flag is never a deliberate act — it is a command assembled twice,
-    or a model appending to an argument list it already populated — and the safe answer is
-    to refuse rather than to pick one silently and write it to the timesheet.
+    """Last-wins would write only 'b' and exit 0, so the caller believes both landed. A
+    repeated flag is never a deliberate act — it is a command assembled twice, or a model
+    appending to an argument list it already populated — and the safe answer is to refuse
+    rather than to pick one silently and write it to the timesheet.
 
-    Sibling guards in this skill (reversed times, non-numeric ids) all block before the
-    request; this one does not, and the request goes out.
+    Every sibling guard in this skill (reversed times, non-numeric ids) blocks before the
+    request, and `parse_args` blocks this one the same way — which is why the assertion
+    below is that nothing reached the wire, not merely that the exit code was non-zero.
     """
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
     r = run_cli(hp, [ENTRY_ID, "--notes", "first draft", "--notes", "second draft"])
@@ -326,7 +335,6 @@ def test_patch_passes_a_non_numeric_entry_id_straight_through_to_the_url(live_ha
     assert r.err.startswith("ERR")
     assert "404" in r.err
     assert "Traceback" not in r.err
-    _collect_the_unclosed_error_response()
 
 
 # ======================================================================================
@@ -429,21 +437,42 @@ def test_list_flattens_newlines_so_one_entry_stays_on_one_line(live_harvest):
         assert fragment in r.lines[0]
 
 
-@pytest.mark.parametrize("code,task", [
-    (None, None),          # project and task keys absent entirely
-])
+def _columns(line: str) -> list[str]:
+    """Split a `harvest_list` row into its fields.
+
+    The row is padded columns joined by two spaces, so a two-or-more-space split recovers
+    them while leaving the single spaces inside a task name ("Gen - Development") intact.
+    Index 4 is the project code, index 5 the task name.
+    """
+    return re.split(r"\s{2,}", line.strip())
+
+
+@pytest.mark.parametrize("code,task,shown_code,shown_task", [
+    (None, None, "?", "?"),
+    (None, "Gen - Development", "?", "Gen - Development"),
+    ("NLS-CR202", None, "NLS-CR202", "?"),
+], ids=["both-missing", "code-missing", "task-missing"])
 def test_list_renders_a_missing_project_code_or_task_name_as_a_question_mark(
-        live_harvest, code, task):
+        live_harvest, code, task, shown_code, shown_task):
     """Personal or archived projects come back without a code, and a deleted task without a
     name. Indexing into the missing dict is a KeyError that kills the whole listing — so
-    one degraded entry would hide every good one alongside it."""
+    one degraded entry would hide every good one alongside it.
+
+    The two fallbacks in `harvest_list` are independent — `(e.get("project") or {})` and
+    `(e.get("task") or {})` — so each is exercised alone as well as together. The
+    assertions name the column: counting `?` across the line cannot tell a missing code
+    from a missing task, and would still read 2 if one fallback leaked into both.
+    """
     live_harvest(_list_routes([[
         _entry(101, "2026-08-12", "9:00am", "10:00am", notes="no metadata",
                code=code, task=task),
     ]]))
     r = run_cli(hlist, ["2026-08-12"])
     assert r.code == 0
-    assert r.lines[0].count("?") == 2       # one for the code column, one for the task
+
+    fields = _columns(r.lines[0])
+    assert fields[4] == shown_code
+    assert fields[5] == shown_task
 
 
 def test_list_renders_a_null_project_and_task_as_question_marks(live_harvest):
@@ -455,7 +484,10 @@ def test_list_renders_a_null_project_and_task_as_question_marks(live_harvest):
     live_harvest(_list_routes([[entry]]))
     r = run_cli(hlist, ["2026-08-12"])
     assert r.code == 0
-    assert r.lines[0].count("?") == 2
+
+    fields = _columns(r.lines[0])
+    assert fields[4] == "?"
+    assert fields[5] == "?"
 
 
 # ======================================================================================

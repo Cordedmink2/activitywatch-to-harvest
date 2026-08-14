@@ -8,7 +8,6 @@ successful-looking lookup against a catalog that is half gone or half stale.
 """
 from __future__ import annotations
 
-import gc
 import importlib
 import json
 import os
@@ -93,14 +92,6 @@ def _write_pages(directory: Path, pages: dict):
 # refresh_harvest(): the two invariants the comments promise
 # --------------------------------------------------------------------------------------
 
-# The ResourceWarning is not this test's subject and not a fault in refresh_catalogs:
-# `harvest_client.request()` reads an `HTTPError` body but never closes it, so the
-# spooled temp file behind the error response emits a ResourceWarning when it is
-# garbage-collected. With `filterwarnings = error` in pytest.ini that surfaces as an
-# unraisable-exception failure in whichever test happens to trigger a non-2xx Harvest
-# response — this being the first test in the suite that ever does. Scoped to this test
-# so the leak stays visible everywhere else; the fix belongs in harvest_client.request().
-@pytest.mark.filterwarnings("ignore::ResourceWarning")
 def test_a_failure_on_page_two_leaves_every_existing_catalog_file_byte_for_byte_intact(
         workspace, live_harvest, refresh):
     """A refresh that dies halfway must not have started deleting.
@@ -121,7 +112,6 @@ def test_a_failure_on_page_two_leaves_every_existing_catalog_file_byte_for_byte_
     live_harvest(_paged([_page(1, 2, [_project(9, "NEW-9")]),
                          _page(2, 2, [_project(10, "NEW-10")])], fail_on=2))
     r = run_cli(refresh, ["--harvest-only"])
-    gc.collect()                # collect the leaked error response under the filter above
 
     assert r.code != 0
     assert "existing catalog left untouched" in (r.err + r.out)
