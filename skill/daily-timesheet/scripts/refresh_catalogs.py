@@ -23,7 +23,11 @@ import sys
 import tempfile
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
-sys.stdout.reconfigure(encoding="utf-8")
+for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks reconfigure
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 from harvest_client import request as harvest_request, config, find_workspace
 
@@ -88,18 +92,32 @@ def refresh_harvest():
             break
         page += 1
 
+    # Write every page to a temp name BEFORE removing anything. Deleting first meant a
+    # failed write — disk full, a sync client holding the directory, a permissions change
+    # — left no catalog at all, and every later lookup then fell through to the live
+    # time-entries API without saying so.
+    staged = []
+    try:
+        for i, payload in enumerate(pages, start=1):
+            out_name = "harvest_assignments.json" if i == 1 else f"harvest_assignments_p{i}.json"
+            tmp = MCP_DIR / (out_name + ".new")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+            staged.append((tmp, MCP_DIR / out_name, len(payload.get("project_assignments", []))))
+    except OSError:
+        for tmp, _, _ in staged:
+            tmp.unlink(missing_ok=True)
+        raise
+
     # Clear stale page files — if a prior run produced more pages than this one,
     # leftover _p{n}.json files would be read as stale data by consumers that
-    # glob harvest_assignments*.json.
+    # glob harvest_assignments*.json. (The `.new` staging files do not match that glob.)
     for old in MCP_DIR.glob("harvest_assignments*.json"):
         old.unlink()
 
-    for i, payload in enumerate(pages, start=1):
-        out_name = "harvest_assignments.json" if i == 1 else f"harvest_assignments_p{i}.json"
-        with open(MCP_DIR / out_name, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-        n = len(payload.get("project_assignments", []))
-        print(f"  ✓ Page {i}: {n} project assignments → {out_name}")
+    for i, (tmp, final, n) in enumerate(staged, start=1):
+        tmp.replace(final)
+        print(f"  ✓ Page {i}: {n} project assignments → {final.name}")
 
     total = payload.get("total_entries", "?")
     print(f"  Done. Total entries reported by Harvest: {total} (best-effort; see docstring on replica lag)")
@@ -125,7 +143,10 @@ def wait_for_project(code, attempts=20, delay=15):
                 query={"per_page": 100, "page": page},
             )
             for pa in payload.get("project_assignments", []):
-                if (pa.get("project", {}).get("code") or "") == code:
+                # `or {}`, not a .get default: a `project` key present but null returns
+                # None, and this poll runs against brand-new projects, which is exactly
+                # when Harvest is likeliest to serve a half-populated row.
+                if ((pa.get("project") or {}).get("code") or "") == code:
                     return pa
             if not payload.get("next_page"):
                 break
@@ -195,7 +216,8 @@ def refresh_dataverse():
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(result.stdout)
         # Quick sanity check
-        n_lines = sum(1 for _ in open(out_path, encoding="utf-8"))
+        with open(out_path, encoding="utf-8") as fh:
+            n_lines = sum(1 for _ in fh)
         print(f"  ✓ {n_lines} lines written to {out_path.name}")
     finally:
         try:
@@ -209,6 +231,12 @@ def refresh_dataverse():
                 capture_output=True,
                 text=True,
             )
+        else:
+            # Silence here left the active profile switched — the cross-tenant drift the
+            # restore exists to prevent, happening in the one case it cannot handle.
+            print(f"  WARN could not read the previously-active pac profile, so it was "
+                  f"not restored. Your active profile is now '{PAC_PROFILE}' — run "
+                  f"`pac auth list` and re-select if that is not what you want.")
 
 
 def main():

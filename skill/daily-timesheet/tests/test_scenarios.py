@@ -1,0 +1,225 @@
+"""End-to-end scenario regression: every script, every scenario, against a golden file.
+
+Two layers, deliberately:
+
+* **The golden files** catch *change*. They hold the complete output of both scripts for
+  each day in `scenarios.py`, so any edit to the arithmetic produces a reviewable diff
+  instead of a quietly different timesheet. Regenerate with `pytest --regen-golden`.
+* **The named assertions below them** state *intent*. A golden can only say "this is what
+  it did"; these say "this is what it must do, and here is why", so a regeneration that
+  bakes in a bug still fails.
+
+A golden alone is not a test. Both layers, or neither.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+import activity_timeline as tl
+import afk_blocks as ab
+from scenarios import SCENARIOS, BY_NAME
+from support import run_cli, with_heartbeats
+
+GOLDEN = Path(__file__).resolve().parent / "golden"
+
+pytestmark = pytest.mark.scenario
+
+
+def probe(scenario, live_aw) -> dict:
+    """Run both scripts over the scenario the way the skill's Step 2 does."""
+    d = scenario.build()
+    live_aw(d)
+    date, offset = d.date_str(), ["--utc-offset", str(d.offset)]
+
+    afk_args = [date, "--json", *offset]
+    if scenario.cover:
+        afk_args += ["--cover", scenario.cover]
+    afk = run_cli(ab, afk_args)
+
+    out = {
+        "afk_json": afk.json(),
+        "afk_text": run_cli(ab, [date, *offset,
+                                *(["--cover", scenario.cover] if scenario.cover else [])]).out,
+        "window_reports": {},
+        "timeline_json": run_cli(tl, [date, "--json", *offset]).json(),
+        "timeline_text": run_cli(tl, [date, *offset]).out,
+    }
+    for w in scenario.windows:
+        r = run_cli(ab, [date, "--json", "--window", w, *offset])
+        out["window_reports"][w] = r.json().get("window_report")
+    if scenario.zoom:
+        out["zoom_json"] = run_cli(tl, [date, "--json", "--window", scenario.zoom, *offset]).json()
+    return out
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
+def test_scenario_matches_its_golden(scenario, live_aw, request):
+    actual = probe(scenario, live_aw)
+    path = GOLDEN / f"{scenario.name}.json"
+    rendered = json.dumps(actual, indent=2, ensure_ascii=False) + "\n"
+
+    if request.config.getoption("--regen-golden"):
+        GOLDEN.mkdir(exist_ok=True)
+        path.write_text(rendered, encoding="utf-8")
+        pytest.skip(f"regenerated {path.name} — read the diff before committing it")
+
+    assert path.exists(), (
+        f"no golden for '{scenario.name}'. Run `pytest --regen-golden`, then READ "
+        f"tests/golden/{scenario.name}.json and confirm it says what you meant."
+    )
+    expected = json.loads(path.read_text(encoding="utf-8"))
+    assert actual == expected, (
+        f"'{scenario.name}' output changed. If the change is intended, rerun with "
+        f"--regen-golden and commit the diff as the record of what moved."
+    )
+
+
+# --------------------------------------------------------------------------------------
+# What each scenario is actually for. A regenerated golden can bake in a bug; these can't.
+# --------------------------------------------------------------------------------------
+
+def test_a_screen_lock_produces_no_break_but_a_dead_ratio(live_aw):
+    """The documented AW quirk, end to end: a 48-minute absence the break detector cannot
+    see, because the lock fragments AFK into sub-threshold chunks. The only signal left is
+    the window ratio — which is why the skill validates every block with one."""
+    s = BY_NAME["locked-screen-day"]
+    got = probe(s, live_aw)
+    assert got["afk_json"]["breaks"] == [], "a fragmented lock must not register as a break"
+    assert got["window_reports"]["10:57-11:45"]["active_ratio"] == 0.0
+    assert got["window_reports"]["10:57-11:45"]["verdict"] == "mostly idle (<0.4)"
+    # ...and the lock does not split the active span, so the span alone looks like work.
+    assert len(got["afk_json"]["active_spans"]) == 1
+
+
+def test_agent_supervision_reads_thin_not_idle(live_aw):
+    """Both supervision stretches must land in the 0.4-0.7 band. Below 0.4 the skill would
+    refuse to bill them; above 0.7 it would stop flagging them for review."""
+    got = probe(BY_NAME["locked-screen-day"], live_aw)
+    for w in ("11:45-13:26", "13:48-18:02"):
+        assert got["window_reports"][w]["verdict"] == "thin (0.4-0.7)", w
+
+
+def test_active_but_unbilled_time_is_reported_as_uncovered(live_aw):
+    """The under-billing guard. 13:26-13:48 is 22 active minutes deliberately left out of
+    --cover (personal browsing); the script must name it rather than let it vanish."""
+    got = probe(BY_NAME["locked-screen-day"], live_aw)
+    uncovered = got["afk_json"]["coverage_report"]["uncovered"]
+    assert [(u["start"], u["end"]) for u in uncovered] == [("13:26:00", "13:48:00")]
+
+
+def test_the_sub_floor_tail_is_below_the_reporting_bar(live_aw):
+    """18:53-19:01 is real work, but 8 minutes — under MIN_UNCOVERED_S. Reporting it would
+    make the coverage check noisy on every rounded block, so it stays silent by design."""
+    got = probe(BY_NAME["locked-screen-day"], live_aw)
+    starts = [u["start"] for u in got["afk_json"]["coverage_report"]["uncovered"]]
+    assert "18:53:00" not in starts
+
+
+def test_a_late_flicker_does_not_become_the_end_of_the_day(live_aw):
+    got = probe(BY_NAME["blip-and-tail-day"], live_aw)
+    afk = got["afk_json"]
+    assert afk["work_end"] == "19:31:00"
+    assert afk["work_end_blip"]["last_solid_end"] == "17:20:00", "billing to 19:31 invents 2 hours"
+
+
+def test_a_window_left_in_focus_is_flagged_as_a_tail_not_as_work(live_aw):
+    got = probe(BY_NAME["blip-and-tail-day"], live_aw)
+    tail = got["afk_json"]["window_watcher_tail"]
+    assert tail["end"] == "22:00:00"
+    assert tail["gap_past_work_end_min"] == 149.0
+
+
+def test_a_late_flicker_also_manufactures_a_break_out_of_the_evening(live_aw):
+    """Not just an end-of-day problem. `find_breaks` bounds itself by `work_end`, so the
+    flicker pulls the 17:20-19:30 evening idle *inside* the workday and reports it as a
+    second break. Real lunch first, invented "break" second — a reader who takes the
+    breaks list at face value gets a plausible-looking day that ends two hours late.
+
+    Pinned as current behaviour, not endorsed: the `blip` flag next to it is what tells
+    the skill to end the day at 17:20 and ignore the second entry."""
+    got = probe(BY_NAME["blip-and-tail-day"], live_aw)
+    breaks = [(b["start"], b["end"]) for b in got["afk_json"]["breaks"]]
+    assert breaks == [("12:15:00", "13:10:00"), ("17:20:00", "19:30:00")]
+    assert got["afk_json"]["work_end_blip"], "the blip flag is what makes the 2nd break readable"
+
+
+def test_a_title_matching_two_clients_is_flagged_multi(live_aw):
+    """The span the skill is told never to accept without a screenshot."""
+    got = probe(BY_NAME["interleaved-clients-day"], live_aw)
+    multi = [s for s in got["timeline_json"]["spans"] if s["multi"]]
+    assert multi, "a NZLS/Connexis title must be flagged, not silently assigned to one"
+    assert sorted(multi[0]["categories"]) == ["Connexis", "NZLS"]
+
+
+def test_a_generic_tool_lands_uncategorized_rather_than_guessed(live_aw):
+    got = probe(BY_NAME["interleaved-clients-day"], live_aw)
+    uncat = [s for s in got["timeline_json"]["spans"]
+             if s["category"] == "uncategorized" and "XrmToolBox" in str(s["top_titles"])]
+    assert uncat, "XrmToolBox names no client; guessing one is the misattribution failure"
+
+
+def test_a_day_with_no_break_is_one_span_hiding_dead_stretches(live_aw):
+    """The Step 6 guard-1 trap: the span passes the 0.7 band while three stretches inside
+    it are nearly dead. If the span ratio ever dropped below 0.7 this scenario would stop
+    testing what it was built for."""
+    got = probe(BY_NAME["no-break-day"], live_aw)
+    assert got["afk_json"]["breaks"] == []
+    assert len(got["afk_json"]["active_spans"]) == 1
+    assert got["window_reports"]["08:15-17:30"]["active_ratio"] >= 0.7
+    for dead in ("10:30-11:00", "13:00-13:35", "15:40-16:10"):
+        assert got["window_reports"][dead]["active_ratio"] < 0.4, dead
+
+
+def test_work_past_midnight_ends_on_a_clock_time_earlier_than_it_started(live_aw):
+    """Times render as HH:MM:SS with no date, so a post-midnight end reads as `01:12:00`.
+    Anything comparing the two strings to sanity-check the day gets the wrong answer."""
+    got = probe(BY_NAME["overnight-day"], live_aw)
+    afk = got["afk_json"]
+    assert (afk["work_start"], afk["work_end"]) == ("19:30:00", "01:12:00")
+    assert afk["work_end"] < afk["work_start"]      # the trap, pinned
+
+
+def test_a_day_with_no_activity_reports_that_rather_than_failing(live_aw):
+    d = BY_NAME["idle-day"].build()
+    live_aw(d)
+    r = run_cli(ab, [d.date_str()])
+    assert r.code == 0
+    assert "No not-afk activity found" in r.out
+
+
+def test_daylight_saving_offset_reproduces_the_local_clock(live_aw):
+    """At UTC+13 the same local times must come back unchanged; at UTC+12 they shift."""
+    d = BY_NAME["daylight-saving-day"].build()
+    live_aw(d)
+    correct = run_cli(ab, [d.date_str(), "--json", "--utc-offset", "13"]).json()
+    assert (correct["work_start"], correct["work_end"]) == ("08:30:00", "17:15:00")
+    wrong = run_cli(ab, [d.date_str(), "--json", "--utc-offset", "12"]).json()
+    assert wrong["work_start"] == "07:30:00", "the wrong offset must visibly shift the day"
+
+
+# --------------------------------------------------------------------------------------
+# Heartbeats: the same day, re-emitted the way AW really sends it.
+# --------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ["locked-screen-day", "blip-and-tail-day", "no-break-day"])
+def test_heartbeat_duplicates_change_nothing(name, live_aw, monkeypatch):
+    """AW extends a running event by re-emitting it at the same timestamp with a growing
+    duration. Every number the skill bills against has to survive that, or a long focused
+    stretch inflates by however many heartbeats AW happened to send."""
+    scenario = BY_NAME[name]
+    clean = probe(scenario, live_aw)
+
+    d = scenario.build()
+    original = d.buckets
+
+    def noisy():
+        return {bid: with_heartbeats(evs) for bid, evs in original().items()}
+
+    monkeypatch.setattr(d, "buckets", noisy)
+    live_aw(d)
+    date, offset = d.date_str(), ["--utc-offset", str(d.offset)]
+    args = [date, "--json", *offset] + (["--cover", scenario.cover] if scenario.cover else [])
+    assert run_cli(ab, args).json() == clean["afk_json"]

@@ -17,8 +17,11 @@ import os
 import sys
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks reconfigure
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 from harvest_client import parse_time_to_minutes, request
 
@@ -45,9 +48,20 @@ def main() -> None:
         )
         sys.exit(1)
 
+    try:
+        project_id_n, task_id_n = int(project_id), int(task_id)
+    except ValueError:
+        print(
+            f"ERR project_id and task_id must be numeric Harvest ids, got "
+            f"{project_id!r} and {task_id!r}. A project *code* like 'NLS-CR202' is not "
+            "an id — run harvest_lookup.py to resolve it.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     body = {
-        "project_id": int(project_id),
-        "task_id": int(task_id),
+        "project_id": project_id_n,
+        "task_id": task_id_n,
         "spent_date": spent_date,
         "started_time": started,
         "ended_time": ended,

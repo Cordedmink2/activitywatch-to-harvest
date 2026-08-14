@@ -251,7 +251,8 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `references/output-format.md` — timesheet .md template
 - `references/catalog-refresh.md` — refreshing `.mcp/` catalogs
 - `references/new-client-work.md` — billing work that has no Harvest project yet (Dataverse case creation)
-- `TESTING.md` — **for changing this skill, not for running it.** Test records, why rules are worded as they are, and options already tried and rejected. Read it before editing `SKILL.md` so you don't re-add something that was measured unnecessary; ignore it on a normal run.
+- `references/self-development.md` — **for changing this skill, not for running it.** Start here before editing `SKILL.md`, a reference, or a script: where maintenance content goes, which instruments to test against, the rules that have more than one copy, and where the release ritual lives. Ignore it on a normal run.
+- `TESTING.md` — the record behind those decisions: test results, evidence rungs, and options already tried and rejected. Read it so you don't re-add something that was measured unnecessary; new findings go here, not in `SKILL.md`.
 - `scripts/afk_blocks.py` — deterministic day skeleton: work_start/work_end/breaks/active spans/active_ratio; `--window`, `--json`, `--utc-offset`, `--afk-threshold`, `--cover "HH:MM-HH:MM,..."` coverage check
 - `scripts/activity_timeline.py` — categorized window timeline + rollup; `--window HH:MM-HH:MM` zoom folds in web watchers; flags `uncategorized`/`!MULTI`; `--utc-offset`, `--json`
 - `scripts/harvest_lookup.py` — project/task id lookup across ALL catalog pages, live-entry fallback for archived projects (a miss after the fallback = genuinely unknown project; a cache refresh won't help); `--task`, `--mcp-dir`, `--json`, `--no-live`, `--days`

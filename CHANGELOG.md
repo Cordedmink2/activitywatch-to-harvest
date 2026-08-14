@@ -5,6 +5,54 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-14
+
+### Added
+- **A test harness for the scripts.** `tests/support.py` builds a whole day from local
+  `HH:MM` strings and serves it from a real HTTP server, so a fixture reads as the day it
+  describes rather than as a list of UTC events. `tests/scenarios.py` holds seven such
+  days — locked screen, blip-and-tail, interleaved clients, no break, overnight, idle, and
+  a UTC+13 daylight-saving day — each pinned by both a golden file and named assertions.
+  Goldens catch *change*; named assertions state *intent*; a golden on its own will
+  happily bake in a bug. `--regen-golden` rewrites them, `--bench` runs the benchmarks
+  (skipped by default). The skill's suite went from 92 tests to 261.
+- `tests/README.md` — how to write a day, and why `.locked()` and `.thin()` exist.
+- `references/self-development.md` ships for the first time; it was previously live-only.
+
+### Fixed
+Seventeen script defects, each reproduced red before being fixed. `TESTING.md`
+§ "Script defects" carries the full record with an evidence rung per entry. The ones that
+produced a *silently wrong answer* rather than a crash:
+
+- **A dead window watcher read as an empty day.** `activity_timeline.py` printed a
+  timeline with no rows and exited 0 — indistinguishable from a day with no activity. It
+  now fails when the window bucket is missing.
+- **Overlapping `--cover` blocks reported over 100% coverage.** The blocks were summed
+  without being unioned first, so the Step 6 floor check passed on overlapping input.
+- **Zoom dropped the browser tab that was open when the zoom started** — the row most
+  likely to name the client, filtered out for having started before the window.
+- **`--json` did not always emit JSON.** A no-activity day printed prose to stdout.
+- **`harvest_patch` last-won on a repeated flag** and sent the request anyway. It now
+  refuses.
+- **The live lookup fallback was not scoped to the caller**, so an admin-scope token
+  paginated the whole company's entries and could surface a project the user has no
+  assignment to — which then fails, or mis-bills, at post time.
+- **`refresh_catalogs.py` deleted the old catalog before writing the new one**, so a
+  failed write left no catalog at all and every later lookup fell through to the live API
+  without saying so. Pages are now staged and swapped into place.
+- **Workspace auto-detection could never work on a stock install.** It walked up two
+  levels from the skill root — one short of Claude Code's
+  `<workspace>/.claude/skills/<name>` layout — while `.env.example` promised it would.
+
+### Changed
+- **The suite is now hermetic.** One test shelled out with `subprocess`, which inherits no
+  fixtures: it read the real `.env` and paged 180 days of live Harvest history. That was
+  roughly 90% of the old suite's runtime, and a red build whenever Harvest was slow. An
+  autouse fixture now points both API clients at an unroutable address and blanks every
+  credential source, so a test that reaches for the network fails fast instead of touching
+  a real timesheet.
+- `TESTING.md` — adds the script-defect record, the code-review round, and two open gaps.
+
 ## [0.3.0] - 2026-08-12
 
 ### Fixed

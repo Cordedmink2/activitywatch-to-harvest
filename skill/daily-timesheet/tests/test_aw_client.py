@@ -113,7 +113,11 @@ def test_utc_bounds_spans_local_midnight_to_local_midnight():
     assert (start, end) == ("2026-05-27T12:00:00Z", "2026-05-28T12:00:00Z")
 
 
-SHARED = ["get", "pick_bucket", "fetch_events", "dedupe_heartbeats", "parse_ts"]
+# `parse_range` joined this list on 2026-08-14: the two scripts had separate copies that
+# disagreed about a reversed range, so one errored and the other printed an empty result
+# for the same typo. That is the drift this whole module exists to prevent.
+SHARED = ["get", "pick_bucket", "fetch_events", "dedupe_heartbeats", "parse_ts",
+          "parse_range"]
 
 
 @pytest.mark.parametrize("module", [ab, tl], ids=["afk_blocks", "activity_timeline"])
@@ -128,7 +132,8 @@ def test_scripts_use_the_shared_helper_rather_than_their_own(module, name):
 @pytest.mark.parametrize("script", ["afk_blocks.py", "activity_timeline.py"])
 def test_scripts_do_not_redefine_the_server_address(script):
     """Two AW_BASE constants can drift apart; identity checks can't catch that for a string."""
-    tree = ast.parse(open(os.path.join(SCRIPTS, script), encoding="utf-8").read())
+    with open(os.path.join(SCRIPTS, script), encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
     assigned = [t.id for node in tree.body if isinstance(node, ast.Assign)
                 for t in node.targets if isinstance(t, ast.Name)]
     assert "AW_BASE" not in assigned, f"{script} keeps its own copy of AW_BASE"

@@ -28,7 +28,8 @@ def test_every_skill_relative_command_names_a_shipped_script():
     shipped = set(os.listdir(SCRIPTS))
     missing = []
     for path in docs():
-        text = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
         for lineno, line in enumerate(text.splitlines(), 1):
             for script in SKILL_RELATIVE.findall(line):
                 if script not in shipped:

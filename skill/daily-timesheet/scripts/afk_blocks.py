@@ -35,34 +35,21 @@ import datetime as dt
 import json
 import sys
 
-from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get, parse_ts,
-                       pick_bucket, utc_bounds)
+from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
+                       parse_local_time, parse_range, parse_ts, pick_bucket,
+                       utc_bounds)
 
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
 
 
-def parse_local_time(s):
-    """Parse 'HH:MM' or 'HH:MM:SS' to a datetime.time."""
-    s = s.strip()
-    fmt = "%H:%M:%S" if s.count(":") == 2 else "%H:%M"
-    return dt.datetime.strptime(s, fmt).time()
-
-
-def parse_range(rng, local_date, offset):
-    """Parse 'HH:MM-HH:MM' (seconds optional) to an aware UTC (start, end) pair.
-    Raises ValueError on bad format or a reversed/empty range."""
-    a, b = rng.split("-", 1)
-    ws = (dt.datetime.combine(local_date, parse_local_time(a)) - offset).replace(tzinfo=dt.timezone.utc)
-    we = (dt.datetime.combine(local_date, parse_local_time(b)) - offset).replace(tzinfo=dt.timezone.utc)
-    if we <= ws:
-        raise ValueError(f"end must be after start in range '{rng}'")
-    return ws, we
-
-
 def discover_buckets():
     """Return (afk_bucket, window_bucket) from one bucket listing."""
+    # Prefixes deliberately carry no trailing `_`: pick_bucket prefers a hostname-suffixed
+    # bucket over an unsuffixed one, and a prefix ending in `_` made every unsuffixed
+    # bucket invisible — so that preference could never fire, and an AW instance that
+    # does not suffix its buckets looked to this script like an AW with no watchers.
     buckets = get("/buckets/")
-    return pick_bucket(buckets, "aw-watcher-afk_"), pick_bucket(buckets, "aw-watcher-window_")
+    return pick_bucket(buckets, "aw-watcher-afk"), pick_bucket(buckets, "aw-watcher-window")
 
 
 # -- Day arithmetic. Pure functions over spans, so they're testable without AW. --
@@ -212,7 +199,18 @@ def main():
     spans = to_spans(afk_events)
     bounds = work_bounds(spans)
     if bounds is None:
-        print(f"No not-afk activity found for {args.date}.")
+        # Same key set as a normal result, so `--json` output can be parsed without
+        # first sniffing whether the day happened to have any activity in it.
+        if args.json:
+            print(json.dumps({
+                "date": args.date, "afk_bucket": afk_bucket,
+                "work_start": None, "work_end": None, "work_end_blip": None,
+                "total_active_min": 0.0, "breaks": [], "active_spans": [],
+                "window_watcher_tail": None, "window_report": None,
+                "coverage_report": None,
+            }, indent=2))
+        else:
+            print(f"No not-afk activity found for {args.date}.")
         return 0
 
     work_start, work_end = bounds["work_start"], bounds["work_end"]
@@ -274,7 +272,17 @@ def main():
 
         uncovered = [{"start": to_local(s0), "end": to_local(e0), "active_min": round(secs / 60, 1)}
                      for s0, e0, secs in uncovered_segments(spans, active, prop)]
-        covered_active = round(sum(active_seconds(spans, cs, ce) for cs, ce in prop) / 60, 1)
+        # Union the proposed blocks before totalling. Summing them independently let two
+        # overlapping blocks report more covered activity than the day held — and a
+        # coverage figure above 100% reads as "nothing was missed" at exactly the moment
+        # the proposed blocks are malformed.
+        merged = []
+        for cs, ce in sorted(prop):
+            if merged and cs <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], ce))
+            else:
+                merged.append((cs, ce))
+        covered_active = round(sum(active_seconds(spans, cs, ce) for cs, ce in merged) / 60, 1)
         coverage_report = {
             "proposed_blocks": args.cover,
             "covered_active_min": covered_active,

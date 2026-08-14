@@ -8,11 +8,17 @@ you are just running a timesheet.
 Method: `changing-agent-instructions`. The rule that governs this file is **never
 encode a diagnosis you have not watched happen**.
 
+`references/self-development.md` is the process side — where maintenance content goes,
+which gates a doc edit trips, the rules with more than one copy, and how a change gets
+released. Read it alongside this file when changing the skill.
+
 ## What the instruments measure
 
 `tests/` measures the *scripts*. It stays green when the instructions break, so it is
 not the instrument for a `SKILL.md` change — it only guards against a doc edit that
-invalidates a script path or command shape (`test_references.py`).
+invalidates a script path or command shape (`test_references.py`). How to run it and how
+to add to it is in `tests/README.md`; script-level findings are recorded under "Script
+defects" below.
 
 For guidance changes the instrument is: same scenario, fresh agent, no filesystem
 access, before vs after, 3+ reps read by hand. Variance across reps is the signal — three
@@ -162,10 +168,132 @@ under-billing.
 Guard 3 already said an excluded stretch is "declared under the table and never passed to
 `--cover`"; guard 1 contradicted it. Guard 1 now defers, and points at guard 3.
 
+## Script defects
+
+Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was
+watched failing before it was fixed, and each has a test that failed first.
+
+### The suite was not hermetic, and one test wrote against production
+`test_harvest_lookup.py` shelled out with `subprocess` to assert a non-zero exit on a
+catalog miss. A subprocess inherits no fixture, so it read the real `.env` and fell
+through to the live time-entries API, paging 180 days of real Harvest history — 4.7s of a
+5.3s suite, and a red build whenever Harvest was slow. The same shape one flag over
+(`harvest_post`) would have created a **real billable entry on a client's timesheet**.
+
+Fixed by an autouse fixture that repoints `AW_BASE` and `API_BASE` at an unroutable
+address and blanks the credential sources, plus an in-process `run_cli`. The rule —
+never `subprocess` a script from a test — is in `tests/README.md`, and `test_harness.py`
+asserts the guard actually blocks, because a safety net nobody tests is one nobody knows
+is there.
+
+### Two scripts parsed the same `--window` flag differently
+`afk_blocks` rejected `17:00-09:00`; `activity_timeline` accepted it and printed an empty
+timeline, which reads as "nothing happened then" rather than "you typed it backwards".
+Same class of defect `aw_client.py` was created to end. `parse_range` now lives there and
+both call it.
+
+### `--json` did not always emit JSON
+On a day with no `not-afk` activity, `afk_blocks --json` printed a sentence and exited 0.
+Anything parsing the output fails on exactly the day it most needs a clean empty answer.
+It now emits the normal key set with nulls; the text path keeps its sentence.
+
+### Three CLIs crashed on import under captured stdout
+`harvest_post`, `harvest_patch` and `harvest_list` called `sys.stdout.reconfigure()`
+unguarded at import. Under pytest — or any harness swapping in a plain stream — that
+raises `AttributeError`, which is why those three had no tests at all while
+`activity_timeline` and `harvest_lookup`, which already guarded it, did. Guarded
+identically.
+
+### Bad numeric arguments produced tracebacks, not `ERR` lines
+`harvest_post.py NLS-CR202 …` (a project *code* where an id belongs) died in `int()`;
+`harvest_patch --hours abc` died in the flag caster. Both before any HTTP. A traceback
+tells the model the script is broken and sends it debugging the tool instead of its own
+argument, so both now print `ERR …` and exit 1.
+
+### A failed request leaked its response, and the warning landed on an innocent test
+`urllib`'s `HTTPError` *is* the response object — it owns a spooled temp file. Both
+clients read the error body and dropped the exception without closing it, so the handle
+survived until garbage collection, whose destructor then raised
+`ResourceWarning: Implicitly cleaning up <HTTPError 422: …>`. Because that fires from a
+destructor, it is attributed to whatever test the collector happened to interrupt, so it
+read as an unrelated failure in an unrelated file. Three independent agents hit it and
+each blamed a different test.
+
+Closed in both `harvest_client.request()` and `aw_client.get()`. Worth recording for the
+diagnosis more than the fix: **a failure with no plausible connection to the code it
+points at is a destructor, not a mystery.**
+
+### Zoom dropped the browser tab that was open when the zoom started
+`activity_timeline --window` filtered *spans* by overlap but *web rows* by start time
+alone, so a tab opened before the zoom and still open inside it vanished. That inverts
+what zoom is for: the skill zooms a block precisely because it cannot tell whose work it
+is, and a tab left open across the boundary — a Dataverse org, a client SharePoint — is
+the row that names the client. Both filters now test overlap.
+
+### `harvest_patch` last-won on a repeated flag and sent the request anyway
+`--notes 'a' --notes 'b'` discarded the first value, exited 0, and wrote to Harvest, so
+the caller believed both landed. Every sibling guard in this skill blocks *before* the
+request; this one did not. Now refuses.
+
+### From the code review, same day — nine findings, all reproduced before fixing
+Each was turned into a failing test in `tests/test_review_findings.py` first; all nine
+went red, so none was a false positive. Grouped by what they share: **every serious one
+produced a plausible-looking wrong answer rather than an error.**
+
+- **A dead window watcher read as an empty day.** `activity_timeline` printed a
+  well-formed, entirely blank timeline and exited 0 when the window bucket was missing.
+  A model reading that concludes the user did no work. Now errors, as `afk_blocks`
+  already did for a missing AFK bucket.
+- **The bucket preference was tested but unreachable.** `pick_bucket` prefers a
+  hostname-suffixed bucket over an unsuffixed leftover, and a test covered it — but every
+  caller passed a prefix ending in `_`, so an unsuffixed bucket could never be a
+  candidate. On an AW that does not suffix, both scripts saw no watchers at all, while
+  `references/setup.md` told a reimage-recovery reader the case was handled. Callers now
+  pass the prefix without the underscore; the stale-host tie-break still wins, verified
+  against the real AW, which carries both a live and a post-reimage bucket.
+- **Overlapping `--cover` blocks reported over 100% coverage.** The blocks were summed
+  independently. A coverage figure above the day's total activity reads as "nothing was
+  missed" at exactly the moment the proposed blocks are malformed. Now unioned first.
+- **Workspace auto-detection could never work on a stock install.** It walked up two
+  levels from the skill — right for `<workspace>/skills/<name>`, one short of Claude
+  Code's `<workspace>/.claude/skills/<name>`. Masked here only because
+  `TIMESHEET_WORKSPACE` is set explicitly. Both shapes are now checked, and the "refuse
+  to guess" behaviour is pinned alongside.
+- **The live lookup fallback was not scoped to the caller.** `/time_entries` without a
+  `user_id`; on an admin-scope PAT that pages the whole company and can surface a
+  project/task the user has no assignment to.
+- **`refresh_catalogs` deleted the old catalog before writing the new one**, so a failed
+  write left none at all — and lookups then fell silently through to the live API. Pages
+  are now staged under `.new` names and swapped in only once every write has succeeded.
+- Three smaller ones: `refresh_catalogs` kept the unguarded `sys.stdout.reconfigure()`
+  the other scripts had already fixed; `wait_for_project` used `.get("project", {})`,
+  which returns `None` on an explicit null, against the endpoint most likely to serve a
+  half-populated row; and the `pac` profile restore was skipped in silence when the
+  profile list could not be read — leaving the drift it exists to prevent.
+
+A tenth turned up while testing the ninth: `refresh_dataverse` counted lines with an
+unclosed `open()`. Same family as the HTTPError leak above, found the same way.
+
+### A late flicker manufactures a second break — pinned, not fixed
+`find_breaks` bounds itself by `work_end`, so when `work_end` comes from an end-of-day
+blip, the preceding evening idle falls *inside* the workday and is reported as a break.
+The `blip` flag next to it is what tells a reader to ignore it. Left as-is because Step 3
+already routes on `blip`; pinned by a scenario assertion so a future change to either
+rule has to confront the interaction.
+
 ## Rejected
 
 - **A Step 3 pointer to the lock-screen quirk.** Measured 6/6 against a control arm — see
   the entry directly above. The reference index line already routes it.
+- **Defensive handling for inputs the API cannot produce.** `harvest_list` would raise on
+  a `hours: null` entry, and `harvest_lookup.lookup_from_entries` looks like it could loop
+  forever. Neither is reachable — Harvest always returns a numeric `hours`, and the loop
+  ends on a `next_page` of `null`. Code guarding an impossible input is code nobody can
+  test and everybody has to read.
+- **Validating `ENTRY_ID` in `harvest_patch`.** Nothing local can tell a valid Harvest
+  entry id from an invalid one, so a client-side check adds a failure mode without
+  removing the 404 it was meant to pre-empt. The id is forwarded and Harvest's answer
+  surfaces as `ERR`.
 - **A rule about `harvest_list.py` argument shape.** The flags `--from/--to` were
   guessed and failed; the script takes positional dates. But `SKILL.md` already
   documents the positional form in two places. The doc was right and went unread —
@@ -186,6 +314,13 @@ Guard 3 already said an excluded stretch is "declared under the table and never 
   from a fixture missing Step 6 guard 1. With guard 1 present, all 8 reps of the second run
   declined to round at all and reported informational durations — which is what guard 1 asks
   for. No defect visible; no test designed specifically for it.
+- **The script suite has no fixture for the Dataverse leg of `refresh_catalogs.py`.** It
+  shells out to `pac`, so testing it for real means an auth profile and a live org; only
+  the "unconfigured, so skip before touching pac" branch is covered.
+- **Screenshot capture is tested only at its seams** (`order_monitors`,
+  `resolve_screenshots_dir`). `take_screenshots` needs `mss` and a display, so nothing
+  covers a capture actually happening — which is the failure the 2026-08-11 entry above
+  was about.
 - **Every result in this file comes from one fixture** (a fictional two-client day with three
   lock-shaped stretches). It exercises breaks/idle/attribution and nothing else. Backfill,
   meetings, support tickets, and single-client days are unmeasured.

@@ -105,10 +105,15 @@ def lookup_from_entries(query, days=180, task_filter=None):
 
     q = query.lower()
     frm = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+    # Scope to the caller, the way harvest_list.py does. Unscoped, an admin-scope PAT
+    # paginates the whole company's entries and can surface a project/task pair the user
+    # has no assignment to — which then fails, or mis-bills, at post time.
+    user_id = request("GET", "/users/me")["id"]
     projects = {}  # project_id -> {code, name, tasks: {task_id: {...}}}
     page = 1
     while True:
-        payload = request("GET", "/time_entries", query={"from": frm, "per_page": 100, "page": page})
+        payload = request("GET", "/time_entries",
+                          query={"user_id": user_id, "from": frm, "per_page": 100, "page": page})
         for e in payload.get("time_entries", []):
             p = e.get("project") or {}
             code = p.get("code") or ""

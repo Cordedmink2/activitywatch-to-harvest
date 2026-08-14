@@ -1,10 +1,11 @@
-import json, os, sys, subprocess
+import json, os, sys
 import pytest
 
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "scripts")
 sys.path.insert(0, SCRIPTS)
 import harvest_client as hc
 import harvest_lookup as hl
+from support import run_cli
 
 
 def _write_catalog(mcp_dir):
@@ -46,10 +47,37 @@ def test_lookup_returns_billable_task(tmp_path):
 
 
 def test_cli_exit_nonzero_on_no_match(tmp_path):
+    """`--no-live` is what makes this a test rather than a live query.
+
+    It used to shell out with `subprocess`, which inherits none of conftest's guards: the
+    script read the real `.env`, and with no catalog match it fell through to the live
+    time-entries API and paged 180 days of the user's real Harvest history. That was
+    ~90% of the whole suite's runtime, and it meant a red build could be caused by
+    Harvest being down. In-process, cache-only, and offline.
+    """
     _write_catalog(str(tmp_path))
-    r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "harvest_lookup.py"),
-                        "NOPE", "--mcp-dir", str(tmp_path)], capture_output=True, text=True)
-    assert r.returncode != 0
+    r = run_cli(hl, ["NOPE", "--mcp-dir", str(tmp_path), "--no-live"])
+    assert r.code != 0
+    assert "no project matching" in r.err
+
+
+def test_cli_falls_back_to_time_entries_when_the_catalog_misses(tmp_path, live_harvest):
+    """An archived assignment drops out of the catalog while its entries remain. The
+    fallback is the only way to recover the project id, so it gets a real exercise
+    against a fake API rather than being left to the live one."""
+    _write_catalog(str(tmp_path))
+    live_harvest({
+        ("GET", "/users/me"): (200, {"id": 4242}),
+        ("GET", "/time_entries"): (200, {"time_entries": [{
+            "project": {"id": 111, "code": "ARCH-9", "name": "Archived project"},
+            "task": {"id": 222, "name": "Gen - Development/Configuration"},
+            "billable": True,
+        }], "next_page": None}),
+    })
+    r = run_cli(hl, ["ARCH-9", "--mcp-dir", str(tmp_path), "--json"])
+    assert r.code == 0
+    assert r.json()[0]["project_id"] == 111
+    assert "recovered from own time entries" in r.err
 
 
 def test_catalog_dir_honours_workspace_from_env_file(tmp_path, monkeypatch):

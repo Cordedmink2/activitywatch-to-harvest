@@ -1,0 +1,42 @@
+{
+  "afk_json": {
+    "date": "2026-08-03",
+    "afk_bucket": "aw-watcher-afk_TESTHOST",
+    "work_start": null,
+    "work_end": null,
+    "work_end_blip": null,
+    "total_active_min": 0.0,
+    "breaks": [],
+    "active_spans": [],
+    "window_watcher_tail": null,
+    "window_report": null,
+    "coverage_report": null
+  },
+  "afk_text": "No not-afk activity found for 2026-08-03.\n",
+  "window_reports": {},
+  "timeline_json": {
+    "date": "2026-08-03",
+    "window_bucket": "aw-watcher-window_TESTHOST",
+    "spans": [
+      {
+        "start": "09:00:00",
+        "end": "17:00:00",
+        "min": 480.0,
+        "category": "uncategorized",
+        "multi": false,
+        "categories": [],
+        "top_titles": [
+          [
+            "unknown | ",
+            28800.0
+          ]
+        ]
+      }
+    ],
+    "rollup_min_by_category": {
+      "uncategorized": 480.0
+    },
+    "web": null
+  },
+  "timeline_text": "Window timeline for 2026-08-03 (offset UTC+12)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  09:00:00-17:00:00  480.0m  uncategorized   unknown | \n  --- day totals by category (min) ---\n     uncategorized    480.0\n"
+}

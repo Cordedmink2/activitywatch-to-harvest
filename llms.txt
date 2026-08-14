@@ -117,3 +117,4 @@ wait for the user to confirm before moving on.
 - `references/setup.md` — first-run setup checklist.
 - `references/activitywatch.md` — the ActivityWatch buckets and events the skill reads.
 - `references/new-client-work.md` — raising a ticket for work with no matching project.
+- `references/self-development.md` — for maintainers editing the skill, not for a run.

@@ -33,8 +33,8 @@ import json
 import re
 import sys
 
-from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get, parse_ts,
-                       pick_bucket, utc_bounds)
+from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
+                       parse_range, parse_ts, pick_bucket, utc_bounds)
 
 NOISE_FLOOR = 5    # drop sub-5s events (tab-switch noise), per SKILL.md
 GAP_FOLD = 60      # inter-event gaps shorter than this don't break a span (seconds)
@@ -123,15 +123,6 @@ def category_rollup(events, classes):
     return {k: round(v / 60, 1) for k, v in sorted(totals.items(), key=lambda kv: -kv[1])}
 
 
-def _parse_window(window, local_date, offset):
-    a, b = window.split("-", 1)
-    ws = (dt.datetime.combine(local_date, dt.datetime.strptime(a.strip(), "%H:%M").time())
-          - offset).replace(tzinfo=dt.timezone.utc)
-    we = (dt.datetime.combine(local_date, dt.datetime.strptime(b.strip(), "%H:%M").time())
-          - offset).replace(tzinfo=dt.timezone.utc)
-    return ws, we
-
-
 def main():
     ap = argparse.ArgumentParser(description="Categorized window-activity timeline for one day.")
     ap.add_argument("date", help="YYYY-MM-DD (local date)")
@@ -158,10 +149,19 @@ def main():
     start_utc, end_utc = utc_bounds(local_date, offset)
     try:
         buckets = get("/buckets/")
-        win_bucket = pick_bucket(buckets, "aw-watcher-window_")
+        win_bucket = pick_bucket(buckets, "aw-watcher-window")
         win_events = fetch_events(win_bucket, start_utc, end_utc)
     except Exception as e:
         print(f"ERR ActivityWatch unreachable at {AW_BASE} ({e})", file=sys.stderr)
+        return 1
+    if not win_bucket:
+        # Without this, a crashed or renamed window watcher yields a well-formed, totally
+        # empty timeline and exit 0 — which reads as "the user did no work" rather than
+        # "the instrument is broken". afk_blocks.py already refuses on a missing AFK
+        # bucket; silence is the more dangerous answer for both.
+        print("ERR no aw-watcher-window bucket found — the window watcher is not "
+              "reporting, so this day has no timeline (that is not the same as an empty "
+              f"day). Buckets seen: {sorted(buckets) or '(none)'}", file=sys.stderr)
         return 1
     classes = load_classes()
 
@@ -175,20 +175,24 @@ def main():
     web_rows = None
     if args.window:
         try:
-            ws, we = _parse_window(args.window, local_date, offset)
-        except Exception:
-            print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM", file=sys.stderr)
+            ws, we = parse_range(args.window, local_date, offset)
+        except Exception as e:
+            print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM "
+                  f"(seconds optional): {e}", file=sys.stderr)
             return 2
         spans = [s for s in spans if s["end"] > ws and s["start"] < we]
         web_rows = []
-        for pref in ("aw-watcher-web-firefox_", "aw-watcher-web-chrome_"):
+        for pref in ("aw-watcher-web-firefox", "aw-watcher-web-chrome"):
             try:
                 b = pick_bucket(buckets, pref)
                 for e in dedupe_heartbeats(fetch_events(b, start_utc, end_utc)):
                     if e["duration"] < NOISE_FLOOR:
                         continue
                     t = parse_ts(e["timestamp"])
-                    if t < ws or t > we:
+                    # Overlap, not containment — matching the span filter above. A tab
+                    # opened before the zoom and still open inside it is usually the row
+                    # that names the client, and keying on the start alone dropped it.
+                    if t + dt.timedelta(seconds=e["duration"]) <= ws or t >= we:
                         continue
                     web_rows.append({"time": to_local(t), "secs": int(e["duration"]),
                                      "title": (e["data"].get("title") or "")[:60],

@@ -91,8 +91,11 @@ def find_workspace() -> Path | None:
 
     1. TIMESHEET_WORKSPACE, from the skill `.env` or an OS env var — explicit wins.
     2. The current directory, if it already looks like a workspace (`.mcp/` or `Timesheets/`).
-    3. The directory the skill is installed under, if that looks like a workspace —
-       correct only when the skill lives inside the workspace tree.
+    3. The directories the skill is installed under, if one looks like a workspace. Two
+       install shapes are checked: `<workspace>/skills/<name>` and Claude Code's own
+       `<workspace>/.claude/skills/<name>`, which sits one level deeper. Checking only the
+       first meant auto-detection could never succeed on a stock install, while
+       `.env.example` promised that it would.
 
     Returning None instead of guessing is deliberate: deriving a path from the install
     location and using it regardless is how refreshes used to report success while
@@ -101,7 +104,7 @@ def find_workspace() -> Path | None:
     ws = config("TIMESHEET_WORKSPACE")
     if ws:
         return Path(ws).expanduser()
-    for cand in (Path.cwd(), SKILL_ROOT.parents[1]):
+    for cand in (Path.cwd(), *SKILL_ROOT.parents[1:3]):
         if (cand / ".mcp").is_dir() or (cand / "Timesheets").is_dir():
             return cand
     return None
@@ -146,7 +149,12 @@ def request(method: str, path: str, body=None, query=None):
             text = resp.read().decode("utf-8")
             return json.loads(text) if text else {}
     except urllib.error.HTTPError as e:
-        body_text = e.read().decode("utf-8", "replace")[:300]
+        # HTTPError *is* the response: it owns a spooled temp file that stays open until
+        # its destructor runs. Closing it here keeps a run of failed calls from leaking a
+        # handle apiece — and keeps the collector from raising a ResourceWarning later,
+        # from a stack with no relationship to the request that caused it.
+        with e:
+            body_text = e.read().decode("utf-8", "replace")[:300]
         raise RuntimeError(f"{e.code} {body_text}") from None
     except urllib.error.URLError as e:
         raise RuntimeError(f"network error: {e}") from None

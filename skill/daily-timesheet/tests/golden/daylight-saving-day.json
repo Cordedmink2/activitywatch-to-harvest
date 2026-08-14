@@ -1,0 +1,77 @@
+{
+  "afk_json": {
+    "date": "2026-01-20",
+    "afk_bucket": "aw-watcher-afk_TESTHOST",
+    "work_start": "08:30:00",
+    "work_end": "17:15:00",
+    "work_end_blip": null,
+    "total_active_min": 480.0,
+    "breaks": [
+      {
+        "start": "12:00:00",
+        "end": "12:45:00",
+        "min": 45.0
+      }
+    ],
+    "active_spans": [
+      {
+        "start": "08:30:00",
+        "end": "12:00:00",
+        "min": 210.0
+      },
+      {
+        "start": "12:45:00",
+        "end": "17:15:00",
+        "min": 270.0
+      }
+    ],
+    "window_watcher_tail": {
+      "end": "17:15:00",
+      "gap_past_work_end_min": 0.0
+    },
+    "window_report": null,
+    "coverage_report": {
+      "proposed_blocks": "08:30-12:00,12:45-17:15",
+      "covered_active_min": 480.0,
+      "total_active_min": 480.0,
+      "uncovered": []
+    }
+  },
+  "afk_text": "AFK analysis for 2026-01-20  (offset UTC+13, break>=1050s)\n  bucket:      aw-watcher-afk_TESTHOST\n  work start:  08:30:00\n  WORK END:    17:15:00   <- end of day; do not bill past this\n  active time: 480.0 min total\n  window tail: last window event ends 17:15:00 (+0 min vs work end)\n  breaks (>= 17 min):\n     12:00:00 - 12:45:00  (45.0 min)\n  active spans (short afk folded in):\n     08:30:00 - 12:00:00  (210.0 min)\n     12:45:00 - 17:15:00  (270.0 min)\n  coverage of proposed blocks vs AFK active_spans:\n     blocks cover 480.0 of 480.0 active min\n     (all active spans covered)\n",
+  "window_reports": {
+    "08:30-12:00": {
+      "window": "08:30-12:00",
+      "active_ratio": 1.0,
+      "active_min": 210.0,
+      "window_min": 210.0,
+      "verdict": "active (>=0.7)"
+    }
+  },
+  "timeline_json": {
+    "date": "2026-01-20",
+    "window_bucket": "aw-watcher-window_TESTHOST",
+    "spans": [
+      {
+        "start": "08:30:00",
+        "end": "17:15:00",
+        "min": 525.0,
+        "category": "NZLS",
+        "multi": false,
+        "categories": [
+          "NZLS"
+        ],
+        "top_titles": [
+          [
+            "Code.exe | CMSPlugins - NZLS",
+            31500.0
+          ]
+        ]
+      }
+    ],
+    "rollup_min_by_category": {
+      "NZLS": 525.0
+    },
+    "web": null
+  },
+  "timeline_text": "Window timeline for 2026-01-20 (offset UTC+13)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  08:30:00-17:15:00  525.0m  NZLS            Code.exe | CMSPlugins - NZLS\n  --- day totals by category (min) ---\n     NZLS             525.0\n"
+}

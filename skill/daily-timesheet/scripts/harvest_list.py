@@ -14,8 +14,11 @@ import sys
 from harvest_client import parse_time_to_minutes, request
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks reconfigure
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 
 def to_24h(t: str | None) -> str:

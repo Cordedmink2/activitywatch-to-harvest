@@ -30,8 +30,11 @@ import os
 import sys
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks reconfigure
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 from harvest_client import parse_time_to_minutes, request
 
@@ -65,7 +68,17 @@ def parse_args(argv: list[str]) -> tuple[str, dict]:
         if i + 1 >= len(argv):
             sys.exit(f"Missing value for {flag}")
         key, caster = FLAGS[flag]
-        body[key] = caster(argv[i + 1])
+        if key in body:
+            # Last-wins would send the second value and exit 0, so the caller believes
+            # both landed. A repeated flag is never deliberate — it is a command
+            # assembled twice — and every other guard here blocks before the request.
+            sys.exit(f"{flag} given more than once; pass it once with the final value")
+        raw = argv[i + 1]
+        try:
+            body[key] = caster(raw)
+        except ValueError:
+            print(f"ERR {flag} expects a {caster.__name__}, got {raw!r}", file=sys.stderr)
+            sys.exit(1)
         i += 2
     if not body:
         sys.exit("Provide at least one field to update.")
