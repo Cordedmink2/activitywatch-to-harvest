@@ -1,5 +1,5 @@
-"""Look up a Harvest project + its tasks by code or name fragment, searching
-ALL paginated assignment catalog pages.
+"""Look up a Harvest project + its tasks by code, project-name or client-name
+fragment, searching ALL paginated assignment catalog pages.
 
 The skill's .mcp/ holds the user's /users/me/project_assignments split across
 several files (harvest_assignments.json, _p2.json, ...). A naive "read the
@@ -16,6 +16,7 @@ recover its project_id and task ids. Disable with --no-live (e.g. offline).
 Usage:
   python scripts/harvest_lookup.py NLS-CR202
   python scripts/harvest_lookup.py "Short Courses"
+  python scripts/harvest_lookup.py Contoso           # matches on client name
   python scripts/harvest_lookup.py CON --task Development
   python scripts/harvest_lookup.py NLS-CR202 --mcp-dir /path/to/.mcp --json
 """
@@ -70,6 +71,20 @@ def iter_assignments(mcp_dir):
             yield pa
 
 
+def match_kind(q, code, name, client):
+    """How a project matched the query, or None. Client name counts: a project is often
+    named for the work it covers, carrying the client's name only on `client.name`, so a
+    code/name-only search misses it entirely — and can leave a stale shell project named
+    after the client as the sole hit."""
+    if code.lower() == q:
+        return "code"
+    if q in code.lower() or q in name.lower():
+        return "code/name"
+    if q in (client or "").lower():
+        return "client"
+    return None
+
+
 def lookup(query, mcp_dir, task_filter=None):
     q = query.lower()
     matches = []
@@ -77,7 +92,9 @@ def lookup(query, mcp_dir, task_filter=None):
         p = pa.get("project") or {}
         code = p.get("code") or ""
         name = p.get("name") or ""
-        if not (code.lower() == q or q in code.lower() or q in name.lower()):
+        client = (pa.get("client") or {}).get("name") or ""
+        kind = match_kind(q, code, name, client)
+        if kind is None:
             continue
         tasks = []
         for ta in pa.get("task_assignments", []):
@@ -86,8 +103,11 @@ def lookup(query, mcp_dir, task_filter=None):
             if task_filter and task_filter.lower() not in tname.lower():
                 continue
             tasks.append({"id": t.get("id"), "name": tname, "billable": bool(ta.get("billable"))})
-        matches.append({"code": code, "project_id": p.get("id"), "name": name, "tasks": tasks})
-    matches.sort(key=lambda m: (m["code"].lower() != q, m["code"]))  # exact code first
+        matches.append({"code": code, "project_id": p.get("id"), "name": name,
+                        "client": client, "matched_on": kind, "tasks": tasks})
+    # exact code first, then code/name matches, then client-name-only matches
+    rank = {"code": 0, "code/name": 1, "client": 2}
+    matches.sort(key=lambda m: (rank[m["matched_on"]], m["code"]))
     return matches
 
 
@@ -118,20 +138,24 @@ def lookup_from_entries(query, days=180, task_filter=None):
             p = e.get("project") or {}
             code = p.get("code") or ""
             name = p.get("name") or ""
-            if not (code.lower() == q or q in code.lower() or q in name.lower()):
+            client = (e.get("client") or {}).get("name") or ""
+            kind = match_kind(q, code, name, client)
+            if kind is None:
                 continue
             t = e.get("task") or {}
             tname = t.get("name") or ""
             if task_filter and task_filter.lower() not in tname.lower():
                 continue
-            proj = projects.setdefault(p.get("id"), {"code": code, "project_id": p.get("id"), "name": name, "tasks": {}})
+            proj = projects.setdefault(p.get("id"), {"code": code, "project_id": p.get("id"), "name": name,
+                                                     "client": client, "matched_on": kind, "tasks": {}})
             # Entries arrive newest-first; keep the first (most recent) billable flag per task.
             proj["tasks"].setdefault(t.get("id"), {"id": t.get("id"), "name": tname, "billable": bool(e.get("billable"))})
         if not payload.get("next_page"):
             break
         page += 1
     matches = [{**m, "tasks": list(m["tasks"].values()), "source": "time_entries"} for m in projects.values()]
-    matches.sort(key=lambda m: (m["code"].lower() != q, m["code"]))
+    rank = {"code": 0, "code/name": 1, "client": 2}
+    matches.sort(key=lambda m: (rank[m["matched_on"]], m["code"]))
     return matches
 
 
@@ -167,7 +191,8 @@ def main():
         print(json.dumps(matches, indent=2))
         return 0
     for m in matches:
-        print(f"{m['code']}  {m['project_id']}  {m['name']}")
+        client = f"  [{m['client']}]" if m.get("client") else ""
+        print(f"{m['code']}  {m['project_id']}  {m['name']}{client}")
         for t in m["tasks"]:
             b = "billable" if t["billable"] else "NON-billable"
             print(f"    {t['id']}  {t['name']}  ({b})")

@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-08-14
+
+### Fixed
+- **`harvest_lookup.py` could not find a project by its client's name.** It matched
+  `project.code` and `project.name` only, so a project named for the *work* it covers —
+  carrying the client's name solely on `client.name` — was invisible to a search for that
+  client. Where the client also had an old presales or shell project named after them, the
+  lookup returned that shell as the only hit, and its all-non-billable task set is easy to
+  accept as the answer. Matching now includes `client.name`, in both the catalog path and
+  the time-entries fallback, with results ranked exact-code → code/name → client-only and
+  each match reporting `matched_on` plus the client. The human-readable listing shows the
+  client alongside the project name.
+
+### Changed
+- `SKILL.md` documents client name as a first-class search term for `harvest_lookup.py`,
+  and warns that the top hit is not automatically the right project — read every candidate,
+  and treat an all-non-billable task set as the tell for a shell project.
+
 ## [0.4.1] - 2026-08-14
 
 Documentation and test-suite corrections found by reading the four `test_edge_*.py`

@@ -46,6 +46,44 @@ def test_lookup_returns_billable_task(tmp_path):
     assert dev["billable"] is True
 
 
+def _write_client_named_catalog(mcp_dir):
+    """One client, two projects: a dead presales shell named for the *client*, and the
+    live delivery project named for the *work*. Searching the client's name has to find
+    the second one — its name shares no substring with the query."""
+    page = {"project_assignments": [
+        {"project": {"id": 1001, "code": "PSO-1000", "name": "Contoso - D365 CRM Foundation"},
+         "client": {"name": "Contoso Pty Ltd"},
+         "task_assignments": [
+             {"billable": False, "task": {"id": 2001, "name": "Presales - Meetings"}}]},
+        {"project": {"id": 1002, "code": "CTO2000",
+                     "name": "Check app access still enabled after the security group migration"},
+         "client": {"name": "Contoso Pty Ltd"},
+         "task_assignments": [
+             {"billable": True, "task": {"id": 2002, "name": "Gen - Investigation"}}]}]}
+    with open(os.path.join(mcp_dir, "harvest_assignments.json"), "w", encoding="utf-8") as f:
+        json.dump(page, f)
+
+
+def test_lookup_matches_on_client_name(tmp_path):
+    """A project findable only by its client used to be invisible: lookup read
+    project.code and project.name but never client.name, so searching a client's name
+    returned only the projects *named* after them — typically a stale presales shell —
+    while the live delivery project, named for the work, was missed entirely. Match on
+    client too, and rank code/name hits above client-only hits."""
+    _write_client_named_catalog(str(tmp_path))
+    matches = hl.lookup("Contoso", str(tmp_path))
+    by_code = {m["code"]: m for m in matches}
+    assert by_code["CTO2000"]["matched_on"] == "client"
+    assert by_code["CTO2000"]["tasks"][0]["billable"] is True
+    assert matches[0]["code"] == "PSO-1000"          # name match outranks client-only
+    assert by_code["PSO-1000"]["matched_on"] == "code/name"
+
+
+def test_lookup_tolerates_a_catalog_without_client_names(tmp_path):
+    _write_catalog(str(tmp_path))
+    assert hl.lookup("NLS-CR202", str(tmp_path))[0]["client"] == ""
+
+
 def test_cli_exit_nonzero_on_no_match(tmp_path):
     """`--no-live` is what makes this a test rather than a live query.
 
