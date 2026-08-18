@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.4] - 2026-08-19
 
+### Upgrading
+
+No config or task changes: `git pull` then re-run `install\install_skill.ps1` (the
+registered `WorkScreenshots` task keeps working — the interpreter probing applies the
+next time the setup script runs). If your clone carries local edits to
+`setup_screenshot_pipeline.ps1` or `tests/test_install_scripts.py` from a pre-0.4.4
+session hotfix, discard them first (`git checkout -- .`) — this release supersedes them.
+
 ### Fixed
 - **`setup_screenshot_pipeline.ps1` took the first interpreter that existed, and both
   failure modes on a coworker's first install were interpreters that existed.** The
