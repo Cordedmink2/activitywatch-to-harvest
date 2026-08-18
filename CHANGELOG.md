@@ -5,6 +5,38 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-08-19
+
+### Fixed
+- **`setup_screenshot_pipeline.ps1` took the first interpreter that existed, and both
+  failure modes on a coworker's first install were interpreters that existed.** The
+  Windows Store app-execution alias is a 0-byte `python.exe` that runs nothing, and a
+  split install (executables separated from `Lib\`) imports the stdlib through a registry
+  `PythonPath` while `sys.prefix` — and with it pip and site-packages — resolves to
+  garbage. Either one, selected on existence, registers a task that never captures a
+  single screenshot. Every candidate is now probed with a real import (via
+  `Start-Process`, because `&` doesn't wait on the GUI-subsystem `pythonw` and leaves
+  `$LASTEXITCODE` stale), 0-byte stubs are rejected on size, and the split-install
+  warning on stderr fails the probe even on exit 0. A new `-PythonExe` parameter pins the
+  interpreter explicitly; a broken `-PythonExe` is an error, never a silent fallback.
+- **A test could register a real scheduled task.** The PS 5.1 parameter-binding test
+  stripped `PATH` and relied on the "Python not found" guard as its early exit; with the
+  interpreter now resolved by probing (system launcher included), that guard is no longer
+  guaranteed to fire. The test runs under `-DryRun` with a cleanup fixture, so it can
+  never register anything regardless of what the resolver finds.
+
+### Changed
+- `harvest_list.py` prints `(no time entries from … to …)` to stderr when the range is
+  empty. Success-with-no-entries and a run that silently did nothing were previously
+  identical on stdout, and the setup runbook's credential check reads exactly this case.
+- Setup docs (`llms.txt`, README, `references/setup.md`) carry the lessons from that
+  first coworker install: probe Python rather than trusting names on PATH; ActivityWatch
+  is not on winget; the URL-in-Title tag format and the AW category regex must agree
+  (and get verified against real events, not the UI); the Dataverse `pac` profile must be
+  *named* (`pac auth create --name …`, or `pac auth name --index <N>` to fix an unnamed
+  one); Harvest tokens are better pasted into `.env` than into the chat, which is saved
+  to disk in plaintext.
+
 ## [0.4.3] - 2026-08-18
 
 ### Fixed
