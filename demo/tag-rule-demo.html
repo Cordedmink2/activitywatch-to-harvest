@@ -138,15 +138,15 @@ const TagRuleModel = (() => {
     rules: [
       { client: "ACME",     regex: "\\[ACME\\]",     ignoreCase: true },
       { client: "BETA",     regex: "\\[BETA\\]",     ignoreCase: true },
-      { client: "Payments", regex: "\\[PAY\\]",      ignoreCase: true },
-      { client: "Singer",   regex: "\\[SINGER\\]",   ignoreCase: true },
+      { client: "Ledger",   regex: "\\[LEDGER\\]",   ignoreCase: true },
+      { client: "Nimbus",   regex: "\\[NIMBUS\\]",   ignoreCase: true },
     ],
     // profile -> code the extension stamps; null = profile with no tag set up
     profiles: {
       "ACME":     "ACME",
       "BETA":     "BETA",
-      "Payments": "PAY",
-      "Singer":   "SINGER",
+      "Ledger":   "LEDGER",
+      "Nimbus":   "NIMBUS",
       "Personal": null,
     },
     events: [],   // { page, url, profile }  (profile null = not a browser)
@@ -222,7 +222,7 @@ const TagRuleModel = (() => {
     const missed = rows.filter(r => r.verdict === "miss").length;
     // Two different problems: tagged work landing on the WRONG client is always bad;
     // an untagged window matched from its title alone is sometimes right (a client
-    // folder in Explorer) and sometimes not (a sewing-machine video) — flag, don't damn.
+    // folder in Explorer) and sometimes not (a stand-mixer video) — flag, don't damn.
     const crossed = rows.filter(r => typeof r.verdict === "object" && r.expected !== null).length;
     const titleClaims = rows.filter(r => typeof r.verdict === "object" && r.expected === null).length;
 
@@ -247,10 +247,10 @@ const ACTIONS = [
     events: [{ page: "Case Management - Dynamics 365", url: "https://beta-dev.crm.example.com/", profile: "BETA" }] },
   { id: "beta-contract", label: "Read an emailed ACME doc in the BETA profile", profile: "BETA",
     events: [{ page: "Contract 5-02-011 Sunnyfield - variation memo", url: "https://acmetrust.sharepoint.example.com/", profile: "BETA" }] },
-  { id: "pers-payments", label: "Read a payments article (Personal profile)", profile: "Personal",
-    events: [{ page: "How Stripe handles payments at scale", url: "https://news.example.com/", profile: "Personal" }] },
-  { id: "pers-singer", label: "Watch a sewing-machine review (Personal profile)", profile: "Personal",
-    events: [{ page: "Singer 4423 heavy duty review - YouTube", url: "https://youtube.com/", profile: "Personal" }] },
+  { id: "pers-ledger", label: "Read a fintech explainer (Personal profile)", profile: "Personal",
+    events: [{ page: "How Stripe handles ledger reconciliation at scale", url: "https://news.example.com/", profile: "Personal" }] },
+  { id: "pers-nimbus", label: "Watch a stand-mixer review (Personal profile)", profile: "Personal",
+    events: [{ page: "Nimbus 9000 stand mixer review - YouTube", url: "https://youtube.com/", profile: "Personal" }] },
   { id: "terminal",  label: "Work in the terminal (no browser)", profile: null,
     events: [{ page: "Set up ActivityWatch to Harvest daily-timesheet skill", url: null, profile: null }] },
   { id: "acme-explorer", label: "Browse the ACME folder in File Explorer", profile: null,
@@ -276,10 +276,10 @@ const SCENARIOS = [
     blurb: "Fix the mismatch the other way — drop the brackets from the rules to match bare tags. Now everything categorises… including things that shouldn't: a client's name in a page title claims the block even when the work has nothing to do with them.",
     steps: [
       { label: "Reset, tags bare", actions: [{ type: "RESET" }, { type: "SET_TAG_STYLE", style: "bare" }] },
-      { label: "Make every rule a bare code too", note: "ACME, BETA, PAY, SINGER — tag and rule agree now", actions: [{ type: "SET_ALL_RULES_BARE" }] },
+      { label: "Make every rule a bare code too", note: "ACME, BETA, LEDGER, NIMBUS — tag and rule agree now", actions: [{ type: "SET_ALL_RULES_BARE" }] },
       { label: "Do real client work", actions: [{ type: "ADD_EVENTS", eventsFrom: "acme-dyn" }, { type: "ADD_EVENTS", eventsFrom: "beta-dyn" }] },
-      { label: "Read an emailed ACME doc in the BETA profile", note: "bare “ACME” isn't in this title — but watch what IS", actions: [{ type: "SET_RULE", client: "ACME", regex: "Contract|ACME" }, { type: "ADD_EVENTS", eventsFrom: "beta-contract" }] },
-      { label: "Lunch break: a payments article and a sewing-machine video", note: "the Payments and Singer rules claim both", actions: [{ type: "ADD_EVENTS", eventsFrom: "pers-payments" }, { type: "ADD_EVENTS", eventsFrom: "pers-singer" }] },
+      { label: "Read an emailed ACME doc in the BETA profile", note: "the bare ACME rule hits “acmetrust.sharepoint…” in the URL — a BETA block claimed by ACME as well", actions: [{ type: "ADD_EVENTS", eventsFrom: "beta-contract" }] },
+      { label: "Lunch break: a fintech explainer and a stand-mixer video", note: "the Ledger and Nimbus rules claim both", actions: [{ type: "ADD_EVENTS", eventsFrom: "pers-ledger" }, { type: "ADD_EVENTS", eventsFrom: "pers-nimbus" }] },
     ],
   },
   {
@@ -297,7 +297,7 @@ const SCENARIOS = [
   {
     id: "brackets",
     title: "4 · Brackets end-to-end",
-    blurb: "The repo's recommendation: bracketed tags AND bracketed rules. Same day of browsing — real work categorises, and the contract doc, the payments article and the sewing machine all stay off the clients' books, because “[ACME]” never appears in incidental prose. The trade: untagged windows (terminal, File Explorer) stay grey and the skill classifies those from other signals — brackets buy precision, not total recall.",
+    blurb: "The repo's recommendation: bracketed tags AND bracketed rules. Same day of browsing — real work categorises, and the fintech explainer and the stand mixer stay off the clients' books entirely, because “[ACME]” never appears in incidental prose. The trade: untagged windows (terminal, File Explorer) stay grey and the skill classifies those from other signals — brackets buy precision, not total recall.",
     steps: [
       { label: "Reset to repo defaults", note: "bracketed tags, bracketed rules", actions: [{ type: "RESET" }] },
       { label: "Simulate a full day", note: "compare the summary with scenario 2's", actions: [{ type: "ADD_EVENTS", eventsFrom: "full-day" }] },

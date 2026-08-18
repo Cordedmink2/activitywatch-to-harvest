@@ -24,11 +24,18 @@ wait for the user to confirm before moving on.
   each install or registration step, VERIFY it actually took effect (see the per-step checks below)
   rather than trusting a clean-looking exit. If something was blocked, stop and tell the user exactly
   what to allow-list (the skill's `scripts/` folder, `pythonw.exe`, the `WorkScreenshots` task) — do
-  not silently retry or carry on as if it worked.
+  not silently retry or carry on as if it worked. Prove the block before escalating, though: name the
+  installer log line, quarantine entry or denied registration you actually read. The first coworker
+  install sent its user to IT for an EDR allow-list when the real fault was a split Python install
+  that needed no ticket at all.
 
 ## Environment detection
 
-1. Detect the OS. On Windows use `install\*.ps1`; on macOS/Linux use `install/*.sh`.
+1. Detect the OS. On Windows use `install\*.ps1`; on macOS/Linux use `install/*.sh`. Check `pwsh`
+   exists before using it — a stock Windows box has only Windows PowerShell 5.1. Either install it
+   (`winget install Microsoft.PowerShell`) or substitute `powershell.exe -File …` in every command
+   below; the scripts run under 5.1. Under 5.1, quote paths as `"$HOME/…"`: a bare `~` is not
+   expanded for native commands.
 2. Confirm a WORKING Python 3.10+ — probe it, don't trust names or existence. On Windows a bare
    `python` is often the Microsoft Store app-execution alias: a 0-byte exe that prints an install
    nag instead of running. Prefer `py`, and verify the interpreter can import its stdlib AND reach
@@ -42,8 +49,9 @@ wait for the user to confirm before moving on.
 ## Steps
 
 ### 1. ActivityWatch (manual — human installs)
-- Ask the user to install ActivityWatch from https://activitywatch.net/downloads/ and launch it.
-  (It is not on winget — the direct download is the only route; don't send the user hunting.)
+- Ask the user to install ActivityWatch and launch it. `winget install ActivityWatch.ActivityWatch`
+  is the quickest route on Windows (the manifest installs the same official installer as the site);
+  https://activitywatch.net/downloads/ is the fallback and the only route on macOS/Linux.
 - Verify it's running: GET http://localhost:5600/api/0/buckets/ should return JSON. If it doesn't,
   stop and help the user start ActivityWatch before continuing.
 
@@ -102,10 +110,12 @@ wait for the user to confirm before moving on.
   session transcript — if the user does paste the token in chat, say so, and suggest rotating it
   before that transcript is shared anywhere.
 - Write them into `.env` as `HARVEST_ACCOUNT_ID=` and `HARVEST_API_KEY=`.
-- Verify: `python ~/.claude/skills/daily-timesheet/scripts/harvest_list.py <today> <today>` (Windows:
-  `py`, not `python`) runs with no auth error. A day with no entries prints
-  `(no time entries from … to …)` on stderr — exit 0 plus that notice is success, not a silent
-  no-op. A 401/403 means the token is wrong — ask the user to regenerate.
+- Verify it runs with no auth error:
+  - Windows: `py "$HOME/.claude/skills/daily-timesheet/scripts/harvest_list.py" <today> <today>`
+    — `py` not `python` (the stub), and `"$HOME/…"` not `~/…` (5.1 passes a bare `~` through literally).
+  - POSIX: `python ~/.claude/skills/daily-timesheet/scripts/harvest_list.py <today> <today>`
+  A day with no entries prints `(no time entries from … to …)` on stderr — exit 0 plus that notice is
+  success, not a silent no-op. A 401/403 means the token is wrong — ask the user to regenerate.
 
 ### 9. Optional Dataverse catalog (only if the user wants it)
 - If the user creates tickets in a Dataverse org that sync to Harvest: set `DATAVERSE_URL` and
@@ -121,7 +131,7 @@ wait for the user to confirm before moving on.
 
 ### 10. Screenshot pipeline (you run this — REQUIRED, Windows)
 - This is a core part of the skill (screenshots disambiguate generic activity into the right client).
-- Run: `pwsh -File ~/.claude/skills/daily-timesheet/scripts/setup_screenshot_pipeline.ps1`
+- Run: `pwsh -File "$HOME/.claude/skills/daily-timesheet/scripts/setup_screenshot_pipeline.ps1"`
 - Installs Pillow + mss if needed and registers the `WorkScreenshots` scheduled task (weekdays
   08:30–20:00, ~every 2.5 min). Params: `-StartTime`, `-EndTime`, `-IntervalSeconds`.
 - The script probes every interpreter candidate with a real import and refuses broken ones (0-byte
@@ -130,8 +140,8 @@ wait for the user to confirm before moving on.
 - VERIFY it actually works — this is the step most likely to be silently blocked by AV/EDR:
   1. `Get-ScheduledTaskInfo -TaskName WorkScreenshots` returns without error (the task registered).
   2. Fire one capture by hand and confirm PNGs land: run
-     `python ~/.claude/skills/daily-timesheet/scripts/screenshot_capture.py`, then check that
-     `~/Pictures/WorkScreenshots/<today>/` now holds `HH-MM-SS_m1.png` files.
+     `py "$HOME/.claude/skills/daily-timesheet/scripts/screenshot_capture.py"`, then check that
+     `$HOME/Pictures/WorkScreenshots/<today>/` now holds `HH-MM-SS_m1.png` files.
   If the task registers but no images ever appear, endpoint security has likely quarantined
   `screenshot_capture.py` or is blocking the silent `pythonw` process — tell the user and ask them to
   allow-list the skill's `scripts/` folder; don't just re-run it.

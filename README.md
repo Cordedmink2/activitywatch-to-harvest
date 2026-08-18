@@ -94,9 +94,11 @@ then run the install script.
 - **PowerShell 7** (`pwsh`) for the commands below. Windows ships only Windows PowerShell 5.1, where
   `pwsh` doesn't exist — install it with `winget install Microsoft.PowerShell`, or substitute
   `powershell.exe -File …` in every command (the scripts run under 5.1 too).
-- **Python 3.10+** that actually runs — verify with `py -c "import sys; print(sys.prefix)"` rather
-  than `python --version`: on Windows a bare `python` is often the Microsoft Store alias, a 0-byte
-  stub that prints an install nag instead of running.
+- **Python 3.10+** that actually runs — verify with `py -m pip --version` rather than
+  `python --version`. On Windows a bare `python` is often the Microsoft Store alias, a 0-byte stub
+  that prints an install nag instead of running; and an install whose executables have been separated
+  from their `Lib\` runs, prints a version, and still can't reach pip or site-packages. Reaching pip
+  is the check that rules out both.
 - **[Claude Code](https://claude.com/claude-code)** installed.
 - A **Harvest** account you can create a personal access token for.
 - A Chromium browser (Chrome/Edge) if you want per-client browser classification.
@@ -107,9 +109,11 @@ then run the install script.
 
 ### 1. Install ActivityWatch
 
-Download and install it from **https://activitywatch.net/downloads/**, then launch it. Confirm it's
-running by opening **http://localhost:5600** in your browser — you should see the ActivityWatch
-dashboard. Leave it running in the background (set it to start on login).
+On Windows, `winget install ActivityWatch.ActivityWatch` is the quickest route — the manifest pulls
+the same official installer as the download page. Otherwise (and on macOS/Linux) get it from
+**https://activitywatch.net/downloads/**. Then launch it and confirm it's running by opening
+**http://localhost:5600** in your browser — you should see the ActivityWatch dashboard. Leave it
+running in the background (set it to start on login).
 
 ### 2. Install the "URL in Title" browser extension
 
