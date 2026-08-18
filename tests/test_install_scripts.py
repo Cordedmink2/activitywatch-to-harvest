@@ -88,20 +88,22 @@ def test_setup_workspace_runs_under_windows_powershell_51(tmp_path):
 
 
 @requires_winps
-def test_screenshot_setup_resolves_its_defaults_under_windows_powershell_51():
+def test_screenshot_setup_resolves_its_defaults_under_windows_powershell_51(dry_run_setup):
     """5.1 leaves $PSScriptRoot empty inside param(), so the -CaptureScript default blew up
     during parameter binding, before any of the script's own checks ran.
 
-    Runs with python stripped from PATH: the script should get far enough to reach its own
-    "Python not found" guard, which proves the defaults resolved — and registers no task.
+    Runs with python stripped from PATH, under -DryRun: the interpreter is resolved by
+    probing (the system launcher included), so a stripped PATH no longer guarantees an
+    early exit — without -DryRun this test once registered a real scheduled task.
     """
-    script = SKILL / "scripts" / "setup_screenshot_pipeline.ps1"
-    env = dict(os.environ, PATH=r"C:\Windows\System32")
-    res = subprocess.run([WINPS, "-NoProfile", "-File", str(script), "-TaskName", "NeverRegistered"],
-                         capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    res = dry_run_setup(env=dict(os.environ, PATH=r"C:\Windows\System32"))
     combined = res.stdout + res.stderr
     assert "Cannot bind argument" not in combined, f"parameter defaults failed to resolve:\n{combined}"
-    assert "Python not found on PATH" in combined, f"unexpected failure:\n{combined}"
+    # Either outcome proves the defaults bound: the probe found a usable interpreter and
+    # the dry-run report printed, or no candidate survived and the script said so.
+    assert "DRYRUN Task name" in combined or "No usable Python" in combined, \
+        f"unexpected failure:\n{combined}"
+    assert probe_task_state() == "absent", "a stripped-PATH run registered a scheduled task"
 
 
 @requires_bash
@@ -196,11 +198,11 @@ def dry_run_setup():
     Unregisters that task on the way out. Should a regression ever make -DryRun register,
     the tests below would leave the machine taking screenshots on a schedule.
     """
-    def run(*args):
+    def run(*args, env=None):
         return subprocess.run(
             [WINPS, "-NoProfile", "-File", str(SCREENSHOT_SETUP), "-DryRun",
              "-TaskName", DRY_RUN_TASK, *args],
-            capture_output=True, text=True, encoding="utf-8", errors="replace")
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
 
     yield run
     subprocess.run(
@@ -265,6 +267,55 @@ def test_dry_run_repeats_across_the_requested_workday(dry_run_setup, tmp_path):
     boundary = datetime.fromisoformat(dry_run_field(res.stdout, "Start boundary"))
     local = boundary.astimezone() if boundary.tzinfo else boundary
     assert local.strftime("%H:%M") == "09:00", f"first run is not at -StartTime: {boundary}"
+
+
+@requires_winps
+def test_screenshot_setup_never_selects_a_zero_byte_python_stub(dry_run_setup, tmp_path):
+    """The Windows Store app-execution alias is a 0-byte python.exe that exists on PATH
+    but runs nothing. Selecting on existence picks it, and the task then registers
+    cleanly and never captures anything — which is how a coworker's first install died."""
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    for name in ("python.exe", "pythonw.exe", "python3.exe"):
+        (stubs / name).touch()
+    res = dry_run_setup(env=dict(os.environ, PATH=rf"{stubs};C:\Windows\System32"))
+    if "DRYRUN Execute" in res.stdout:
+        assert str(stubs) not in dry_run_field(res.stdout, "Execute"), \
+            "the 0-byte stub was selected as the interpreter"
+    else:
+        assert res.returncode != 0 and "No usable Python" in res.stdout + res.stderr, \
+            f"unexpected failure:\n{res.stdout}{res.stderr}"
+
+
+@requires_winps
+def test_python_exe_override_is_probed_and_used(dry_run_setup, tmp_path):
+    """-PythonExe pins the interpreter (probed, then preferred over every PATH
+    candidate), with the windowed sibling substituted so no console flashes."""
+    res = dry_run_setup("-PythonExe", sys.executable, "-ScreenshotsDir", str(tmp_path / "shots"))
+    assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
+    exe = Path(dry_run_field(res.stdout, "Execute"))
+    assert exe.parent == Path(sys.executable).parent, \
+        f"-PythonExe was ignored: task runs {exe}"
+    windowed = Path(sys.executable).with_name("pythonw.exe")
+    if windowed.is_file():
+        assert exe == windowed, f"windowed sibling not preferred: task runs {exe}"
+
+
+@requires_winps
+@pytest.mark.parametrize("breakage", ["zero-byte", "runs-but-fails"])
+def test_python_exe_override_rejects_a_broken_interpreter(dry_run_setup, tmp_path, breakage):
+    """Pointing -PythonExe at a broken install must be an error, not a silent fallback
+    to whatever else is on PATH. Both observed breakages existed on disk: the 0-byte
+    Store stub, and a split install that runs but can't reach its own libraries."""
+    fake = tmp_path / "python.exe"
+    if breakage == "zero-byte":
+        fake.touch()
+    else:
+        # where.exe runs and exits nonzero when handed `-c "import sys,os"`.
+        shutil.copy(r"C:\Windows\System32\where.exe", fake)
+    res = dry_run_setup("-PythonExe", str(fake), "-ScreenshotsDir", str(tmp_path / "shots"))
+    assert res.returncode != 0, f"a broken -PythonExe was accepted:\n{res.stdout}"
+    assert "DRYRUN" not in res.stdout, "the script carried on past a broken -PythonExe"
 
 
 @requires_winps
