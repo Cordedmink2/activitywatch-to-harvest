@@ -94,7 +94,9 @@ then run the install script.
 - **PowerShell 7** (`pwsh`) for the commands below. Windows ships only Windows PowerShell 5.1, where
   `pwsh` doesn't exist — install it with `winget install Microsoft.PowerShell`, or substitute
   `powershell.exe -File …` in every command (the scripts run under 5.1 too).
-- **Python 3.10+** on your `PATH` (`python --version`).
+- **Python 3.10+** that actually runs — verify with `py -c "import sys; print(sys.prefix)"` rather
+  than `python --version`: on Windows a bare `python` is often the Microsoft Store alias, a 0-byte
+  stub that prints an install nag instead of running.
 - **[Claude Code](https://claude.com/claude-code)** installed.
 - A **Harvest** account you can create a personal access token for.
 - A Chromium browser (Chrome/Edge) if you want per-client browser classification.
@@ -135,6 +137,8 @@ The result: every tab you open in your "Acme" profile gets ` - [ACME]` on the en
 "Beta" profile gets ` - [BETA]`, and so on. ActivityWatch now sees which client each tab belongs to.
 
 > Tip: keep the bracketed code distinct and unlikely to appear by accident (the brackets help).
+> Whatever format you pick, the tag and the category regex in the next step **must agree** — if you
+> drop the brackets here, drop them from the regex too, or nothing will ever match.
 
 ### 4. Configure ActivityWatch categories
 
@@ -145,9 +149,12 @@ Now teach ActivityWatch to group activity by those codes:
 3. Give it a **rule** of type **Regex** matching the bracketed code, e.g. `\[ACME\]`.
 4. Save. ActivityWatch will now classify any window/tab whose title contains `[ACME]` as Acme time.
 
-Repeat per client. You can verify it's working on the **Activity** / **Category** views after browsing
-in each profile for a bit. (The skill reads the raw events too, so this step mainly powers the AW
-dashboard and gives the skill a clean signal — both benefit from accurate codes.)
+Repeat per client. Then **verify it matches**: browse in a tagged profile for a minute and check the
+**Activity** / **Category** views actually attribute that time to the client. If everything lands in
+`uncategorized`, the tag format and the regex disagree (bracketed rule vs bare-code tag is the
+classic), or the regex has stray spaces inside an alternation (`Foo | Bar` requires the spaces).
+(The skill reads the raw events too, so this step mainly powers the AW dashboard and gives the skill
+a clean signal — both benefit from accurate codes.)
 
 ### 5. Install the skill into Claude Code
 
@@ -235,6 +242,11 @@ DATAVERSE_URL=https://yourorg.crm6.dynamics.com/
 PAC_AUTH_PROFILE=YourPacAuthProfileName
 ```
 
+The profile must be a **named** one — the refresh selects it with `pac auth select --name`, and
+`pac auth create` without `--name` creates an unnamed profile it can never select. Authenticate with
+`pac auth create --name YourPacAuthProfileName --environment https://yourorg.crm6.dynamics.com/`, or
+name an existing profile without re-authenticating: `pac auth name --index <N> --name <name>`.
+
 This requires the [Power Platform CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)
 (`pac`) installed and authenticated. **Leave both blank to skip it** — everything else works
 Harvest-only.
@@ -257,6 +269,11 @@ minutes on weekdays from **08:30 to 20:00**, saving to `~/Pictures/WorkScreensho
 tick writes **one PNG per monitor** (`HH-MM-SS_m1.png`, `HH-MM-SS_m2.png`, … in left-to-right order,
 at native resolution) rather than a single stitched image. Adjust with `-StartTime`, `-EndTime`,
 `-IntervalSeconds`. Re-running safely replaces the task.
+
+The setup probes each Python it can find with a real import and skips broken ones — the 0-byte Store
+stub and the "install exists but can't reach its own libraries" case both showed up in the wild. If
+it still picks the wrong interpreter, pin one with `-PythonExe C:\path\to\python.exe` (a broken
+`-PythonExe` is an error, never a silent fallback).
 
 > **If a previous `WorkScreenshots` task was registered as Administrator**, re-running setup from a
 > normal shell fails with `Access is denied`. Run the setup command once from an **elevated**

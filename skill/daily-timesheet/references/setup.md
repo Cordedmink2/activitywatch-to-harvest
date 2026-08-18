@@ -32,7 +32,10 @@ switch between per-machine and per-user install breaks it, and every trigger fro
 moment on fails. Confirm with `(Get-ScheduledTask -TaskName WorkScreenshots).Actions`, then
 re-run `setup_screenshot_pipeline.ps1` to re-register against the current interpreter.
 Setup prefers the version-independent launcher (`pyw.exe`) precisely so this survives a
-reinstall; a task registered by an older setup may still hold a versioned path.
+reinstall; a task registered by an older setup may still hold a versioned path. Setup also
+probes every candidate with a real import before trusting it — a 0-byte Store stub or a
+split install that can't reach its own libraries is skipped, and `-PythonExe <path>` pins
+an interpreter explicitly when probing picks wrong.
 
 Verify the fix by running the task once (`Start-ScheduledTask -TaskName WorkScreenshots`)
 and confirming new PNGs appear for every monitor.
@@ -57,7 +60,7 @@ The skill talks to Harvest via three local scripts (`scripts/harvest_post.py`, `
    HARVEST_ACCOUNT_ID=1234567
    HARVEST_API_KEY=pat-...
    ```
-4. Verify: `python scripts/harvest_list.py YYYY-MM-DD YYYY-MM-DD` for today should print existing entries (or nothing) without an auth error.
+4. Verify: `python scripts/harvest_list.py YYYY-MM-DD YYYY-MM-DD` for today should print existing entries without an auth error. A day with no entries prints `(no time entries from … to …)` on stderr — exit 0 plus that notice is the success case, distinguishable from a run that silently did nothing.
 
 **Security:** `.env` grants full access to the user's Harvest account. Never commit it; never include it when sharing the skill folder with a coworker — give them `.env.example` and let them fill in their own values. Token scope: a member-scope PAT is sufficient (the skill only reads self entries and posts via `/time_entries`). Admin endpoints like `/projects` and `/clients` would 403 on a member PAT — the skill never calls those; it uses `/users/me/project_assignments` via the cached `.mcp/harvest_assignments*.json`.
 
