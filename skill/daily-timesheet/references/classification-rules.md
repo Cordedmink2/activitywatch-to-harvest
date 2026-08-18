@@ -49,9 +49,11 @@ VS Code workspaces, Obsidian vaults, repo paths, ChatGPT project names, and othe
 
 **Long agent-CLI sessions poison the window title.** A running `claude` session keeps one editor tab in focus (`CLAUDE.md`, `AGENTS.md`, a plan `.md`) for its whole duration while the actual work happens in the terminal, the browser, or on another monitor. The *file name* in such a title is not a work signal and will mis-attribute whole blocks. The VS Code *workspace* tag (`… - <Workspace> - Visual Studio Code`) stays valid, but when a block is titled with these files, resolve the client from screenshots — and check every monitor, not just the one showing the focused app. The same applies to any other `*.md` title that isn't obviously one of these three: confirm the file actually lives in the client's repo (`git log --follow -- <path>` or a plain find) before trusting it — a Claude Code skill's own reference file (methodology docs, checklists) can be open in the editor while a *different* workspace has focus, and its name alone will look like project documentation.
 
-### 5. URL pattern (MEDIUM confidence)
+### 5. Environment identifier (MEDIUM confidence)
 
 URLs in browser tabs (Edge / Firefox / Chrome) expose Dynamics environments, Azure DevOps orgs, SharePoint subdomains, ChatGPT project slugs, etc. — see `.context.md` for the user's URL → client mapping. The URL fingerprint is usually unambiguous; if a new URL pattern appears that maps to a known client, propose adding it to `.context.md`.
+
+**The identifier is often not in the window title at all.** Admin tools that connect to a client environment — XrmToolBox, database/API clients, RDP sessions, CLI auth profiles — carry a fixed product name in the title and show the environment only on screen: a connection dropdown, a status bar, a profile list. The connected environment decides the client; the tool name never does, and neither does the workspace behind it. Two consequences: the block stays unresolved until a screenshot shows the connection (`SKILL.md` Step 5.2), and §6's adjacency rule does **not** extend here — connecting to a different environment is frequently the switch point itself, so the neighbouring block is the wrong answer by construction. Flag these on sight: a title with no visible ambiguity won't otherwise reach the screenshot check.
 
 ### 6. `claude.exe` / terminal adjacency rule
 

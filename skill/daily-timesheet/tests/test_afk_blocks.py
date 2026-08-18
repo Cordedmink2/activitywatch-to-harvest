@@ -178,3 +178,55 @@ def test_parse_range_converts_local_times_to_utc():
     assert hhmm(start) == "21:00"          # 09:00 NZST the previous UTC day
     assert start.date() == dt.date(2026, 5, 27)
     assert (end - start) == dt.timedelta(hours=8)
+
+
+# --- data holes: the watcher stops writing while the machine sleeps or is locked -------
+
+
+def test_data_hole_with_no_events_is_reported_as_a_break():
+    """A long absence leaves a HOLE in the event stream, not an `afk` event, so
+    find_breaks() cannot see it. Real 2026-08-18 day: a 47-min lunch produced no event
+    at all and the skeleton reported `breaks: (none)`."""
+    spans = ab.insert_data_gaps(ab.to_spans([
+        ev("09:00", 120, "not-afk"),   # 09:00-11:00
+        # watcher stops entirely: no events at all 11:00-12:00
+        ev("12:00", 60, "not-afk"),    # 12:00-13:00
+    ]), ab.DEFAULT_THRESHOLD)
+    breaks = ab.find_breaks(spans, at("09:00"), at("13:00"), ab.DEFAULT_THRESHOLD)
+    assert [(hhmm(s), hhmm(e)) for s, e, _ in breaks] == [("11:00", "12:00")]
+
+
+def test_data_hole_splits_the_active_span_rather_than_merging_across_it():
+    """Without this the two work runs merge into one 09:00-13:00 span and the day reads
+    as four unbroken hours of activity."""
+    spans = ab.insert_data_gaps(ab.to_spans([
+        ev("09:00", 120, "not-afk"),
+        ev("12:00", 60, "not-afk"),
+    ]), ab.DEFAULT_THRESHOLD)
+    got = ab.active_spans(spans, ab.DEFAULT_THRESHOLD)
+    assert [(hhmm(s), hhmm(e)) for s, e in got] == [("09:00", "11:00"), ("12:00", "13:00")]
+
+
+def test_short_data_hole_is_not_a_break():
+    """A brief hole is the watcher's own cadence, not an absence - fold it in."""
+    spans = ab.insert_data_gaps(ab.to_spans([
+        ev("09:00", 120, "not-afk"),
+        ev("11:05", 55, "not-afk"),    # 5-min hole, well under threshold
+    ]), ab.DEFAULT_THRESHOLD)
+    assert ab.find_breaks(spans, at("09:00"), at("12:00"), ab.DEFAULT_THRESHOLD) == []
+    assert len(ab.active_spans(spans, ab.DEFAULT_THRESHOLD)) == 1
+
+
+def test_a_break_from_a_data_hole_is_distinguishable_from_a_recorded_afk_break():
+    """Both are breaks, but only a recorded afk proves the user was at the desk and idle.
+    A watcher outage must not be presented as an observed break."""
+    spans = ab.insert_data_gaps(ab.to_spans([
+        ev("09:00", 60, "not-afk"),
+        ev("10:00", 30, "afk"),        # recorded: user idle at the desk
+        ev("10:30", 30, "not-afk"),
+        # hole 11:00-12:00: watcher stopped entirely
+        ev("12:00", 60, "not-afk"),
+    ]), ab.DEFAULT_THRESHOLD)
+    kinds = {(hhmm(s), hhmm(e)): ab.break_kind(spans, s, e)
+             for s, e, _ in ab.find_breaks(spans, at("09:00"), at("13:00"), ab.DEFAULT_THRESHOLD)}
+    assert kinds == {("10:00", "10:30"): "afk", ("11:00", "12:00"): "gap"}

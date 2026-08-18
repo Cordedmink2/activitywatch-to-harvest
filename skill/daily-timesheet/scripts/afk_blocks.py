@@ -94,11 +94,44 @@ def total_active_seconds(spans):
     return sum(dur for _, _, status, dur in spans if status == "not-afk")
 
 
+GAP_STATUS = "gap"   # a hole in the AFK record: watcher stopped (machine slept/locked)
+
+
+def insert_data_gaps(spans, threshold_s):
+    """Materialise holes in the AFK record as explicit spans.
+
+    The watcher writes nothing at all while the machine sleeps or is locked, so a long
+    absence leaves a HOLE between two events rather than an `afk` event. find_breaks()
+    only looks at recorded `afk` spans and active_spans() only splits on one, so an
+    unmaterialised hole is invisible to the first and merged straight across by the
+    second - a real break vanishes and the day reads as one unbroken run."""
+    out = []
+    for span in spans:
+        if out:
+            prev_end = out[-1][1]
+            hole = (span[0] - prev_end).total_seconds()
+            if hole >= threshold_s:
+                out.append((prev_end, span[0], GAP_STATUS, hole))
+        out.append(span)
+    return out
+
+
 def find_breaks(spans, work_start, work_end, threshold_s):
     """afk spans >= threshold falling within the workday. The big afk spans either
     side of it aren't breaks - they're not being at work yet, and being done."""
     return [(s, e, dur) for s, e, status, dur in spans
-            if status == "afk" and dur >= threshold_s and s >= work_start and e <= work_end]
+            if status in ("afk", GAP_STATUS) and dur >= threshold_s
+            and s >= work_start and e <= work_end]
+
+
+def break_kind(spans, start, end):
+    """Which sort of break this is: "gap" = a hole in the AFK record (watcher stopped,
+    machine slept or locked), "afk" = a recorded idle span with the user still at the
+    desk. Only the second is positive evidence of anything."""
+    for s, e, status, _ in spans:
+        if s == start and e == end and status == GAP_STATUS:
+            return GAP_STATUS
+    return "afk"
 
 
 def active_spans(spans, threshold_s):
@@ -196,7 +229,7 @@ def main():
     def to_local(d):
         return (d + offset).strftime("%H:%M:%S")
 
-    spans = to_spans(afk_events)
+    spans = insert_data_gaps(to_spans(afk_events), args.afk_threshold)
     bounds = work_bounds(spans)
     if bounds is None:
         # Same key set as a normal result, so `--json` output can be parsed without
@@ -297,7 +330,8 @@ def main():
         "work_end": to_local(work_end),
         "work_end_blip": ({"last_solid_end": to_local(last_solid_end)} if work_end_blip else None),
         "total_active_min": round(total_active_s / 60, 1),
-        "breaks": [{"start": to_local(s), "end": to_local(e), "min": round(d / 60, 1)} for s, e, d in breaks],
+        "breaks": [{"start": to_local(s), "end": to_local(e), "min": round(d / 60, 1),
+                    "kind": break_kind(spans, s, e)} for s, e, d in breaks],
         "active_spans": [{"start": to_local(s), "end": to_local(e),
                           "min": round((e - s).total_seconds() / 60, 1)} for s, e in active],
         "window_watcher_tail": win_tail,
@@ -324,7 +358,8 @@ def main():
     print(f"  breaks (>= {args.afk_threshold//60} min):")
     if breaks:
         for b in result["breaks"]:
-            print(f"     {b['start']} - {b['end']}  ({b['min']} min)")
+            tag = "   <- no AFK data (machine asleep/locked), not a recorded idle span"                   if b["kind"] == GAP_STATUS else ""
+            print(f"     {b['start']} - {b['end']}  ({b['min']} min){tag}")
     else:
         print("     (none)")
     print(f"  active spans (short afk folded in):")

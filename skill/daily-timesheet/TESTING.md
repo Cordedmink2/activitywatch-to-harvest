@@ -168,6 +168,60 @@ under-billing.
 Guard 3 already said an excluded stretch is "declared under the table and never passed to
 `--cover`"; guard 1 contradicted it. Guard 1 now defers, and points at guard 3.
 
+### Prefix → client is derived from the catalogs, not hand-listed — user `.context.md`
+**Rung 2.** 2026-08-18. `.context.md` carried a hand-written prefix → client list of 12
+entries with a hedge on one (`HER`→Heart Foundation "confirm vs Herman Pacific").
+Deriving the mapping from `.mcp/harvest_assignments*.json` (`project.code` prefix →
+`client.name`) yields **46** prefixes and contradicts the list twice: `HER` is **Herman
+Pacific** and Heart Foundation is **`NHF`**; `TEP` is **EarnLearn** alone, with Connexis
+under `CON`. No agent was watched misbilling on it, so rung 2 — but the hedge shows the
+ambiguity was live, and a stale mapping excludes evidence silently rather than erroring.
+
+The derivation also surfaces what the list's format could not express: **`PSO` (14
+clients) and `SLA` (9) are cross-client prefixes**, so the prefix alone never identifies
+the client for those two. That is the general case of the existing Technoform note that
+`PSO-1037` is a dead presales shell.
+
+`classification-rules.md` §1 step 1 sends the agent to `.context.md` for this mapping, so
+the entry could not simply be deleted — it was replaced with the derivation route, which
+keeps that pointer resolving.
+
+**Rejected: keeping the list and correcting the two wrong rows.** Same defect one edit
+later; the list was wrong because it was hand-maintained, not because those rows were
+unlucky. **Rejected: writing the corrected 46 rows into `.context.md`.** It is 3× the
+bytes of the route that generates it, against a 14,000-byte budget, and stale on the next
+client.
+
+### Environment-connected tools are a rubric signal, not only a disambiguation step
+**Rung 2.** 2026-08-18. Connor asked for "XrmToolBox and similar tools carry no client in
+the title; resolve from the connection string" to move into the skill. Half of it was
+already there — `SKILL.md` Step 5.2 lists XrmToolBox among "generic apps that don't name
+their client". But Step 5 opens `For any 🔸 block`, and Step 4 classifies against
+`classification-rules.md`, whose signal hierarchy had no entry for it. **A block titled
+plain `XrmToolBox` reads as unambiguous, so it is never flagged, so the Step 5.2 guidance
+is never reached.** Reachability, not absence, was the defect. Added to rubric §5, which
+was renamed URL pattern → *Environment identifier* to cover connections that never appear
+in a title (no other file referenced §5 by name or number — §3 at line 80 is the only
+cross-reference and is unaffected).
+
+Rung 2: measured on 2026-08-17, where XrmToolBox connected to `ccamsdev` was the *first*
+evidence of an NZLS→QEII switch, but no agent was watched misattributing it. That day is
+also why the entry says §6's terminal-adjacency rule does not extend to these tools —
+connecting to a different environment tends to *be* the switch point, so the adjacent
+block is wrong by construction. Script-level behaviour is already pinned by
+`test_scenarios.py::test_a_generic_tool_lands_uncategorized_rather_than_guessed`; the new
+text is the classification-time counterpart and has no validator.
+
+The client-specific half (`ccamsdev`/`ccamsuat` → QEII, `cmsdev`/`cmsuat` → NZLS) was
+**deleted** from `.context.md` rather than moved: lines 23 and 55 already list those
+environments under the NZLS and QEII sections, which own env → client mapping. Net −203
+bytes against the Step 11 budget.
+
+**Rejected: moving the rule wholesale into the skill as asked.** The mapping is one user's
+clients; `references/context.md.example` reserves the skill for generic heuristics.
+**Rejected: leaving `.context.md` as the only home.** It described a generic tool class,
+so every other user of the skill would have had to rediscover it.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was
@@ -358,9 +412,69 @@ rule has to confront the interaction.
   agent already gets right from existing text needs no rule.
 - **Global `python` → `py`.** See above.
 
+### `afk_blocks.py` sees holes in the AFK record — script fix
+**Rung 1, observed in a live run. 2026-08-18.**
+
+`find_breaks()` filtered on `status == "afk"`; `active_spans()` split only on a recorded
+afk span >= threshold. Neither ever measured elapsed time *between* consecutive events.
+The watcher writes nothing at all while the machine sleeps or is locked, so an absence
+leaves a hole in the stream rather than an event — invisible to the first function,
+merged straight across by the second.
+
+Live 2026-08-18 day: a 3h06m morning hole and a user-confirmed 47-min lunch produced
+`breaks: (none)` and a single active span 05:16–17:28 (732 min) at a 0.48 day ratio. The
+skeleton did not merely miss the breaks, it **asserted their absence** — and Step 3 says
+to take the breaks list verbatim.
+
+**Billing consequence: none on this run.** The `<0.4` band plus screenshot-gap
+cross-checking excluded both stretches correctly, as the 2026-08-12 granularity fix
+predicted. The cost was exactly what the first Open gap anticipated: *the quality of the
+question put to the user*. The run excluded the lunch as "away" but could not name it,
+and asked instead whether a break belonged in the 11:41–14:42 stretch — three hours off,
+prompted by the 11:30–14:30 default lunch window. The user's correction ("i had a lunch
+break around 3-4") is what surfaced the defect.
+
+**Fix.** `insert_data_gaps()` materialises any inter-event hole >= threshold as an
+explicit `GAP_STATUS` span, called once where `to_spans()` was. `find_breaks()` accepts
+`("afk", GAP_STATUS)`. `active_spans()` needed no edit — its existing
+`elif dur >= threshold_s` branch splits on any non-`not-afk` status once the span exists.
+`break_kind()` labels each break `gap` or `afk` in the JSON and tags gap breaks in the
+printout, because a watcher outage is absence of evidence while a recorded afk is
+evidence of presence, and conflating them is how the empty list got inverted before.
+
+**Tests.** Four in `test_afk_blocks.py`, each watched failing first: hole becomes a
+break; hole splits the span rather than merging; sub-threshold hole does neither; gap and
+recorded-afk breaks are distinguishable. The four golden scenarios moved by exactly one
+added `"kind": "afk"` field each — no break count, boundary or span changed, since no
+existing fixture contains a hole (verified: no golden holds a `"gap"` kind).
+
+**The unit tests were not enough, and a mutation check is what showed it.** All four call
+`insert_data_gaps()` directly, so they never exercise the one line in `main()` that puts
+it in the product. Reverting that single line — gap detection built, tested, and wired to
+nothing — left the suite at **266 passed / 5 skipped, fully green**, while the CLI went
+straight back to `breaks: (none)` on the real 2026-08-18 stream. The original RED was also
+weaker than it looked: `AttributeError: no attribute 'insert_data_gaps'` proves a function
+is absent, not that the assertions discriminate a wrong implementation from a right one.
+
+`test_cli_contracts.py::test_a_hole_in_the_afk_record_reaches_the_cli_as_a_labelled_break`
+closes it end-to-end, and was watched failing against the disconnected build with a real
+assertion diff (`[] != [('11:00:00','12:00:00','gap')]`), then passing once restored.
+Full suite now **267 passed / 5 skipped**.
+
+**Generalisable:** a helper-level test plus a green suite says nothing about whether the
+helper is reachable from the product. Where a fix is one call site, test the call site.
+
 ## Open gaps
 
-- **REOPENED: does anything route an agent to `activitywatch.md` when the anomaly is not
+- **Largely closed at the data layer, 2026-08-18** (see the `insert_data_gaps` entry
+  above): holes now surface as labelled breaks, so an agent no longer has to infer an
+  absence from an empty list, and the inversion failure mode is gone. What remains open is
+  the narrower question of whether anything routes an agent to `activitywatch.md` for the
+  *sub-threshold* lock fragmentation the gap fix does not cover.
+- **No scenario/golden day contains a data hole.** Now covered end-to-end by one
+  `test_cli_contracts.py` case, but still absent from the scenario/golden set, so the
+  hole shape is untested against the full day-shape output. The obvious next fixture.
+- **ORIGINAL: does anything route an agent to `activitywatch.md` when the anomaly is not
   pre-flagged?** On the de-hinted fixture, **0 of 4** reps named it, and one inverted the
   meaning of an empty `breaks` list outright. The granularity fix removes the *billing*
   consequence — all 4 treatment reps excluded the stretches correctly without ever

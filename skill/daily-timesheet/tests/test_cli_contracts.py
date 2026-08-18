@@ -224,3 +224,21 @@ def test_timeline_reports_an_unreachable_activitywatch_as_exit_one():
     r = run_cli(tl, [dt.date(2026, 8, 12).isoformat()])
     assert r.code == 1
     assert "ActivityWatch unreachable" in r.err
+
+
+def test_a_hole_in_the_afk_record_reaches_the_cli_as_a_labelled_break(live_aw):
+    """End-to-end guard for the *wiring*, not just the helper.
+
+    The watcher writes nothing at all while the machine sleeps, so 11:00-12:00 below
+    carries no event of any kind. Reverting `insert_data_gaps` out of main leaves every
+    unit test green while the CLI goes back to reporting `breaks: (none)` on a day the
+    user plainly spent an hour away - which is the 2026-08-18 defect exactly."""
+    d = day().active("08:30", "11:00").active("12:00", "15:00")   # hole: 11:00-12:00
+    live_aw(d)
+    r = run_cli(ab, [d.date_str(), "--json"])
+    assert r.code == 0
+    payload = r.json()
+    assert [(b["start"], b["end"], b["kind"]) for b in payload["breaks"]] == [
+        ("11:00:00", "12:00:00", "gap")]
+    assert [(s["start"], s["end"]) for s in payload["active_spans"]] == [
+        ("08:30:00", "11:00:00"), ("12:00:00", "15:00:00")]

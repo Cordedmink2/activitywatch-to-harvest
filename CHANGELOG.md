@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tagged in the text output. A watcher outage is absence of evidence; a recorded `afk`
   span is evidence the user was at their desk and idle. Conflating the two is what allowed
   an empty breaks list to be read as proof the user was never away.
+- `classification-rules.md` §5 is now **Environment identifier** rather than "URL
+  pattern". Admin tools that connect to a client environment — XrmToolBox, database and
+  API clients, RDP sessions, CLI auth profiles — carry a fixed product name in the title
+  and show the environment only on screen. The connected environment decides the client;
+  the tool name never does, and neither does the workspace behind it. §6's adjacency rule
+  explicitly does not extend to them, since connecting to a different environment is
+  frequently the switch point itself.
+- `TESTING.md` records three findings from 2026-08-18: the data-hole defect above, the
+  environment-connected-tools signal, and the replacement of a hand-written prefix →
+  client list with a derivation from the Harvest catalogs (a per-user `.context.md`
+  change, recorded here because the reasoning belongs with the test record).
 
 ## [0.4.2] - 2026-08-14
 
