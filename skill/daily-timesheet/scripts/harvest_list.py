@@ -78,6 +78,11 @@ def main() -> None:
         page += 1
 
     all_entries.sort(key=sort_key)
+    if not all_entries:
+        # To stderr so stdout stays machine-readable: a day with no entries and a run
+        # that silently did nothing look identical otherwise, and the setup runbook's
+        # credential check reads exactly this case.
+        print(f"(no time entries from {from_date} to {to_date})", file=sys.stderr)
     for e in all_entries:
         eid = e["id"]
         d = e["spent_date"]
