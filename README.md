@@ -156,6 +156,12 @@ classic), or the regex has stray spaces inside an alternation (`Foo | Bar` requi
 (The skill reads the raw events too, so this step mainly powers the AW dashboard and gives the skill
 a clean signal — both benefit from accurate codes.)
 
+> **See these failure modes for yourself:** open
+> [`demo/tag-rule-demo.html`](./demo/tag-rule-demo.html) in a browser — one self-contained file,
+> nothing to install. Four guided walkthroughs show a mismatched tag silently categorising nothing,
+> bare codes claiming incidental prose, and a regex with spaces inside its alternation that only
+> *looks* like it works.
+
 ### 5. Install the skill into Claude Code
 
 From a clone of this repo:
@@ -224,10 +230,12 @@ skill root. Set it up:
    HARVEST_ACCOUNT_ID=1234567
    HARVEST_API_KEY=pat-...
    ```
-4. Verify it works (should print existing entries or nothing, with no auth error):
+4. Verify it works (on Windows use `py` — a bare `python` is often the Store stub):
    ```powershell
-   python "$HOME\.claude\skills\daily-timesheet\scripts\harvest_list.py" 2026-01-01 2026-01-01
+   py "$HOME\.claude\skills\daily-timesheet\scripts\harvest_list.py" 2026-01-01 2026-01-01
    ```
+   Entries print one per line; a day with no entries prints `(no time entries from … to …)`.
+   Either of those with no auth error is success — a 401/403 means the token is wrong.
 
 > **Security:** your `.env` grants full access to your Harvest account. It is git-ignored — never
 > commit it, and never share the skill folder with `.env` still in it. A member-scope token is enough.
@@ -327,6 +335,8 @@ activitywatch-to-harvest/
 ├── CHANGELOG.md              # what changed in each release
 ├── llms.txt                  # machine-readable setup runbook for Claude Code
 ├── LICENSE                   # MIT
+├── demo/
+│   └── tag-rule-demo.html    # interactive demo of the tag/category-rule failure modes
 ├── skill/daily-timesheet/    # the skill itself (installed into ~/.claude/skills)
 │   ├── SKILL.md              # the skill's instructions
 │   ├── .env.example          # credential + optional-config template
@@ -337,6 +347,7 @@ activitywatch-to-harvest/
 │       ├── aw_client.py          # shared ActivityWatch REST helpers for the two above
 │       ├── harvest_lookup.py     # project_id/task_id lookup by code, name or client
 │       └── ...                   # harvest_post/patch/list, refresh_catalogs, screenshot_capture
+├── tests/                    # guards on the install/setup scripts a new user runs first
 └── install/                  # install_skill + setup_workspace (PowerShell + bash)
 ```
 

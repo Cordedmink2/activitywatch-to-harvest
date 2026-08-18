@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tag vs category rule — demo</title>
+<style>
+  :root {
+    --accent: #0f766e;
+    --accent-soft: #f0fdfa;
+    --ink: #1c1917;
+    --muted: #78716c;
+    --line: #e7e5e4;
+    --bad: #b91c1c;
+    --bad-soft: #fef2f2;
+    --warn: #a16207;
+    --warn-soft: #fefce8;
+    --ok-soft: #f0fdf4;
+    --ok: #15803d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.5rem 5rem;
+    font: 15px/1.55 "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); background: #fafaf9;
+  }
+  main { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.05rem; margin: 2.2rem 0 .6rem; }
+  .demo-banner {
+    display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .08em;
+    color: var(--warn); background: var(--warn-soft); border: 1px solid #fde68a;
+    padding: .15rem .5rem; border-radius: 4px; margin-bottom: .8rem;
+  }
+  .intro { color: var(--muted); margin: 0 0 1.5rem; max-width: 62ch; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  th { text-align: left; font-weight: 600; color: var(--muted); padding: .3rem .5rem; border-bottom: 1px solid var(--line); }
+  td { padding: .35rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .title-cell { font-family: Consolas, monospace; font-size: .78rem; word-break: break-all; }
+  .chip { display: inline-block; font-size: .72rem; font-weight: 600; padding: .05rem .45rem; border-radius: 999px; white-space: nowrap; }
+  .chip.ok   { color: var(--ok);   background: var(--ok-soft); }
+  .chip.miss { color: var(--bad);  background: var(--bad-soft); }
+  .chip.cross{ color: var(--warn); background: var(--warn-soft); }
+  .chip.none { color: var(--muted); background: #f5f5f4; }
+  .rule-row input {
+    font-family: Consolas, monospace; font-size: .82rem; width: 100%;
+    padding: .3rem .45rem; border: 1px solid var(--line); border-radius: 5px;
+  }
+  .rule-row input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .smell { color: var(--bad); font-size: .76rem; }
+  .summary { margin-top: .8rem; padding: .6rem .8rem; border-radius: 6px; font-size: .88rem; }
+  .summary.good { background: var(--ok-soft); color: var(--ok); }
+  .summary.bad  { background: var(--bad-soft); color: var(--bad); }
+  .preview { font-family: Consolas, monospace; font-size: .78rem; color: var(--muted); background: #f5f5f4; padding: .4rem .6rem; border-radius: 5px; margin-top: .4rem; word-break: break-all; }
+  button {
+    font: inherit; font-size: .85rem; padding: .42rem .85rem; margin: .2rem .3rem .2rem 0;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #115e59; color: #fff; }
+  .toggle-group button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .tabs { display: flex; gap: .3rem; flex-wrap: wrap; margin-bottom: -1px; }
+  .tabs button { border-radius: 6px 6px 0 0; margin: 0; }
+  .tabs button.active { background: #fff; border-bottom-color: #fff; font-weight: 600; color: var(--accent); }
+  .tab-body { border: 1px solid var(--line); border-radius: 0 8px 8px 8px; background: #fff; padding: 1rem 1.2rem; }
+  .step { display: flex; align-items: baseline; gap: .6rem; margin: .35rem 0; }
+  .step .mark { width: 1.2rem; text-align: center; color: var(--ok); font-weight: 700; }
+  .step button { margin: 0; }
+  .step .note { color: var(--muted); font-size: .82rem; }
+  .blurb { color: var(--muted); font-size: .9rem; margin: .2rem 0 .8rem; max-width: 68ch; }
+  .changed { margin-top: .6rem; font-size: .82rem; color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <span class="demo-banner">INTERACTIVE DEMO — simulated data only; nothing reads your machine</span>
+  <h1>Does your browser tag match your ActivityWatch rule?</h1>
+  <p class="intro">
+    Every browser profile stamps a client tag onto its window titles (via the URL-in-Title
+    extension), and ActivityWatch classifies those titles with per-client regex rules.
+    <strong>If the tag format and the rule disagree, nothing matches — silently.</strong>
+    This demo lets you push realistic window titles through a tag convention and a set of
+    rules, and see exactly which titles categorise where, which fall through, and which land
+    on the <em>wrong</em> client. It's why the setup docs recommend bracketed tags like
+    <code>[ACME]</code> — and insist you verify against real events either way. All clients
+    and URLs here are fictional.
+  </p>
+
+  <h2>Current state</h2>
+  <div class="panel" id="state-panel"></div>
+
+  <h2>Free play</h2>
+  <div class="panel">
+    <div><strong>Tag convention</strong> — how each browser profile stamps its client code:</div>
+    <div class="toggle-group" id="tag-toggle"></div>
+    <div style="margin-top:.9rem"><strong>Browse things</strong> — each button adds the window titles that action would really produce:</div>
+    <div id="event-buttons"></div>
+    <div style="margin-top:.9rem"><strong>Reset</strong></div>
+    <button id="clear-day">Clear the day</button>
+    <button id="reset-rules">Reset rules to repo defaults</button>
+  </div>
+
+  <h2>Guided walkthroughs</h2>
+  <div class="tabs" id="tabs"></div>
+  <div class="tab-body" id="tab-body"></div>
+</main>
+
+<script>
+/* ================================================================
+   PURE MODULE — TagRuleModel
+   No DOM access. The reducer holds the configuration + observed
+   events; evaluate() derives the match matrix and every warning the
+   setup docs describe in prose.
+   ================================================================ */
+const TagRuleModel = (() => {
+
+  // A window title as URL-in-Title actually emits it (observed on a real
+  // machine): "<page> - <url> <tag> - Google Chrome". Non-browser windows
+  // never carry a tag.
+  function buildTitle(page, url, tag) {
+    if (url === null) return page;                       // terminal, Teams, ...
+    const stamp = tag === null ? "" : " " + tag;
+    return `${page} - ${url}${stamp} - Google Chrome`;
+  }
+
+  function renderTag(style, code) {
+    if (code === null) return null;                      // untagged profile
+    return style === "brackets" ? `[${code}]` : code;
+  }
+
+  const initialState = {
+    tagStyle: "brackets",                                // "brackets" | "bare"
+    // client rules exactly as AW stores them: name + regex + ignore_case
+    rules: [
+      { client: "ACME",     regex: "\\[ACME\\]",     ignoreCase: true },
+      { client: "BETA",     regex: "\\[BETA\\]",     ignoreCase: true },
+      { client: "Payments", regex: "\\[PAY\\]",      ignoreCase: true },
+      { client: "Singer",   regex: "\\[SINGER\\]",   ignoreCase: true },
+    ],
+    // profile -> code the extension stamps; null = profile with no tag set up
+    profiles: {
+      "ACME":     "ACME",
+      "BETA":     "BETA",
+      "Payments": "PAY",
+      "Singer":   "SINGER",
+      "Personal": null,
+    },
+    events: [],   // { page, url, profile }  (profile null = not a browser)
+  };
+
+  function reducer(state, action) {
+    switch (action.type) {
+      case "SET_TAG_STYLE":
+        return { ...state, tagStyle: action.style };
+      case "SET_RULE":
+        return { ...state, rules: state.rules.map(r =>
+          r.client === action.client ? { ...r, regex: action.regex } : r) };
+      case "SET_ALL_RULES_BARE":
+        return { ...state, rules: state.rules.map(r => {
+          const code = state.profiles[r.client];
+          return { ...r, regex: code === null ? r.regex : code };
+        }) };
+      case "RESET_RULES":
+        return { ...state, rules: initialState.rules.map(r => ({ ...r })) };
+      case "ADD_EVENTS":
+        return { ...state, events: [...state.events, ...action.events] };
+      case "CLEAR_EVENTS":
+        return { ...state, events: [] };
+      case "RESET":
+        return JSON.parse(JSON.stringify(initialState));
+      default:
+        return state;
+    }
+  }
+
+  // Static smells in a rule's regex text — mistakes seen on real machines.
+  function ruleSmells(regex) {
+    const smells = [];
+    if (regex.trim() === "" ) smells.push("empty rule — matches nothing");
+    if (/FILL ME/i.test(regex)) smells.push("placeholder never filled in");
+    if (/ \||\| /.test(regex)) smells.push("spaces around | are part of the pattern — “A | B” only matches “A ” or “ B”");
+    if (/\s$/.test(regex)) smells.push("trailing space is part of the pattern");
+    try { new RegExp(regex); } catch { smells.push("invalid regex"); }
+    return smells;
+  }
+
+  function evaluate(state) {
+    const compiled = state.rules.map(r => {
+      let re = null;
+      try { re = new RegExp(r.regex, r.ignoreCase ? "i" : ""); } catch { /* smell reported */ }
+      return { ...r, re, smells: ruleSmells(r.regex) };
+    });
+
+    const rows = state.events.map(ev => {
+      const tag = ev.profile === null ? null
+                : renderTag(state.tagStyle, state.profiles[ev.profile]);
+      const title = buildTitle(ev.page, ev.url, ev.profile === null ? null : tag);
+      const matches = compiled.filter(r => r.re && r.re.test(title)).map(r => r.client);
+      const expected = ev.profile !== null && state.profiles[ev.profile] !== null
+                     ? ev.profile : null;   // which client this activity belongs to, if any
+      let verdict;
+      if (expected === null) {
+        verdict = matches.length === 0 ? "none"
+                : { kind: "cross", hit: matches };        // untagged activity claimed by a client
+      } else if (matches.length === 0) {
+        verdict = "miss";                                 // tagged work fell through
+      } else if (matches.length === 1 && matches[0] === expected) {
+        verdict = "ok";
+      } else {
+        verdict = { kind: "cross", hit: matches.filter(m => m !== expected) };
+      }
+      return { ...ev, title, matches, expected, verdict };
+    });
+
+    const deadRules = state.events.length === 0 ? [] :
+      compiled.filter(r => !rows.some(row => row.matches.includes(r.client)))
+              .map(r => r.client);
+    const missed = rows.filter(r => r.verdict === "miss").length;
+    // Two different problems: tagged work landing on the WRONG client is always bad;
+    // an untagged window matched from its title alone is sometimes right (a client
+    // folder in Explorer) and sometimes not (a sewing-machine video) — flag, don't damn.
+    const crossed = rows.filter(r => typeof r.verdict === "object" && r.expected !== null).length;
+    const titleClaims = rows.filter(r => typeof r.verdict === "object" && r.expected === null).length;
+
+    return { rows, compiled, deadRules, missed, crossed, titleClaims };
+  }
+
+  return { initialState, reducer, evaluate, renderTag, buildTitle };
+})();
+
+/* ================================================================
+   PAGE SHELL — thin rendering layer over the pure module.
+   ================================================================ */
+
+// Realistic browsing actions. Title shapes are lifted from real
+// ActivityWatch events; clients, records and URLs are fictional.
+const ACTIONS = [
+  { id: "acme-dyn",  label: "Work in Dynamics (ACME profile)", profile: "ACME",
+    events: [{ page: "Microsoft Dynamics 365", url: "https://acme-dev.crm.example.com/", profile: "ACME" }] },
+  { id: "acme-sp",   label: "Open a contract doc (ACME profile)", profile: "ACME",
+    events: [{ page: "Contracts - 5-02-011 - Sunnyfield Nursery Ltd - All Documents", url: "https://acmetrust.sharepoint.example.com/", profile: "ACME" }] },
+  { id: "beta-dyn",  label: "Work in Dynamics (BETA profile)", profile: "BETA",
+    events: [{ page: "Case Management - Dynamics 365", url: "https://beta-dev.crm.example.com/", profile: "BETA" }] },
+  { id: "beta-contract", label: "Read an emailed ACME doc in the BETA profile", profile: "BETA",
+    events: [{ page: "Contract 5-02-011 Sunnyfield - variation memo", url: "https://acmetrust.sharepoint.example.com/", profile: "BETA" }] },
+  { id: "pers-payments", label: "Read a payments article (Personal profile)", profile: "Personal",
+    events: [{ page: "How Stripe handles payments at scale", url: "https://news.example.com/", profile: "Personal" }] },
+  { id: "pers-singer", label: "Watch a sewing-machine review (Personal profile)", profile: "Personal",
+    events: [{ page: "Singer 4423 heavy duty review - YouTube", url: "https://youtube.com/", profile: "Personal" }] },
+  { id: "terminal",  label: "Work in the terminal (no browser)", profile: null,
+    events: [{ page: "Set up ActivityWatch to Harvest daily-timesheet skill", url: null, profile: null }] },
+  { id: "acme-explorer", label: "Browse the ACME folder in File Explorer", profile: null,
+    events: [{ page: "ACME", url: null, profile: null }] },
+  { id: "full-day",  label: "Simulate a full day (all of the above)", profile: null, all: true },
+];
+ACTIONS.forEach(a => { if (a.all) a.events = ACTIONS.filter(x => !x.all).flatMap(x => x.events); });
+
+const SCENARIOS = [
+  {
+    id: "mismatch",
+    title: "1 · The mismatch that bites",
+    blurb: "The docs say bracketed tags; a first-time setup ends up with bare codes in the extension while the rules still expect brackets. Everything looks configured. Watch the day land: every rule is dead, every browser block uncategorised — and nothing ever told you.",
+    steps: [
+      { label: "Reset to repo defaults (bracketed rules)", actions: [{ type: "RESET" }] },
+      { label: "Extension gets set up with bare codes", note: "tag becomes “… ACME - Google Chrome”, rules still say \\[ACME\\]", actions: [{ type: "SET_TAG_STYLE", style: "bare" }] },
+      { label: "Simulate a full day", note: "watch the summary line and the DEAD column", actions: [{ type: "ADD_EVENTS", eventsFrom: "full-day" }] },
+    ],
+  },
+  {
+    id: "bare",
+    title: "2 · Bare codes match prose",
+    blurb: "Fix the mismatch the other way — drop the brackets from the rules to match bare tags. Now everything categorises… including things that shouldn't: a client's name in a page title claims the block even when the work has nothing to do with them.",
+    steps: [
+      { label: "Reset, tags bare", actions: [{ type: "RESET" }, { type: "SET_TAG_STYLE", style: "bare" }] },
+      { label: "Make every rule a bare code too", note: "ACME, BETA, PAY, SINGER — tag and rule agree now", actions: [{ type: "SET_ALL_RULES_BARE" }] },
+      { label: "Do real client work", actions: [{ type: "ADD_EVENTS", eventsFrom: "acme-dyn" }, { type: "ADD_EVENTS", eventsFrom: "beta-dyn" }] },
+      { label: "Read an emailed ACME doc in the BETA profile", note: "bare “ACME” isn't in this title — but watch what IS", actions: [{ type: "SET_RULE", client: "ACME", regex: "Contract|ACME" }, { type: "ADD_EVENTS", eventsFrom: "beta-contract" }] },
+      { label: "Lunch break: a payments article and a sewing-machine video", note: "the Payments and Singer rules claim both", actions: [{ type: "ADD_EVENTS", eventsFrom: "pers-payments" }, { type: "ADD_EVENTS", eventsFrom: "pers-singer" }] },
+    ],
+  },
+  {
+    id: "spaces",
+    title: "3 · Spaces inside the alternation",
+    blurb: "A rule shaped like one seen on a real machine (names changed): “Contract | ACME | Acme Trust  ”. The spaces around each | are part of the pattern — it can only match “ ACME ” with a space on both sides. Browser titles happen to provide those spaces, so the rule LOOKS like it works… and quietly drops every window whose title ends in the code.",
+    steps: [
+      { label: "Reset, tags bare, rules bare", actions: [{ type: "RESET" }, { type: "SET_TAG_STYLE", style: "bare" }, { type: "SET_ALL_RULES_BARE" }] },
+      { label: "Paste the spaced rule", note: "watch the smell warnings appear under the rule", actions: [{ type: "SET_RULE", client: "ACME", regex: "Contract | ACME | Acme Trust  " }] },
+      { label: "Work in Dynamics (ACME profile)", note: "this MATCHES — “… ACME - Google Chrome” has spaces both sides. The bug hides.", actions: [{ type: "ADD_EVENTS", eventsFrom: "acme-dyn" }] },
+      { label: "Browse the ACME folder in File Explorer", note: "title is just “ACME” — no surrounding spaces, silently dropped", actions: [{ type: "ADD_EVENTS", eventsFrom: "acme-explorer" }] },
+      { label: "Fix the rule: no spaces in the alternation", note: "the Explorer window is picked up now", actions: [{ type: "SET_RULE", client: "ACME", regex: "Contract|ACME|Acme Trust" }] },
+    ],
+  },
+  {
+    id: "brackets",
+    title: "4 · Brackets end-to-end",
+    blurb: "The repo's recommendation: bracketed tags AND bracketed rules. Same day of browsing — real work categorises, and the contract doc, the payments article and the sewing machine all stay off the clients' books, because “[ACME]” never appears in incidental prose. The trade: untagged windows (terminal, File Explorer) stay grey and the skill classifies those from other signals — brackets buy precision, not total recall.",
+    steps: [
+      { label: "Reset to repo defaults", note: "bracketed tags, bracketed rules", actions: [{ type: "RESET" }] },
+      { label: "Simulate a full day", note: "compare the summary with scenario 2's", actions: [{ type: "ADD_EVENTS", eventsFrom: "full-day" }] },
+    ],
+  },
+];
+
+let state = TagRuleModel.reducer(undefined, { type: "RESET" });
+let activeTab = null;       // scenario id
+let stepIndex = 0;
+let lastChange = "";
+
+function dispatch(action, describe) {
+  if (action.eventsFrom) {
+    const src = ACTIONS.find(a => a.id === action.eventsFrom);
+    action = { type: "ADD_EVENTS", events: src.events };
+  }
+  state = TagRuleModel.reducer(state, action);
+  if (describe) lastChange = describe;
+  render();
+}
+
+function chip(row) {
+  if (row.verdict === "ok")   return `<span class="chip ok">✓ ${row.expected}</span>`;
+  if (row.verdict === "miss") return `<span class="chip miss">✗ uncategorised (tagged work!)</span>`;
+  if (row.verdict === "none") return `<span class="chip none">— uncategorised</span>`;
+  return row.expected === null
+    ? `<span class="chip cross">⚠ ${row.verdict.hit.join(", ")} — from the title alone (no tag)</span>`
+    : `<span class="chip cross">⚠ claimed by ${row.verdict.hit.join(", ")}</span>`;
+}
+
+function renderState() {
+  const ev = TagRuleModel.evaluate(state);
+  const tagPreview = TagRuleModel.buildTitle("Microsoft Dynamics 365",
+    "https://acme-dev.crm.example.com/", TagRuleModel.renderTag(state.tagStyle, "ACME"));
+
+  const rules = state.rules.map(r => {
+    const c = ev.compiled.find(x => x.client === r.client);
+    const dead = ev.deadRules.includes(r.client);
+    const count = ev.rows.filter(row => row.matches.includes(r.client)).length;
+    return `<tr class="rule-row">
+      <td style="white-space:nowrap"><strong>${r.client}</strong></td>
+      <td><input data-client="${r.client}" value="${r.regex.replace(/"/g, "&quot;")}">
+          ${c.smells.map(s => `<div class="smell">⚠ ${s}</div>`).join("")}</td>
+      <td style="white-space:nowrap">${state.events.length === 0 ? "" :
+          dead ? `<span class="chip miss">DEAD — matches nothing</span>` :
+                 `<span class="chip ok">${count} match${count === 1 ? "" : "es"}</span>`}</td>
+    </tr>`;
+  }).join("");
+
+  const rows = ev.rows.map(row => `<tr>
+      <td class="title-cell">${row.title}</td>
+      <td style="white-space:nowrap">${row.profile ?? "—"}</td>
+      <td>${chip(row)}</td>
+    </tr>`).join("");
+
+  const total = ev.rows.length;
+  const titleNote = ev.titleClaims
+    ? ` ${ev.titleClaims} untagged window${ev.titleClaims === 1 ? "" : "s"} matched from the title alone — check ${ev.titleClaims === 1 ? "it's" : "they're"} really that client's work.`
+    : "";
+  const summary = total === 0 ? "" :
+    (ev.missed === 0 && ev.crossed === 0)
+      ? `<div class="summary good">✓ ${total} window blocks: all tagged work categorised to the right client.${titleNote}</div>`
+      : `<div class="summary bad">${total} window blocks: <strong>${ev.missed} tagged block${ev.missed === 1 ? "" : "s"} fell through uncategorised</strong>, <strong>${ev.crossed} claimed by the wrong client</strong>${ev.deadRules.length ? ` — dead rules: ${ev.deadRules.join(", ")}` : ""}.${titleNote}</div>`;
+
+  return `
+    <div><strong>Tag convention:</strong> ${state.tagStyle === "brackets" ? "brackets — [ACME]" : "bare code — ACME"}</div>
+    <div class="preview">an ACME-profile title now looks like:<br>${tagPreview}</div>
+    <div style="margin-top:1rem"><strong>ActivityWatch category rules</strong> (edit the regex — it applies live):</div>
+    <table><tr><th>Client</th><th>Regex rule</th><th></th></tr>${rules}</table>
+    <div style="margin-top:1rem"><strong>Today's window blocks</strong> (${total})</div>
+    ${total === 0 ? `<div style="color:var(--muted);font-size:.85rem">No activity yet — press the buttons below or run a walkthrough.</div>`
+      : `<table><tr><th>Window title (as ActivityWatch sees it)</th><th>Profile</th><th>Classified as</th></tr>${rows}</table>`}
+    ${summary}
+    ${lastChange ? `<div class="changed">Just now: ${lastChange}</div>` : ""}`;
+}
+
+function renderTabs() {
+  document.getElementById("tabs").innerHTML = SCENARIOS.map(s =>
+    `<button data-tab="${s.id}" class="${activeTab === s.id ? "active" : ""}">${s.title}</button>`).join("");
+  const sc = SCENARIOS.find(s => s.id === activeTab);
+  document.getElementById("tab-body").innerHTML = !sc
+    ? `<div class="blurb">Pick a scenario above. Each one resets the demo and walks you through a real situation, one button at a time.</div>`
+    : `<div class="blurb">${sc.blurb}</div>` + sc.steps.map((st, i) => `
+        <div class="step">
+          <span class="mark">${i < stepIndex ? "✓" : ""}</span>
+          <button data-step="${i}" ${i !== stepIndex ? "disabled" : ""} class="${i === stepIndex ? "primary" : ""}">${st.label}</button>
+          ${st.note ? `<span class="note">${st.note}</span>` : ""}
+        </div>`).join("") +
+      (stepIndex >= sc.steps.length ? `<div class="changed">Walkthrough complete — free-play from here, or pick another tab.</div>` : "");
+}
+
+function render() {
+  document.getElementById("state-panel").innerHTML = renderState();
+  document.getElementById("tag-toggle").innerHTML = ["brackets", "bare"].map(s =>
+    `<button data-style="${s}" class="${state.tagStyle === s ? "active" : ""}">${s === "brackets" ? "Brackets — [ACME]" : "Bare — ACME"}</button>`).join("");
+  document.getElementById("event-buttons").innerHTML =
+    ACTIONS.map(a => `<button data-action="${a.id}">${a.label}</button>`).join("");
+  renderTabs();
+}
+
+document.addEventListener("click", e => {
+  const t = e.target;
+  if (t.dataset.style) dispatch({ type: "SET_TAG_STYLE", style: t.dataset.style }, `tag convention set to ${t.dataset.style}`);
+  if (t.dataset.action) dispatch({ eventsFrom: t.dataset.action }, t.textContent);
+  if (t.id === "clear-day") dispatch({ type: "CLEAR_EVENTS" }, "cleared the day");
+  if (t.id === "reset-rules") dispatch({ type: "RESET_RULES" }, "rules reset to repo defaults");
+  if (t.dataset.tab) { activeTab = t.dataset.tab; stepIndex = 0; state = TagRuleModel.reducer(state, { type: "RESET" }); lastChange = "walkthrough reset the demo"; render(); }
+  if (t.dataset.step !== undefined && activeTab) {
+    const sc = SCENARIOS.find(s => s.id === activeTab);
+    const st = sc.steps[Number(t.dataset.step)];
+    st.actions.forEach(a => {
+      if (a.eventsFrom) { const src = ACTIONS.find(x => x.id === a.eventsFrom); state = TagRuleModel.reducer(state, { type: "ADD_EVENTS", events: src.events }); }
+      else state = TagRuleModel.reducer(state, a);
+    });
+    lastChange = st.label;
+    stepIndex++;
+    render();
+  }
+});
+document.addEventListener("change", e => {
+  if (e.target.matches("input[data-client]"))
+    dispatch({ type: "SET_RULE", client: e.target.dataset.client, regex: e.target.value },
+             `rule for ${e.target.dataset.client} edited`);
+});
+
+render();
+</script>
+</body>
+</html>

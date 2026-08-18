@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `demo/tag-rule-demo.html` — a self-contained interactive demo of the tag/category-rule
+  failure modes (mismatched formats, bare codes claiming incidental prose, spaces inside
+  alternations), linked from README step 4 and offered by the setup runbook. All sample
+  clients and URLs are fictional.
+
+### Changed
+- README: step 8's credential check now uses `py` and documents the
+  `(no time entries …)` success notice; the repo map gained `demo/` and the
+  previously-missing `tests/`.
+
 ## [0.4.4] - 2026-08-19
 
 ### Upgrading

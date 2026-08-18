@@ -63,6 +63,9 @@ wait for the user to confirm before moving on.
 ### 4. ActivityWatch categories (manual — human configures, you advise)
 - Walk the user through http://localhost:5600 → Settings → Categories: one category per client with a
   Regex rule matching the bracketed code, e.g. `\[ACME\]`.
+- If the tag/rule relationship isn't clicking for the user, offer to open the repo's interactive
+  demo (`demo/tag-rule-demo.html` — one self-contained HTML file, simulated data) — its guided
+  walkthroughs show each failure mode live.
 - VERIFY the rules actually match real titles — don't trust the UI having saved. After the user
   browses for a minute in a tagged profile, read recent events from
   `GET http://localhost:5600/api/0/buckets/<window-bucket>/events?limit=100` and check each
