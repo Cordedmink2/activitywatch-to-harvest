@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-08-18
+
+### Fixed
+- **`afk_blocks.py` could not see a break the AFK watcher never recorded.** The watcher
+  writes nothing at all while the machine sleeps or is locked, so a long absence leaves a
+  *hole* in the event stream rather than an `afk` event. `find_breaks()` filtered on
+  recorded `afk` spans and `active_spans()` split only on one, so neither ever measured
+  the elapsed time between consecutive events: a hole was invisible to the first and
+  merged straight across by the second. On a real day carrying a three-hour morning gap
+  and a 47-minute lunch, the skeleton reported `breaks: (none)` and a single unbroken
+  12-hour active span — asserting the absence of breaks rather than merely missing them,
+  which matters because the skill is told to take that list verbatim. Holes of at least
+  the break threshold are now materialised as explicit spans, so they both list as breaks
+  and split the surrounding active span.
+
+### Changed
+- Breaks in `afk_blocks.py --json` carry a `kind` of `afk` or `gap`, and gap breaks are
+  tagged in the text output. A watcher outage is absence of evidence; a recorded `afk`
+  span is evidence the user was at their desk and idle. Conflating the two is what allowed
+  an empty breaks list to be read as proof the user was never away.
+
 ## [0.4.2] - 2026-08-14
 
 ### Fixed
