@@ -5,18 +5,42 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.5] - 2026-08-19
+
+### Upgrading
+
+Docs and demo only — no skill-script, config or task changes. `git pull` then re-run
+`install\install_skill.ps1`; the `WorkScreenshots` task is unaffected.
 
 ### Added
 - `demo/tag-rule-demo.html` — a self-contained interactive demo of the tag/category-rule
   failure modes (mismatched formats, bare codes claiming incidental prose, spaces inside
   alternations), linked from README step 4 and offered by the setup runbook. All sample
-  clients and URLs are fictional.
+  clients and URLs are fictional (ACME, BETA, Ledger, Nimbus).
+
+### Fixed
+- **ActivityWatch *is* on winget** — `winget install ActivityWatch.ActivityWatch` pulls the same
+  official installer as the download page, and it was the faster route on the install that prompted
+  the 0.4.4 docs. `llms.txt` had it flatly backwards ("not on winget — the direct download is the
+  only route"); both it and README step 1 now lead with winget on Windows.
+- **`llms.txt` handed the agent commands that fail on a stock Windows box.** Steps 8 and 10 used
+  `~/…` paths, which Windows PowerShell 5.1 passes to a native command literally (only PowerShell 7
+  expands them), and `python`, which is usually the Store stub the same file warns about two
+  sections earlier. They now use `py "$HOME/…"`, and environment detection says to check `pwsh`
+  exists before using it.
+- The demo's second walkthrough claimed a bare `ACME` rule wasn't in the emailed-contract title and
+  needed broadening to `Contract|ACME` to cross-claim it. It was: the rule already matched
+  `acmetrust.sharepoint…` in the URL. The step now shows that directly, with no rule edit.
 
 ### Changed
 - README: step 8's credential check now uses `py` and documents the
   `(no time entries …)` success notice; the repo map gained `demo/` and the
   previously-missing `tests/`.
+- The prerequisite Python check is `py -m pip --version` — reaching pip is the one check that rules
+  out both the 0-byte Store stub and a split install (which prints a version quite happily).
+- `llms.txt`'s AV/EDR rule now says to prove a block — a log line, a quarantine entry, a denied
+  registration — before sending the user to IT. The install that produced these notes raised an
+  allow-list request for what turned out to be a split Python install needing no ticket.
 
 ## [0.4.4] - 2026-08-19
 
