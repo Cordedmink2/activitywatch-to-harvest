@@ -81,7 +81,7 @@ If the user gave a date, use it — then immediately **check whether that date i
 
 **Check the target date against Harvest before rebuilding it — on *every* run, dated or not.** `harvest_list.py <date> <date>` costs one call; `Timesheets/<date>_harvest_responses.json` is a free done-marker beside it. Do this *before* Step 2 loads the skeleton, the timeline and the screenshot index. Nothing downstream will save you: Steps 3, 6 and 8 all check the proposal against ActivityWatch, never against Harvest, so a duplicate day passes every guard in this file and double-bills the client.
 
-- **Already covered** → say so, and *verify* rather than redraft: run Step 6's `--cover` against the existing entries and check the unbilled stretches are genuinely under the `<0.4` band. Report what you found; propose changes only where the evidence contradicts an entry.
+- **Already covered** → say so, and *verify* rather than redraft: run Step 6's `--cover` against the existing entries and check the unbilled stretches are genuinely under the `<0.4` band. **Both of those are time questions and neither can see an entry booked to the wrong client** — right clock, wrong project passes `--cover` perfectly. So also read one screenshot inside every **non-billable or internal** entry and confirm the screen matches what the entry claims; those are the ones that silently move time off a client. Report what you found; propose changes only where the evidence contradicts an entry.
 - **Partly billed** → treat the billed windows as fixed and scope this run to the gaps, unless the user says otherwise.
 - **Nothing there** → carry on into Step 2 as normal.
 
@@ -196,7 +196,7 @@ First self-check every line of the proposal:
 - [ ] Every Harvest note passes the client-readability test (Non-negotiables below)
 - [ ] All 🔸 blocks resolved with the user
 - [ ] `.context.md` exclusions applied (personal browsing, recurring internal items)
-- [ ] **The date isn't already billed** — re-confirm Step 1's Harvest check still holds. Every other line above compares the proposal against ActivityWatch; this is the only one that would catch a duplicate day, and the cost of missing it is double-billing a client
+- [ ] **The date isn't already billed** — re-confirm Step 1's Harvest check still holds. Every other line above compares the proposal against ActivityWatch; this line is the checklist's comparison against Harvest, and the cost of skipping it is double-billing a client
 
 Then show:
 
@@ -247,7 +247,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 
 **Then, only if days remain**, ask for the reset *before* naming the next date. Say where this date landed, that days are outstanding, and ask the user to run `/clear` before the next one — this date's blocks, client mix and resolved ambiguities read like evidence for the next date.
 
-- **Today-so-far counts as a next date.** Starting a fresh date is what triggers the ask, whether that date is an old gap or the rest of today. Step 1's "today is in progress, not a reason to ask" governs *date selection* on a no-date run; it does not exempt today from the reset. (Three test agents split 2–1 on this sentence when it was absent.)
+- **Today-so-far counts as a next date.** Starting a fresh date is what triggers the ask, whether that date is an old gap or the rest of today. Step 1's "today is in progress, not a reason to ask" governs *date selection* on a no-date run; it does not exempt today from the reset.
 - **Say to re-invoke the skill, in the same breath as `/clear`.** It is not model-invocable, so a bare "do Thursday" in the cleared session runs with none of these guards. Dropping this makes the reset actively worse than not resetting.
 - **All caught up → say nothing about resetting.**
 - **You may not know whether days remain.** Only a no-date run builds the gap list (Step 1); on "do Friday" you never swept for one. Ask the user — don't run an unrequested sweep to find out.

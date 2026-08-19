@@ -365,6 +365,72 @@ clients; `references/context.md.example` reserves the skill for generic heuristi
 **Rejected: leaving `.context.md` as the only home.** It described a generic tool class,
 so every other user of the skill would have had to rediscover it.
 
+### The already-covered branch verifies time, never classification — `SKILL.md` Step 1
+
+**Rung 1.** Three fresh agents, 2026-08-19, identical undigested prompt ("do my timesheet
+for the 18th") against 0.4.8, hard no-write constraint. The 18th was already fully billed
+and contained a known bad entry: `2991009175`, 17:30-17:54, 0.40h on `ACL-001 Billing -
+Timesheet & Exp`, while every capture across the window shows NZLS access-sync work.
+
+**2 of 3 reported the day holds.** Both followed the branch exactly and both said in their
+own logs that they had deliberately skipped the screenshot index and
+`classification-rules.md`, because the branch asks for `--cover` plus the `<0.4` band and
+nothing else. Both are *time* checks: an entry with the right clock and the wrong project
+passes `--cover` perfectly, so the branch could not see the defect it was pointed at. The
+third agent found it only by departing from the branch, and reconstructed the mechanism —
+the draft visible on screen at 17:49 proposed four entries ending 17:30 with no `ACL-001`
+line, so the admin entry was added after that and back-dated.
+
+This is the "one rule for all operations" mistake. `classification-rules.md` required a
+screenshot check before **booking** timesheet-admin time; nothing required one when
+**verifying** an entry that already existed. Both copies now name both operations.
+
+**Rejected: making the verify branch re-read the whole day.** That is redrafting, which the
+branch exists to avoid. The check is scoped to non-billable and internal entries — the ones
+whose failure mode is moving time off a client.
+
+**Re-run after the fix, same prompt, three fresh agents: 3/3 caught it** (from 1/3). All
+three read captures inside the window unprompted, all three found no Harvest surface on any
+monitor, all three proposed the same `harvest_patch.py` repoint and stopped at the
+confirmation gate. Two independently noticed that the entry is the same one already written
+into the rubric as a worked example — the lesson had been captured and the entry never
+corrected.
+
+**Step 12 fired on 1 of the 3 re-run reps, and that is the gate working, not a regression.**
+Before the fix the run ended with nothing outstanding, so all three asked for `/clear`. After
+it, the run ends holding an unexecuted correction — a Harvest write *is* in scope and has not
+happened — so "the date is done when nothing is left to post" is false and Step 12 correctly
+does not fire. The one agent that did ask for the reset asked while its own patch proposal was
+still open. **No rule was added for this**: the two agents that stayed silent were following
+the existing gate correctly, and a rule for behaviour that is already correct is the thing
+this file exists to prevent.
+
+### The same three reps, on everything else — 0.4.8 held
+
+**Rung 1.** Scored by hand from each agent's full tool log. 3/3 checked Harvest before
+loading the skeleton; 3/3 read `.context.md` whole with no grep or partial read; 3/3
+verified instead of redrafting, so no duplicate day was proposed; 3/3 asked whether days
+remained rather than running an unrequested sweep; 3/3 attached the `/clear` ask. Harvest
+was confirmed unchanged before and after — same five entry ids, today still empty.
+
+**The re-invoke instruction went 1/3 → 3/3** when it moved from prose into its own bullet,
+which is the measurement behind that bullet's existence. Agents compressing a closing
+message keep bullets and drop paragraph tails.
+
+### Two defects in the 0.4.8 text itself, found by re-reading what shipped
+
+**Rung 2.** Step 8's checklist line read "this is the only one that would catch a duplicate
+day" — an exclusivity claim, written in the same change as the `self-development.md` rule
+forbidding them, and the fourth time that shape has been committed while the rule was in
+context. The first grep for it missed it because the pattern searched for "the only
+place/file" rather than the shape; a broadened pattern (`the only`, `nothing else`, `no
+other`) is what caught it. Use the broad one.
+
+Step 12 carried "(Three test agents split 2-1 on this sentence when it was absent.)" — a
+test record in the operating doc. Moved here. `classification-rules.md`'s "Observed on
+2026-08-18" line was **kept**: it is a recognisable worked example of the failure, not test
+methodology.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was

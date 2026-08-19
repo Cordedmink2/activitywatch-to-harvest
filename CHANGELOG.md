@@ -5,6 +5,31 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-08-19
+
+### Upgrading
+
+Re-run the installer; no config or task changes.
+
+### Fixed
+- **Verifying an already-billed date never checked what the entries were billed *to*.** Step 1's
+  already-covered branch asked for `--cover` plus the `<0.4` idle band, and both are time
+  questions — an entry with the right clock and the wrong project passes `--cover` perfectly. In
+  a three-agent test against 0.4.8, two agents verified a day containing a known mis-booked entry
+  and reported it holds; both stated they had skipped the screenshots and the rubric because the
+  branch did not ask for them. The branch now requires reading one screenshot inside every
+  non-billable or internal entry, and `classification-rules.md` scopes its timesheet-admin
+  screenshot check to verifying an existing entry as well as booking a new one. Re-run after the
+  fix: 3/3 caught it.
+- **An exclusivity claim in the Step 8 checklist** ("this is the only one that would catch a
+  duplicate day") — the shape `references/self-development.md` forbids, committed in the same
+  change as the rule forbidding it. Reworded to state what the line does rather than what no
+  other line does.
+
+### Changed
+- **Step 12 no longer cites its own test results.** The rep count behind the today-in-progress
+  bullet moved to `TESTING.md`, which owns test records.
+
 ## [0.4.8] - 2026-08-19
 
 ### Upgrading

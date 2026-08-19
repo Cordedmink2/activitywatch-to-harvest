@@ -60,6 +60,7 @@ to have in front of you.
 | One date per session | Step 12 | Step 1 scope paragraph, Step 10 wrap-up |
 | Read `.context.md` whole, never partially | Prerequisite 1 | Step 2 load list, Step 11 size budget |
 | Check the date against Harvest before rebuilding it | Step 1 | Step 8 checklist |
+| Timesheet-admin time needs a screenshot before it is booked *or* accepted | `classification-rules.md` billing conventions | Step 1 already-covered branch |
 
 The `--cover` pair has already drifted once and cost a re-run — `TESTING.md` has the
 entry. The fix at the time touched the checklist copy and missed the owner.
