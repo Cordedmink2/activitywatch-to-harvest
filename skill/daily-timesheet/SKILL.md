@@ -236,6 +236,7 @@ A run frequently reveals a fact the skill or `.context.md` doesn't know (a new s
 
 - *This user's* clients/colleagues/signals/preferences → propose for `.context.md` (most additions).
 - The *workflow itself* (a generic heuristic, data-source change, API quirk) → propose for `SKILL.md`/`references/`.
+- The *skill is wrong* — a script returns a wrong answer, a guard didn't fire, an instruction is wrong for every user → `references/reporting-issues.md` if the user installed this skill, `references/self-development.md` if they maintain it.
 
 Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in `.context.md`; I guessed EarnLearn. Add `XrmToolBox connecting to env X → EarnLearn` under EarnLearn?"
 
@@ -275,6 +276,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `references/output-format.md` — timesheet .md template
 - `references/catalog-refresh.md` — refreshing `.mcp/` catalogs
 - `references/new-client-work.md` — billing work that has no Harvest project yet (Dataverse case creation)
+- `references/reporting-issues.md` — reporting a defect upstream when the user installed this skill rather than maintaining it: the repo, what to redact first, and the confirmation gate before filing
 - `references/self-development.md` — **for changing this skill, not for running it.** Start here before editing `SKILL.md`, a reference, or a script: where maintenance content goes, which instruments to test against, the rules that have more than one copy, and where the release ritual lives. Ignore it on a normal run.
 - `TESTING.md` — the record behind those decisions: test results, evidence rungs, and options already tried and rejected. Read it so you don't re-add something that was measured unnecessary; new findings go here, not in `SKILL.md`.
 - `scripts/afk_blocks.py` — deterministic day skeleton: work_start/work_end/breaks/active spans/active_ratio; `--window`, `--json`, `--utc-offset`, `--afk-threshold`, `--cover "HH:MM-HH:MM,..."` coverage check

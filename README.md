@@ -336,6 +336,7 @@ uncertain, and asks before posting anything to Harvest.
 ```
 activitywatch-to-harvest/
 ├── README.md                 # you are here
+├── .github/ISSUE_TEMPLATE/   # the form behind "New issue"
 ├── CHANGELOG.md              # what changed in each release
 ├── llms.txt                  # machine-readable setup runbook for Claude Code
 ├── LICENSE                   # MIT
@@ -354,6 +355,24 @@ activitywatch-to-harvest/
 ├── tests/                    # guards on the install/setup scripts a new user runs first
 └── install/                  # install_skill + setup_workspace (PowerShell + bash)
 ```
+
+## Reporting a problem
+
+Open an issue — the ["New issue"](../../issues/new/choose) form asks for the version, what you
+asked for, and what the skill did instead.
+
+Two things worth knowing before you do:
+
+- **Not everything is a defect.** If the skill didn't know one of *your* clients, signals or
+  machine facts, that belongs in your own `Timesheets/.context.md`. If a window title comes back
+  `uncategorized`, that's an ActivityWatch category rule on your machine — `references/setup.md`
+  covers it. Neither is fixed by a change here.
+- **Redact before you paste.** This tool reads window titles, screenshots and Harvest entries, so
+  its output carries client names, project codes and file paths. Issues are public.
+
+The skill can do this for you: at the end of a run it sorts what it learned, and for anything that
+looks like a genuine defect it will draft the report and offer to file it. It won't file anything
+without you saying yes.
 
 ## License
 

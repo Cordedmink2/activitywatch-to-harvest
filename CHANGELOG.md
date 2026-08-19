@@ -5,6 +5,39 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10] - 2026-08-19
+
+### Upgrading
+
+Re-run the installer; no config or task changes. If you installed this skill rather than
+maintaining it, the new `references/reporting-issues.md` is how a run now routes a defect back
+here.
+
+### Added
+- **A way to report a defect upstream.** Step 11 gains a third destination: a script returning a
+  wrong answer, a guard that didn't fire, or an instruction wrong for every user goes to
+  `references/reporting-issues.md` when the user installed the skill, and to
+  `references/self-development.md` when they maintain it. The reference carries the repository
+  URL, what must be redacted first, and the confirmation gate.
+- **`.github/ISSUE_TEMPLATE/skill-defect.yml`** — an issue form for anyone arriving at the repo,
+  with a required redaction acknowledgement. Plus a "Reporting a problem" section in the README,
+  which previously said nothing about issues at all.
+
+### Notes on the evidence
+Three fresh agents were given a genuine uncovered script defect and an installed-skill scenario.
+All three proposed reporting it upstream unprompted, so no rule tells them to; all three refused
+to file it under any circumstances, so the rule *permits* filing behind an explicit yes rather
+than restraining it; all three went looking in `self-development.md` for the route, so that file
+now points at the right one; and **none of the three mentioned redaction** while drafting a public
+issue off a client timesheet run, which is what the new reference mostly exists to fix.
+
+A fourth destination for "the machine, not a document" was drafted and dropped: the same test
+showed agents already route `uncategorized` categories to `references/setup.md` unaided.
+`TESTING.md` has both runs, including a first measurement discarded for a leading question in its
+own prompt.
+
+`gh issue create` ships **unexercised** — GitHub was unreachable from the release machine.
+
 ## [0.4.9] - 2026-08-19
 
 ### Upgrading

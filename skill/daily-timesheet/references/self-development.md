@@ -61,6 +61,7 @@ to have in front of you.
 | Read `.context.md` whole, never partially | Prerequisite 1 | Step 2 load list, Step 11 size budget |
 | Check the date against Harvest before rebuilding it | Step 1 | Step 8 checklist |
 | Timesheet-admin time needs a screenshot before it is booked *or* accepted | `classification-rules.md` billing conventions | Step 1 already-covered branch |
+| A skill defect goes upstream, not into `.context.md` | `references/reporting-issues.md` | Step 11 third bullet |
 
 The `--cover` pair has already drifted once and cost a re-run — `TESTING.md` has the
 entry. The fix at the time touched the checklist copy and missed the owner.
@@ -68,6 +69,13 @@ entry. The fix at the time touched the checklist copy and missed the owner.
 Don't write exclusivity claims ("this is the only place that says X") into any of these
 files. They enforce a snapshot and rot silently into something that still reads as
 authoritative.
+
+## When you don't maintain this copy
+
+This file assumes you can change the skill and ship it. A user who installed it from the
+repo cannot, and three of three test agents handed a genuine script defect came looking
+*here* for the route upstream — the filename reads like it covers that, and it doesn't.
+`references/reporting-issues.md` owns that path.
 
 ## Releasing
 

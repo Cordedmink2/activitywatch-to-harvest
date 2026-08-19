@@ -431,6 +431,69 @@ test record in the operating doc. Moved here. `classification-rules.md`'s "Obser
 2026-08-18" line was **kept**: it is a recognisable worked example of the failure, not test
 methodology.
 
+### Step 11 had no bucket for "the bundled script is wrong" — 0.4.10
+
+**Rung 1.** 2026-08-19. Two measurements, and the first one was mine to throw away.
+
+**Run 1 was contaminated; do not cite it.** Five raw findings from the 2026-08-18 runs,
+three fresh agents, full filesystem access. Two defects in the fixture:
+
+- The prompt said *"if a note doesn't fit anywhere the skill offers, say so explicitly
+  rather than choosing the closest option."* That is the answer to the question being
+  asked. An agent replying "this fits neither bucket" was echoing the prompt.
+  `changing-agent-instructions` warns that a test's constraints can manufacture a gap;
+  here they manufactured the fix.
+- One finding was the Step 1 verify-branch blindspot, closed in 0.4.9 that morning. All
+  three correctly reported it already fixed, which measures nothing about the upstream
+  path.
+
+Salvageable from run 1, because the destination was *not* supplied by the prompt: on the
+`uncategorized` ADO board, all three routed to `references/setup.md` § categories,
+unprompted and identically, and two diagnosed the live regex fault themselves. **A "the
+machine, not a document" bucket was drafted for Step 11 and then dropped on this
+evidence** — Step 2 already says maintenance gets noted and raised at Step 11, and the
+agents already follow it. See Rejected.
+
+**Run 2 is the measurement.** Neutral closing instruction, no filesystem access, fictional
+consultant who installed the skill from GitHub and has no checkout, and a defect the
+current docs genuinely do not cover (`activity_timeline.py` double-counting spans both
+watchers saw — 11.4 h categorised against a 7.2 h day). Three reps:
+
+| Behaviour | Reps | Consequence for 0.4.10 |
+|---|---|---|
+| "Step 11 has no bucket for the bundled script being wrong" | 3/3 | The gap is real. One bullet added. |
+| Proposed reporting upstream unprompted | 3/3 | The route needs no rule; none written. |
+| Refused to file under any circumstances | 3/3 | **Inverted from the assumption.** Agents are stricter than the chosen gate, so the rule *permits* filing behind an explicit yes rather than restraining it. |
+| Looked in `self-development.md` for the upstream route | 3/3 | The filename mis-signals. Pointer added there. |
+| Could not produce the repo URL | 2/3 | Not derivable from an installed skill. Stated in the reference. |
+| Refused to park a generic rule in `.context.md` | 3/3 | Already correct. No rule. |
+| Flagged that a local patch is reverted by the next install | 3/3 | Already correct. No rule. |
+| **Mentioned redaction, or client data in a public issue** | **0/3** | The real gap. Two drafted full issue bodies off a client timesheet run without one word about stripping client identifiers. |
+
+So `references/reporting-issues.md` earns four things and nothing else: the repo URL,
+redaction, permission to file behind a gate, and the `self-development.md` misdirection.
+Everything else in its first draft was behaviour all three reps produced unprompted, and
+was cut before shipping.
+
+Not yet re-run against 0.4.10 — the arm that would close the loop is a fourth rep set on
+the new text, and it is owed.
+
+### An exclusivity claim, written while writing the rule against them — 0.4.10
+
+**Rung 1.** 2026-08-19. `reporting-issues.md` shipped a draft reading *"so this is the only
+place to read it from"* about the repo URL. The broad grep
+(`the only (place|one|file|section)|nothing else|no other`) caught it, and it was **also
+false** — `TESTING.md` and `tests/test_edge_catalogs.py` both name the repo. Second
+occurrence of this shape in two releases, both times in the same change as the rule.
+The grep is the control that works; the rule alone is not.
+
+### `gh issue create` ships unexercised — 0.4.10
+
+**Rung 3.** 2026-08-19. GitHub was unreachable from the machine for the whole release
+(`github.com` and `api.github.com` both time out; Harvest answers in 0.54 s), so the filing
+half is documented and never run. The drafting, the gate and the triage were measured; the
+command was not. First reachable session: file one real issue and confirm the flags.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was
@@ -602,6 +665,17 @@ already routes on `blip`; pinned by a scenario assertion so a future change to e
 rule has to confront the interaction.
 
 ## Rejected
+
+### A "the machine, not a document" bucket in Step 11 — 2026-08-19
+
+Planned for 0.4.10 and dropped before it was written. The trigger was the CCAMS ADO board
+coming back `uncategorized`, which is an ActivityWatch category rule and fits neither of
+Step 11's two destinations. Three fresh agents all routed it correctly anyway — to
+`references/setup.md` § categories — because Step 2 already tells a run that maintenance is
+noted and raised at Step 11, not fixed mid-timesheet. Two went further and found the live
+regex fault unaided. What the agent already does correctly needs no rule; adding the bucket
+would have paid SKILL.md bytes on every run to restate working behaviour.
+
 
 - **A Step 3 pointer to the lock-screen quirk.** Measured 6/6 against a control arm — see
   the entry directly above. The reference index line already routes it.

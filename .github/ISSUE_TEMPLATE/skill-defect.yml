@@ -1,0 +1,92 @@
+name: Skill problem or improvement
+description: The skill produced a wrong answer, skipped a guard, crashed, or should work differently.
+labels: ["skill"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Before you fill this in:
+
+        **Redact first.** This skill reads window titles, screenshots and Harvest entries,
+        so its output carries client names, project codes, ticket numbers and file paths.
+        This issue is public. Replace anything client-identifying with a placeholder
+        (`ACME-001`, `Client A`, `<project>`) before pasting - the shape of the output is
+        what makes a report useful, not the real names.
+
+        If the problem is that the skill doesn't know one of *your* clients, signals or
+        machine facts, that isn't a defect - those belong in your own
+        `Timesheets/.context.md`, not here.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem is this?
+      options:
+        - Wrong answer - the timesheet it proposed was incorrect
+        - A guard didn't fire, or a step was skipped
+        - A script errored or crashed
+        - Setup or installation problem
+        - The workflow should work differently (improvement)
+        - The documentation is wrong or unclear
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Skill version
+      description: The contents of `skill/daily-timesheet/VERSION`, or of `VERSION` in your installed skill folder.
+      placeholder: "0.4.10"
+    validations:
+      required: true
+
+  - type: textarea
+    id: asked
+    attributes:
+      label: What you asked for
+      description: The request that started the run, and the date it was scoped to.
+      placeholder: '"fill in Tuesday''s timesheet" - 2026-08-18, a day with two clients interleaved'
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What the skill did
+      description: What it actually proposed, posted or reported. Redacted.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should have done instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant output
+      description: >
+        Script output that shows the problem - `afk_blocks.py --json`, an
+        `activity_timeline.py` rollup, a `harvest_lookup.py` miss. Redacted. Leave blank if
+        none applies.
+      render: text
+
+  - type: input
+    id: where
+    attributes:
+      label: Where in the workflow
+      description: The SKILL.md step number or the script name, if you can pin it down. "Not sure" is a fine answer.
+      placeholder: "Step 6, or scripts/afk_blocks.py"
+
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before submitting
+      options:
+        - label: >
+            I have removed client names, project codes, ticket numbers, personal file paths
+            and any credentials from everything above.
+          required: true
