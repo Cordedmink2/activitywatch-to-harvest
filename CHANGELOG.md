@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-08-19
+
+### Upgrading
+
+Docs only — no script, config or task changes. `git pull` then re-run the installer.
+
+### Fixed
+- **`SKILL.md`'s "Files in this skill" list had drifted.** It omitted `scripts/aw_client.py`
+  — a runtime import of both `afk_blocks.py` and `activity_timeline.py`, and already listed
+  in the README's directory tree — plus `VERSION`, `tests/` and `pytest.ini`. Nothing catches
+  this: the installers and mirrors copy whole trees, so a missing entry never stops a file
+  shipping, it just leaves the reader with a wrong map.
+- **An exclusivity claim in `references/classification-rules.md`.** "This table is the single
+  authoritative mapping — `SKILL.md` does not carry its own copy" is the shape the skill's own
+  maintainer rules ban, because it enforces a snapshot and rots silently while still reading
+  as authoritative. Reworded to name the owner instead.
+- Two rationales that cited a multi-day run in one session, which Step 12 now rules out.
+
 ## [0.4.6] - 2026-08-19
 
 ### Upgrading

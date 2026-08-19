@@ -121,7 +121,7 @@ Cumulative short AFKs are real: several 5–15 min chunks in an hour add up. `ac
 
 Aim for 15-min granularity (0.25 hr); fold blocks shorter than 0.25 hr into a neighbour.
 
-These rules apply identically on the **backfill path** (filling the gap between the last timesheet and now) — trailing left-in-focus windows are *more* likely there.
+These rules apply identically when **backfilling an older date** — trailing left-in-focus windows are *more* likely there.
 
 ### Step 4 — Classify each block
 
@@ -139,7 +139,7 @@ For any 🔸 block (low confidence, thin ratio, or ambiguous attribution):
 - **AFK status is settled by the AFK watcher** — never re-infer active/idle from screenshots. Screenshots and zooms answer only *which client/project*.
 1. **Zoom the timeline first:** `python scripts/activity_timeline.py <date> --window HH:MM-HH:MM` folds in Firefox/Chrome web-watcher rows — richer URL/title signals without opening images.
 2. **Then screenshots**, for generic apps that don't name their client (XrmToolBox, bare VS Code, terminals): find the nearest `HH-MM-SS_mN.png` to the ambiguous timestamps, read the env URL / workspace / repo / ticket on screen. Different clients in different screenshots within one block → split the block (switch-point protocol).
-   - **When several blocks need screenshot-checking, delegate the reading to a cheap subagent** (e.g. `Agent` with `model: "haiku"`) rather than reading every capture in the main session — image tokens add up fast across a multi-day backfill, and this is a plain read-what's-on-screen task a smaller model handles fine. Give the subagent no conversation context of its own, so its prompt must carry: the screenshot directory and exact timestamps to check (all monitors — `_m1`/`_m2`/…), the signal list from `.context.md`, the AFK-settled rule above, and classification-rules.md's "Interleaved days" probe-economically procedure (3 spread, densify around flips) if any block needs a switch point. It reports **raw signals per capture** (app, environment URL, ticket numbers, Edge profile, workspace) — never a billing verdict; attribution against `.context.md` stays with the main session.
+   - **When several blocks need screenshot-checking, delegate the reading to a cheap subagent** (e.g. `Agent` with `model: "haiku"`) rather than reading every capture in the main session — image tokens add up fast once a date needs more than a couple of captures, and this is a plain read-what's-on-screen task a smaller model handles fine. Give the subagent no conversation context of its own, so its prompt must carry: the screenshot directory and exact timestamps to check (all monitors — `_m1`/`_m2`/…), the signal list from `.context.md`, the AFK-settled rule above, and classification-rules.md's "Interleaved days" probe-economically procedure (3 spread, densify around flips) if any block needs a switch point. It reports **raw signals per capture** (app, environment URL, ticket numbers, Edge profile, workspace) — never a billing verdict; attribution against `.context.md` stays with the main session.
 3. **Still ambiguous → ask the user**, showing which screenshots you checked, what you saw, and the candidate clients.
 - **Never silently bill an abandoned-task block.** Setup/sign-in/install work that ended without a client deliverable and a pivot elsewhere → surface it; default to internal-admin non-billable unless the user says otherwise.
 
@@ -257,6 +257,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 ## Files in this skill
 
 - `SKILL.md` — this file
+- `VERSION` — release marker. The `daily-timesheet-release` skill owns bumping it; don't edit it by hand.
 - `.env.example` / `.gitignore` — Harvest credential template (copy to `.env`, gitignored)
 - `references/setup.md` — first-run setup: screenshot task, `.context.md` creation, Harvest creds, AW discovery, AW category maintenance
 - `references/context.md.example` — starter template for `Timesheets/.context.md`
@@ -269,8 +270,10 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `TESTING.md` — the record behind those decisions: test results, evidence rungs, and options already tried and rejected. Read it so you don't re-add something that was measured unnecessary; new findings go here, not in `SKILL.md`.
 - `scripts/afk_blocks.py` — deterministic day skeleton: work_start/work_end/breaks/active spans/active_ratio; `--window`, `--json`, `--utc-offset`, `--afk-threshold`, `--cover "HH:MM-HH:MM,..."` coverage check
 - `scripts/activity_timeline.py` — categorized window timeline + rollup; `--window HH:MM-HH:MM` zoom folds in web watchers; flags `uncategorized`/`!MULTI`; `--utc-offset`, `--json`
+- `scripts/aw_client.py` — shared ActivityWatch REST helpers behind `afk_blocks.py` and `activity_timeline.py`
 - `scripts/harvest_lookup.py` — project/task id lookup across ALL catalog pages by code, project name **or client name**, live-entry fallback for archived projects (a miss after the fallback = genuinely unknown project; a cache refresh won't help); `--task`, `--mcp-dir`, `--json`, `--no-live`, `--days`
 - `scripts/harvest_post.py` / `harvest_patch.py` / `harvest_list.py` — create / update / list time entries (`OK <id>` / `ERR …`)
 - `scripts/harvest_client.py` — shared `.env` + API helper
 - `scripts/refresh_catalogs.py` — refresh `.mcp/harvest_assignments*.json` + incident catalog; `wait_for_project(<code>)` for new synced projects
 - `scripts/screenshot_capture.py` + `scripts/setup_screenshot_pipeline.ps1` — per-monitor capture + one-time scheduled-task setup
+- `tests/` + `pytest.ini` — the script suite. Maintainers only; `references/self-development.md` explains what it does and does not measure.

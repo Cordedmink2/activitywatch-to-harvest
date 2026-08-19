@@ -84,7 +84,7 @@ The costliest real-world misattributions are long blocks on days where the user 
 
 ## Task (Harvest sub-category) selection
 
-**This table is the single authoritative mapping** — `SKILL.md` does not carry its own copy. Resolution order:
+**This table owns the activity → task mapping**; `SKILL.md` Step 4 points here rather than restating it. Resolution order:
 
 1. **`.context.md` overrides win.** Check the user's "How I bill" / preferences section first — it typically sets a default task (e.g. `Gen - Development/Configuration`) and per-project conventions (e.g. a specific default task for the internal-admin project, or a hardcoded `project · task` pair under a client's section). A per-client hardcoded task beats the activity mapping below — e.g. if the client entry pins `Gen - Development/Configuration`, a design-doc-heavy block still bills there, not to Documentation.
 2. **The task follows the block's *dominant* activity**, not its incidental surfaces. A dev block that included reading docs and a 5-min chat is still Development/Configuration. Only give a block a meeting task when the block *is* a call/meeting.

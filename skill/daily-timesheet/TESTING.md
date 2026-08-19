@@ -144,6 +144,37 @@ overclaim in one file.
 protect, and asking for a `/clear` the user has no use for trains them to ignore the ask
 on the run where it matters.
 
+### The "Files in this skill" list is hand-maintained and had drifted — `SKILL.md`
+**Rung 2.** 2026-08-19. Found by a subagent arm pointed at the tooling rather than the
+prose, during the Step 12 review. The list omitted `scripts/aw_client.py` — a real runtime
+import of both `afk_blocks.py` and `activity_timeline.py` — plus `VERSION`, `tests/` and
+`pytest.ini`. The public `README.md` directory tree *did* list `aw_client.py`, so the
+skill's own copy was the one that drifted.
+
+Nothing catches this. The installers and both mirror scripts copy whole trees with pattern
+exclusions (`robocopy /E`, `rsync --exclude`), so a new file always ships — which is the
+good version of the defect `self-development.md` warns about, and the reason the drift was
+invisible for so long: the list is decorative to the tooling and load-bearing only to a
+reader. `test_references.py` validates `python scripts/<name>.py` *commands*, not this list.
+
+**Not fixed by a gate, deliberately.** A test asserting the list matches `ls` would have to
+encode which files deserve a description, and the list's value is the descriptions, not the
+names. Re-check it by eye whenever a script is added; that is the whole procedure.
+
+### An exclusivity claim survived in `classification-rules.md`
+**Rung 3.** 2026-08-19. `references/classification-rules.md` § "Task selection" opened with
+"**This table is the single authoritative mapping** — `SKILL.md` does not carry its own
+copy". The claim was *true* when checked, which is exactly why the shape is banned: it
+enforces a snapshot, and the next edit that adds a pointer elsewhere rots it silently while
+it still reads as authoritative. Reworded to name the owner instead ("This table owns the
+activity → task mapping; `SKILL.md` Step 4 points here rather than restating it"), which
+survives someone adding a second pointer.
+
+Predates the rule that forbids it — `self-development.md` acquired the prohibition later
+and nobody swept the existing files for the pattern. **Writing a rule does not retrofit
+it.** A `grep -rn` for the shape across the whole skill is what found this one, and now
+returns only the rule's own statement of itself.
+
 ### No Step 3 pointer to the lock-screen quirk — measured and rejected
 **Measured, 2026-08-12. The first fresh-agent two-arm test in this file.**
 
