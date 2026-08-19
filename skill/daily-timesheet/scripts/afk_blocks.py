@@ -343,6 +343,9 @@ def main():
         print(json.dumps(result, indent=2))
         return 0
 
+    # --cover wants the whole skeleton; a bare --window does not.
+    focused = bool(args.window) and not args.cover
+
     print(f"AFK analysis for {args.date}  (offset UTC+{args.utc_offset:g}, break>={args.afk_threshold}s)")
     print(f"  bucket:      {afk_bucket}")
     print(f"  work start:  {result['work_start']}")
@@ -355,16 +358,22 @@ def main():
         flag = "  <- left-in-focus trap, NOT work" if win_tail["gap_past_work_end_min"] > 1 else ""
         print(f"  window tail: last window event ends {win_tail['end']} "
               f"({win_tail['gap_past_work_end_min']:+g} min vs work end){flag}")
-    print(f"  breaks (>= {args.afk_threshold//60} min):")
-    if breaks:
-        for b in result["breaks"]:
-            tag = "   <- no AFK data (machine asleep/locked), not a recorded idle span"                   if b["kind"] == GAP_STATUS else ""
-            print(f"     {b['start']} - {b['end']}  ({b['min']} min){tag}")
-    else:
-        print("     (none)")
-    print(f"  active spans (short afk folded in):")
-    for s in result["active_spans"]:
-        print(f"     {s['start']} - {s['end']}  ({s['min']} min)")
+    # A --window probe is a focused question ("what is the ratio for 15:58-16:25?").
+    # Reprinting the full skeleton for it means a run that checks four thin stretches
+    # pays for four whole-day dumps it already has. Keep the day's ceiling (work_end,
+    # blip and tail flags stay above) and drop the two lists.
+    if not focused:
+        print(f"  breaks (>= {args.afk_threshold//60} min):")
+        if breaks:
+            for b in result["breaks"]:
+                tag = ("   <- no AFK data (machine asleep/locked), not a recorded idle span"
+                       if b["kind"] == GAP_STATUS else "")
+                print(f"     {b['start']} - {b['end']}  ({b['min']} min){tag}")
+        else:
+            print("     (none)")
+        print(f"  active spans (short afk folded in):")
+        for s in result["active_spans"]:
+            print(f"     {s['start']} - {s['end']}  ({s['min']} min)")
     if window_report:
         w = window_report
         print(f"  active_ratio for {w['window']}: {w['active_ratio']} "

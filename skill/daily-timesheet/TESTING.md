@@ -144,6 +144,71 @@ overclaim in one file.
 protect, and asking for a `/clear` the user has no use for trains them to ignore the ask
 on the run where it matters.
 
+### Three-rep live test of Step 12 — `SKILL.md` Steps 1, 8, 12
+**Rung 1 for two findings, rung 2 for the rest.** 2026-08-19. Three fresh agents, same
+undigested prompt ("do my timesheet for yesterday"), real workspace and real
+ActivityWatch, told only that no Harvest write would be approved. None was told Step 12
+existed or what was being measured. Harvest was hashed before and after: five entries on
+2026-08-18 unchanged, none created.
+
+**What bound.** 3/3 asked the user whether other days were outstanding instead of running
+an unrequested Harvest sweep — the bullet added for the date-specified case, where the gap
+list is never built. 3/3 reached Step 12 with nothing posted, confirming the widened gate
+("nothing left to post") is reachable where the original "Step 9 posted" was not. 3/3 left
+the next date unnamed at Step 10.
+
+**What did not bind: today-in-progress.** 1 fired the `/clear` ask for today-so-far, 1 said
+nothing about resetting, 1 hedged it against days it had not checked. Three confident
+readings of one input is the definition of wording that does not bind. Step 1 says today is
+in progress and "not a reason to ask"; Step 12 says ask whenever days remain; nothing said
+which governs. Fixed by naming the answer — today-so-far *is* a next date, and Step 1's
+clause is scoped to date *selection*.
+
+**The re-invoke clause survived 1/3.** It was prose inside a paragraph. Agents compressing a
+closing message drop the tail of a paragraph and keep bullets, so it is now a bullet.
+Dropping it matters more than it looks: `/clear` unloads a skill that cannot re-invoke
+itself, so a reset without the reminder is worse than no reset.
+
+### A dated run never checked whether the date was already billed — `SKILL.md` Step 1
+**Rung 1.** 2026-08-19. Found independently by all three agents above, unprompted, and
+called the run's worst defect by each. Step 1 swept Harvest only on a *no-date* run; given
+"yesterday" it went straight to Step 2. All three loaded the skeleton, the categorised
+timeline and a ~700-file screenshot index before discovering the day was finished. One
+caught it only by widening the credentials probe on a hunch.
+
+**Why no guard caught it:** Steps 3, 6 and 8 all validate the proposal against
+ActivityWatch. Not one compares it to Harvest, so a duplicate day passes every check in the
+file and double-bills the client. `--cover` would report clean, because the blocks are
+*correct* — they are just already posted. Only the test's no-post rail prevented it.
+
+Fixed at Step 1 (check before loading anything) with a restatement in the Step 8 checklist,
+since Step 8 is the last gate before a write. `Timesheets/<date>_harvest_responses.json` is
+named as the free done-marker that was sitting there unread.
+
+**This is the shape to watch for:** a guard family that all measures against one source is
+blind to errors in the other, however many guards there are.
+
+### Timesheet-admin time gets back-billed onto real work — `classification-rules.md`
+**Rung 1.** 2026-08-19. On 2026-08-18, 17:30-17:54 was posted as internal timesheet admin,
+non-billable. Four screenshots across that window (17:31/17:39/17:46/17:51) show NZLS
+access-sync work — `design.md` on the retry-backoff note, terminal on intake libraries,
+Power Apps on the SOW15+SOW05 solution — and no Harvest or timesheet surface on any of the
+three monitors through 18:06.
+
+Structural, not a one-off: the timesheet run necessarily happens *after* the last block it
+can bill, so there is no live block left to put it on and it lands on the previous one. The
+client loses the time silently, and it looks plausible on review because timesheet admin
+genuinely did happen that evening. Rule added: read a capture inside the window and confirm
+a timesheet surface is actually on screen before booking timesheet-admin time.
+
+### `--window` reprinted the whole day skeleton — `afk_blocks.py`
+**Rung 2.** 2026-08-19. Raised by two of the three agents unprompted. Step 3 validation asks
+for a ratio per thin stretch, so a careful run makes three or four `--window` calls and pays
+for three or four whole-day dumps of a skeleton it already loaded in Step 2. A bare
+`--window` now prints the header, the `work_end`/blip/tail warnings and the ratio, dropping
+the breaks and active-spans lists. `--cover` and `--json` are untouched, and no golden
+covers the `--window` text path — only its `ERR` case and its JSON.
+
 ### The "Files in this skill" list is hand-maintained and had drifted — `SKILL.md`
 **Rung 2.** 2026-08-19. Found by a subagent arm pointed at the tooling rather than the
 prose, during the Step 12 review. The list omitted `scripts/aw_client.py` — a real runtime

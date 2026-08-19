@@ -5,6 +5,40 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-08-19
+
+### Upgrading
+
+Re-run the installer; no config or task changes. Two behaviour changes worth knowing:
+the skill now checks Harvest before rebuilding a date you named, and it reads the whole
+of `Timesheets/.context.md` on every run rather than whatever part it thought it needed.
+
+### Fixed
+- **A dated run never checked whether the date was already billed.** Given "do yesterday"
+  the workflow went straight to rebuilding the day from ActivityWatch. Steps 3, 6 and 8 all
+  validate the proposal against ActivityWatch and none against Harvest, so a duplicate day
+  passed every guard and double-billed the client — `--cover` reports clean, because the
+  blocks are correct, just already posted. Step 1 now checks Harvest (and
+  `Timesheets/<date>_harvest_responses.json`) before loading anything, with a restatement in
+  the pre-post checklist. Found independently by all three agents in a live three-rep test.
+- **Timesheet-admin time was being back-billed onto real client work.** The timesheet run
+  happens after the last block it can bill, so it lands on the previous one — observed as a
+  24-minute block posted as non-billable admin while every screenshot across it showed
+  client work. The rubric now requires confirming a timesheet surface is actually on screen
+  before booking timesheet-admin time.
+- **Step 12 was ambiguous about today-in-progress**, and three test agents split three ways
+  on it. Today-so-far now explicitly counts as a next date. The instruction to re-invoke the
+  skill after `/clear` was prose and survived only one run in three; it is now a bullet.
+
+### Changed
+- **`Timesheets/.context.md` must be read whole, every run** — never grepped, sliced or
+  skimmed. Its facts are cross-cutting, so a partial read yields confident wrong answers
+  instead of an obvious gap. This is what the size budget is for, so a file over budget gets
+  trimmed rather than partially read.
+- **`afk_blocks.py --window` is a focused report.** It keeps the header and the
+  `work_end`/blip/tail warnings and drops the breaks and active-spans lists, so validating
+  four thin stretches no longer costs four whole-day dumps. `--cover` and `--json` unchanged.
+
 ## [0.4.7] - 2026-08-19
 
 ### Upgrading

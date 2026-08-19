@@ -63,7 +63,7 @@ Each capture tick writes **one PNG per monitor** (`HH-MM-SS_m1.png`, `_m2.png`, 
 
 Run in parallel before classifying anything. If any first-run piece is missing (no `.context.md`, no `.env`, no screenshot task, unknown AW buckets), follow `references/setup.md`.
 
-1. **`Timesheets/.context.md` exists** — if missing, run first-run setup; don't classify without it.
+1. **`Timesheets/.context.md` — read it, whole, every run.** If missing, run first-run setup; don't classify without it. **Read the entire file into context; never grep it, never read a slice of it, never skim to the section you think you need.** Its facts are cross-cutting — an exclusion in one section decides a block whose client is named in another — so a partial read produces confident wrong answers rather than an obvious gap. The Step 11 size budget exists precisely so this file always fits in one read; if it has grown past budget, fix the budget (Step 11), don't switch to reading part of it.
 2. **ActivityWatch reachable** — `curl -s http://localhost:5600/api/0/buckets/` returns JSON. If not, fall back to `daily_exports/<date>/compact.jsonl`; if both missing, the day can only be reconstructed from screenshots + user memory — say so explicitly.
 3. **AW bucket ids resolved** — from `.context.md` if cached, else discover and offer to cache.
 4. **Catalogs fresh** — `.mcp/harvest_assignments*.json` + client catalogs modified within 7 days; else run `scripts/refresh_catalogs.py` (details: `references/catalog-refresh.md`). Surface a >30-day gap to the user before refreshing, unless `.context.md` preferences say refresh silently.
@@ -75,9 +75,15 @@ Run in parallel before classifying anything. If any first-run piece is missing (
 
 ### Step 1 — Resolve target date and scope
 
-If the user gave a date, use it. Otherwise: list existing entries (`harvest_list.py`) for the past ~10 days, cross-reference against `~/Pictures/WorkScreenshots/<date>/` (most reliable date index) or `daily_exports/`, and pick the days with activity but no/partial Harvest entries. **Today is always "in progress" on a no-date run — it is not a reason to ask.** Default to the oldest fully-unbilled *prior* day and mention today's partial state separately. No gaps → "all caught up" (offer today-so-far).
+If the user gave a date, use it — then immediately **check whether that date is already billed** (below) before loading anything else. Otherwise: list existing entries (`harvest_list.py`) for the past ~10 days, cross-reference against `~/Pictures/WorkScreenshots/<date>/` (most reliable date index) or `daily_exports/`, and pick the days with activity but no/partial Harvest entries. **Today is always "in progress" on a no-date run — it is not a reason to ask.** Default to the oldest fully-unbilled *prior* day and mention today's partial state separately. No gaps → "all caught up" (offer today-so-far).
 
 **One date per session.** "Backfill the timesheets" scopes the *goal*, not this run. On a no-date run, report the whole gap list, then work only its oldest entry; Step 12 hands the rest to a fresh session.
+
+**Check the target date against Harvest before rebuilding it — on *every* run, dated or not.** `harvest_list.py <date> <date>` costs one call; `Timesheets/<date>_harvest_responses.json` is a free done-marker beside it. Do this *before* Step 2 loads the skeleton, the timeline and the screenshot index. Nothing downstream will save you: Steps 3, 6 and 8 all check the proposal against ActivityWatch, never against Harvest, so a duplicate day passes every guard in this file and double-bills the client.
+
+- **Already covered** → say so, and *verify* rather than redraft: run Step 6's `--cover` against the existing entries and check the unbilled stretches are genuinely under the `<0.4` band. Report what you found; propose changes only where the evidence contradicts an entry.
+- **Partly billed** → treat the billed windows as fixed and scope this run to the gaps, unless the user says otherwise.
+- **Nothing there** → carry on into Step 2 as normal.
 
 Convert relative dates ("yesterday", "Friday") using today's date in the user's timezone.
 
@@ -86,7 +92,7 @@ Convert relative dates ("yesterday", "Friday") using today's date in the user's 
 ### Step 2 — Load inputs
 
 Read in parallel:
-- `Timesheets/.context.md` (full file)
+- `Timesheets/.context.md` — the **whole** file (Prerequisite 1), if you have not already read it this run
 - `references/classification-rules.md` (the classification rubric — client, project, **task selection**, interleaved-day protocol)
 - Cached catalogs from `.mcp/`
 - `python scripts/afk_blocks.py <date>` — the day skeleton (work_start, work_end, breaks, active spans)
@@ -190,6 +196,7 @@ First self-check every line of the proposal:
 - [ ] Every Harvest note passes the client-readability test (Non-negotiables below)
 - [ ] All 🔸 blocks resolved with the user
 - [ ] `.context.md` exclusions applied (personal browsing, recurring internal items)
+- [ ] **The date isn't already billed** — re-confirm Step 1's Harvest check still holds. Every other line above compares the proposal against ActivityWatch; this is the only one that would catch a duplicate day, and the cost of missing it is double-billing a client
 
 Then show:
 
@@ -232,14 +239,16 @@ A run frequently reveals a fact the skill or `.context.md` doesn't know (a new s
 
 Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in `.context.md`; I guessed EarnLearn. Add `XrmToolBox connecting to env X → EarnLearn` under EarnLearn?"
 
-**`.context.md` size budget — check after every edit to it.** `(Get-Item Timesheets/.context.md).Length` must stay under **14,000 bytes** (override via `## Preferences`). Over budget → compact in the same session, in this order: (1) move any *generic* rule that crept in into this skill's references — that's skill drift, not a user fact; (2) delete facts proven wrong or superseded (finished workstreams, retired clients, one-off ticket examples older than a few months); (3) shorten confirmed-example parentheticals to the date stamp. If getting under budget would drop a live user fact, ask the user which to drop — never silently delete.
+**`.context.md` size budget — check after every edit to it.** `(Get-Item Timesheets/.context.md).Length` must stay under **14,000 bytes** (override via `## Preferences`). The budget exists to keep Prerequisite 1's whole-file read affordable on every run — that is what it is *for*, so a file over budget gets trimmed, never partially read. Over budget → compact in the same session, in this order: (1) move any *generic* rule that crept in into this skill's references — that's skill drift, not a user fact; (2) delete facts proven wrong or superseded (finished workstreams, retired clients, one-off ticket examples older than a few months); (3) shorten confirmed-example parentheticals to the date stamp. If getting under budget would drop a live user fact, ask the user which to drop — never silently delete.
 
 ### Step 12 — One date per session, then reset
 
 **Finish one date per session and stop.** The date is done when nothing is left to post (Step 9 posted it, the user declined at Step 8, or the run had no Harvest write in scope), Step 10 has wrapped up, and every Step 11 proposal is written or declined — a reset mid-follow-up loses those proposals. A date the user deliberately scoped to part of the day is **not** done: the rest of it is unfinished business on this date, not a next day.
 
-**Then, only if days remain**, ask for the reset *before* naming the next date. Say where this date landed, that days are outstanding, and ask the user to run `/clear` and re-invoke the skill on the next one — this date's blocks, client mix and resolved ambiguities read like evidence for the next date. `/clear` also unloads this skill, which is not model-invocable, so a bare "do Thursday" in the fresh session runs with none of these guards.
+**Then, only if days remain**, ask for the reset *before* naming the next date. Say where this date landed, that days are outstanding, and ask the user to run `/clear` before the next one — this date's blocks, client mix and resolved ambiguities read like evidence for the next date.
 
+- **Today-so-far counts as a next date.** Starting a fresh date is what triggers the ask, whether that date is an old gap or the rest of today. Step 1's "today is in progress, not a reason to ask" governs *date selection* on a no-date run; it does not exempt today from the reset. (Three test agents split 2–1 on this sentence when it was absent.)
+- **Say to re-invoke the skill, in the same breath as `/clear`.** It is not model-invocable, so a bare "do Thursday" in the cleared session runs with none of these guards. Dropping this makes the reset actively worse than not resetting.
 - **All caught up → say nothing about resetting.**
 - **You may not know whether days remain.** Only a no-date run builds the gap list (Step 1); on "do Friday" you never swept for one. Ask the user — don't run an unrequested sweep to find out.
 - **Won't clear → ask for `/compact`.** Weaker: it carries this date's conclusions forward, but it drops the raw timelines, screenshot reads and catalog dumps.
