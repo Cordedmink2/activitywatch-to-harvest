@@ -57,6 +57,7 @@ to have in front of you.
 | No entry under 0.25 hr | Step 3, `0.4–0.7` band | Step 3 granularity line, Step 6 guard 1 |
 | Per-user facts belong in `.context.md` | "What lives where" | Step 11, Non-negotiables |
 | Task selection and interleaved days | `references/classification-rules.md` | Step 4 points at it |
+| One date per session | Step 12 | Step 1 scope paragraph, Step 10 wrap-up |
 
 The `--cover` pair has already drifted once and cost a re-run — `TESTING.md` has the
 entry. The fix at the time touched the checklist copy and missed the owner.

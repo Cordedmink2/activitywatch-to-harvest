@@ -97,6 +97,53 @@ restates the check. A diff self-grep caught exclusivity claims but not this, bec
 searched for a phrase rather than for the rule's other copy. **Search for the rule, not the
 wording.**
 
+### One date per session, `/clear` between days — `SKILL.md` Step 12
+**Rung 3, user-directed.** 2026-08-19. Connor asked for it outright, so it goes in
+without a test arm; recording the grade honestly because the rung matters if anyone
+later wonders whether it earned its place.
+
+What *is* measured is the input cost — a run loads a timeline, a screenshot index, the
+catalogs and often several PNGs, and `SKILL.md` Step 2 already names the full timeline
+as "the main cause of context bloat". What is **not** measured is the failure the step
+claims: a second day inheriting the first day's blocks, client mix and resolved
+ambiguities as if they were evidence. Nobody has watched that misattribution happen.
+
+The step is written around contamination rather than cost on purpose. Cost alone argues
+for `/compact` (cheaper, keeps the thread), and `/compact` is exactly the option that
+preserves the previous day's *conclusions* — so a cost-framed rule would recommend the
+weaker reset as if it were equivalent. Framing it as contamination is what makes `/clear`
+the default and `/compact` the fallback, which is the order asked for.
+
+**Test to promote or drop it.** Two arms on a two-client backfill: one fresh agent per
+day, versus one agent doing both days in sequence. Compare the second day's attributions
+against the known answer. If the carry-over arm matches, the step is costing a reset it
+does not need.
+
+**Review findings, same day.** Two subagent arms (correctness, economy) read the first
+draft. Both independently found that **Step 10 was a third copy of the rule and had been
+left contradicting Step 12** — Step 10 told the agent to name the next date, Step 12
+forbade naming it before the reset ask, so an agent reading in order violated Step 12 two
+steps before reaching it. `self-development.md`'s duplication table exists to catch exactly
+that, and the row added in the same edit listed two copies, not three. **The table is only
+as good as the search that populates it:** grepping for the rule's wording found Step 1;
+finding Step 10 needed a search for the *moment* the rule governs.
+
+Four more from the correctness arm, all fixed: the gate was defined through "Step 9
+posted", which never becomes true on a declined post or a "review today's work" run; the
+draft's `<N>` remaining-days count is unknown on any date-specified run; Step 1's existing
+"ask only when several prior gap days compete" contradicted the new "take the oldest";
+and a deliberately partial day re-enters the gap list, so it needed an explicit carve-out
+from "next day". The economy arm cut the draft 45% and was right that the contamination
+argument belonged here rather than in `SKILL.md` — including one sentence ("the cheapest
+way to mis-attribute a whole day") that stated as fact in the operating doc what this
+entry grades rung 3. **A rung-3 claim asserted flatly in `SKILL.md` while its own record
+file says nobody has observed it is a contradiction across the pair**, not just an
+overclaim in one file.
+
+**Rejected: making the reset unconditional.** On "all caught up" there is no next day to
+protect, and asking for a `/clear` the user has no use for trains them to ignore the ask
+on the run where it matters.
+
 ### No Step 3 pointer to the lock-screen quirk — measured and rejected
 **Measured, 2026-08-12. The first fresh-agent two-arm test in this file.**
 

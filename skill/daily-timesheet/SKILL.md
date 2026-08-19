@@ -75,7 +75,9 @@ Run in parallel before classifying anything. If any first-run piece is missing (
 
 ### Step 1 — Resolve target date and scope
 
-If the user gave a date, use it. Otherwise: list existing entries (`harvest_list.py`) for the past ~10 days, cross-reference against `~/Pictures/WorkScreenshots/<date>/` (most reliable date index) or `daily_exports/`, and pick the days with activity but no/partial Harvest entries. **Today is always "in progress" on a no-date run — it is not a reason to ask.** Default to the oldest fully-unbilled *prior* day and mention today's partial state separately; ask only when several *prior* gap days compete. No gaps → "all caught up" (offer today-so-far).
+If the user gave a date, use it. Otherwise: list existing entries (`harvest_list.py`) for the past ~10 days, cross-reference against `~/Pictures/WorkScreenshots/<date>/` (most reliable date index) or `daily_exports/`, and pick the days with activity but no/partial Harvest entries. **Today is always "in progress" on a no-date run — it is not a reason to ask.** Default to the oldest fully-unbilled *prior* day and mention today's partial state separately. No gaps → "all caught up" (offer today-so-far).
+
+**One date per session.** "Backfill the timesheets" scopes the *goal*, not this run. On a no-date run, report the whole gap list, then work only its oldest entry; Step 12 hands the rest to a fresh session.
 
 Convert relative dates ("yesterday", "Friday") using today's date in the user's timezone.
 
@@ -219,7 +221,7 @@ Fix a wrong entry with `python scripts/harvest_patch.py <entry_id> [--start HH:M
 
 ### Step 10 — Wrap-up
 
-Summarise: total hours posted, blocks deferred/skipped, suggested next action (next date to backfill, or "all caught up"). Save the entry ids to `Timesheets/<date>_harvest_responses.json`: `{"entries": [{"id": 2933345845, "project_code": "ACL-001", "hours": 0.25, "notes": "..."}], ...}`.
+Summarise: total hours posted, blocks deferred/skipped, and whether more days are outstanding — but **don't name the next date here**; Step 12 does that after the reset ask. Save the entry ids to `Timesheets/<date>_harvest_responses.json`: `{"entries": [{"id": 2933345845, "project_code": "ACL-001", "hours": 0.25, "notes": "..."}], ...}`.
 
 ### Step 11 — Surface skill or `.context.md` improvements
 
@@ -231,6 +233,18 @@ A run frequently reveals a fact the skill or `.context.md` doesn't know (a new s
 Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in `.context.md`; I guessed EarnLearn. Add `XrmToolBox connecting to env X → EarnLearn` under EarnLearn?"
 
 **`.context.md` size budget — check after every edit to it.** `(Get-Item Timesheets/.context.md).Length` must stay under **14,000 bytes** (override via `## Preferences`). Over budget → compact in the same session, in this order: (1) move any *generic* rule that crept in into this skill's references — that's skill drift, not a user fact; (2) delete facts proven wrong or superseded (finished workstreams, retired clients, one-off ticket examples older than a few months); (3) shorten confirmed-example parentheticals to the date stamp. If getting under budget would drop a live user fact, ask the user which to drop — never silently delete.
+
+### Step 12 — One date per session, then reset
+
+**Finish one date per session and stop.** The date is done when nothing is left to post (Step 9 posted it, the user declined at Step 8, or the run had no Harvest write in scope), Step 10 has wrapped up, and every Step 11 proposal is written or declined — a reset mid-follow-up loses those proposals. A date the user deliberately scoped to part of the day is **not** done: the rest of it is unfinished business on this date, not a next day.
+
+**Then, only if days remain**, ask for the reset *before* naming the next date. Say where this date landed, that days are outstanding, and ask the user to run `/clear` and re-invoke the skill on the next one — this date's blocks, client mix and resolved ambiguities read like evidence for the next date. `/clear` also unloads this skill, which is not model-invocable, so a bare "do Thursday" in the fresh session runs with none of these guards.
+
+- **All caught up → say nothing about resetting.**
+- **You may not know whether days remain.** Only a no-date run builds the gap list (Step 1); on "do Friday" you never swept for one. Ask the user — don't run an unrequested sweep to find out.
+- **Won't clear → ask for `/compact`.** Weaker: it carries this date's conclusions forward, but it drops the raw timelines, screenshot reads and catalog dumps.
+- **Declines both → do as they ask**, and say once that the next date will be read against this one's conclusions.
+- You cannot run either; the user does. **Don't open the next date in the same turn as the ask** — "yes, do Thursday next" is not permission to skip it. Proceed once they have reset, or declined both.
 
 ## Non-negotiables
 

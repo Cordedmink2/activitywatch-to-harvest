@@ -5,6 +5,33 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-08-19
+
+### Upgrading
+
+Skill instructions only — no script, config or task changes. `git pull` then re-run
+`install\install_skill.ps1`; the `WorkScreenshots` task is unaffected. Behaviour change
+worth knowing before your next run: the skill now finishes one date and stops, and asks
+you to `/clear` before the next one rather than working through a backfill in a single
+session.
+
+### Added
+- **Step 12 — one date per session, then reset.** After the date is done (posted or
+  explicitly not, wrapped up, and every `.context.md` proposal written or declined), the
+  skill asks for a `/clear` before starting the next date, and re-invocation with it since
+  `/clear` unloads a non-model-invocable skill. `/compact` is the named fallback if you'd
+  rather keep the thread; declining both is honoured. Nothing is said when you're all
+  caught up.
+
+### Changed
+- **Step 1 takes the oldest gap day instead of asking which to do.** With one date per
+  session the choice no longer arises, so the "ask when several prior gap days compete"
+  clause is gone; the full gap list is still reported on a no-date run.
+- **Step 10 no longer names the next date.** It reports whether days are outstanding and
+  leaves the next date to Step 12, so the reset ask comes before the next day is opened.
+- `references/self-development.md` registers the new rule's three copies in its
+  duplication table.
+
 ## [0.4.5] - 2026-08-19
 
 ### Upgrading
