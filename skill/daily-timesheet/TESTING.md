@@ -475,8 +475,28 @@ redaction, permission to file behind a gate, and the `self-development.md` misdi
 Everything else in its first draft was behaviour all three reps produced unprompted, and
 was cut before shipping.
 
-Not yet re-run against 0.4.10 — the arm that would close the loop is a fourth rep set on
-the new text, and it is owed.
+**Run 3 — the same fixture against 0.4.10.** Three fresh reps, same no-tools discipline,
+now reaching the new Step 11 bullet and `reporting-issues.md`.
+
+| | Run 2 | Run 3 |
+|---|---|---|
+| Sorts to the third bullet and forks installed-vs-maintains | no bullet existed | 3/3 |
+| Produces the repo URL without asking the user | 1/3 | 3/3 |
+| **Redacts** | **0/3** | **3/3** |
+| Asks for a yes to *filing*, distinct from agreeing the defect is real | 0/3 would file at all | 3/3 |
+| Falls back to a saved draft rather than improvising a route | n/a | 3/3 |
+| Keeps the defect out of `.context.md` | 3/3 | 3/3 |
+| Declines to patch the installed script | 3/3 | 3/3 |
+
+Convergence is on *behaviour*, not wording — three different issue titles, three different
+body structures, three different orderings. Two reps independently added the right answer
+to a case the text doesn't cover: if `reporting-issues.md` were missing from an install,
+tell the user the route isn't documented in their copy and report that too, rather than
+falling back to `self-development.md`, which disclaims the path.
+
+One rep added a `gh issue list --search` duplicate check and flagged it as its own idea.
+1/3, rung 3. **Not written in** — one rep reaching for something is not evidence a rule is
+needed, and the reference is already at the length where every line has to earn itself.
 
 ### An exclusivity claim, written while writing the rule against them — 0.4.10
 

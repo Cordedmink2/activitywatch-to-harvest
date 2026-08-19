@@ -31,6 +31,9 @@ than restraining it; all three went looking in `self-development.md` for the rou
 now points at the right one; and **none of the three mentioned redaction** while drafting a public
 issue off a client timesheet run, which is what the new reference mostly exists to fix.
 
+Re-run against this release, same fixture: redaction 0/3 → **3/3**, repo URL without asking 1/3 →
+**3/3**, and 3/3 now ask for a yes to *filing* as distinct from agreeing the defect is real.
+
 A fourth destination for "the machine, not a document" was drafted and dropped: the same test
 showed agents already route `uncategorized` categories to `references/setup.md` unaided.
 `TESTING.md` has both runs, including a first measurement discarded for a leading question in its
