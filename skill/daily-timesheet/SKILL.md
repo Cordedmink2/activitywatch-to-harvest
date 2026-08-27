@@ -1,6 +1,6 @@
 ---
 name: daily-timesheet
-description: Use when the user wants to fill in, review, regenerate, or backfill a timesheet, log time to Harvest, or asks any date-scoped "what did I do / what was I working on Friday" question. Auto-relevant whenever Harvest, ActivityWatch, daily_exports, or Timesheets/ is mentioned, even without the word "timesheet".
+description: Fill in, review, regenerate, or backfill a daily timesheet from ActivityWatch data and log the time to Harvest. User-invoked.
 disable-model-invocation: true
 ---
 
@@ -57,7 +57,9 @@ List with PowerShell `Get-ChildItem` — the Bash `cmd dir` and `Glob` routes re
 Get-ChildItem "$HOME\Pictures\WorkScreenshots\2026-05-29" -Filter *.png | Sort-Object Name
 ```
 
-Each capture tick writes **one PNG per monitor** (`HH-MM-SS_m1.png`, `_m2.png`, … left-to-right, native resolution). Laptop-only days have just `_m1`. On multi-monitor days read the monitor showing the active app — and when hunting a client signal, check the *other* monitors too. Days captured before mid-2026 may hold single stitched `HH-MM-SS.png` files. Filenames are local time; filter by name prefix to find the capture nearest a timestamp, then `Read` the PNG normally.
+Each capture tick writes **one PNG per monitor** (`HH-MM-SS_m1.png`, `_m2.png`, … left-to-right, native resolution). Laptop-only days have just `_m1`. On multi-monitor days read the monitor showing the active app — and check the *other* monitors too whenever the answer matters, which is both "which client is this" and "is anything happening at all". **A capture showing wallpaper, a lock screen or a black screen is evidence about that monitor and nothing else** — never about whether the user was working. `references/classification-rules.md` § "Focused window ≠ active attention" owns why, and the AFK watcher owns active/idle regardless. Days captured before mid-2026 may hold single stitched `HH-MM-SS.png` files. Filenames are local time; filter by name prefix to find the capture nearest a timestamp, then `Read` the PNG normally.
+
+**Byte size triages which captures to open, and settles nothing.** A capture of a black or locked screen lands around 6-7 KB, so `Get-ChildItem`'s `Length` column cheaply ranks a long index before you spend image tokens on it. Two limits, both observed: a large file can be a detailed *wallpaper photo* rather than app content (3.7 MB of seals, 2026-08-21), so size never confirms work either; and a run of near-identical sizes means those pixels didn't change, which is a fact about one monitor's screensaver, not about the user. Open the image before you conclude anything from it.
 
 ## Prerequisites — check at start of every run
 
@@ -79,9 +81,12 @@ If the user gave a date, use it — then immediately **check whether that date i
 
 **One date per session.** "Backfill the timesheets" scopes the *goal*, not this run. On a no-date run, report the whole gap list, then work only its oldest entry; Step 12 hands the rest to a fresh session.
 
-**Check the target date against Harvest before rebuilding it — on *every* run, dated or not.** `harvest_list.py <date> <date>` costs one call; `Timesheets/<date>_harvest_responses.json` is a free done-marker beside it. Do this *before* Step 2 loads the skeleton, the timeline and the screenshot index. Nothing downstream will save you: Steps 3, 6 and 8 all check the proposal against ActivityWatch, never against Harvest, so a duplicate day passes every guard in this file and double-bills the client.
+**Check the target date against Harvest before rebuilding it — on *every* run, dated or not.** `harvest_list.py <date> <date>` costs one call; `Timesheets/<date>_harvest_responses.json` sits beside it as a free done-marker — and, on the already-covered branch below, as the record of what was already decided. Do this *before* Step 2 loads the skeleton, the timeline and the screenshot index. Nothing downstream will save you: Steps 3, 6 and 8 all check the proposal against ActivityWatch, never against Harvest, so a duplicate day passes every guard in this file and double-bills the client.
 
 - **Already covered** → say so, and *verify* rather than redraft: run Step 6's `--cover` against the existing entries and check the unbilled stretches are genuinely under the `<0.4` band. **Both of those are time questions and neither can see an entry booked to the wrong client** — right clock, wrong project passes `--cover` perfectly. So also read one screenshot inside every **non-billable or internal** entry and confirm the screen matches what the entry claims; those are the ones that silently move time off a client. Report what you found; propose changes only where the evidence contradicts an entry.
+  - **Read `Timesheets/<date>_harvest_responses.json` whole before proposing any change to that day** — the same rule as `.context.md` in Prerequisite 1, and for the same reason: its schema is ad hoc (`exclusions`, `notes`, `judgment_calls`, `declared_judgments`, free-text keys invented per run), so there is no key to look under and a partial read returns a confident wrong answer rather than an obvious gap. It holds the *reasons* the day looks the way it does.
+  - **A ruling the user already gave on a window binds, and re-deriving the evidence does not reopen it.** An entry the user asked for, extended, or confirmed is settled; a fresh `active_ratio`, a fresh screenshot read, or a fresh look at the timeline is the *same* argument run again on the same data, not new evidence. Recompute all you like — then, if the file records a decision on that window, say the recomputation disagrees and leave the entry alone. Only genuinely new information (the user says they misremembered, an entry contradicts a *different* entry) reopens it. This branch's job is finding what nobody has looked at yet.
+  - **Proposing a *reduction* — a delete, a trim, a repoint — pulls in `references/classification-rules.md` first.** This branch deliberately skips the rubric to avoid redrafting, which is right while you are verifying and wrong the moment you start subtracting: the guards against over-reading a thin block (supervised agents, meetings invisible to the window watcher, browser rows that span hours) all live there, and without them a low `active_ratio` reads as an idle window that isn't one. Cheaper than an unwarranted deletion.
 - **Partly billed** → treat the billed windows as fixed and scope this run to the gaps, unless the user says otherwise.
 - **Nothing there** → carry on into Step 2 as normal.
 

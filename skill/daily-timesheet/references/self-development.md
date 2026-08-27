@@ -62,6 +62,8 @@ to have in front of you.
 | Check the date against Harvest before rebuilding it | Step 1 | Step 8 checklist |
 | Timesheet-admin time needs a screenshot before it is booked *or* accepted | `classification-rules.md` billing conventions | Step 1 already-covered branch |
 | A skill defect goes upstream, not into `.context.md` | `references/reporting-issues.md` | Step 11 third bullet |
+| Screenshots never settle active/idle | Step 5, first bullet | `SKILL.md` folder mechanics, `classification-rules.md` §"Focused window ≠ active attention" |
+| Check the other monitors before trusting one | `classification-rules.md` §"Focused window ≠ active attention" | `SKILL.md` folder mechanics + Step 5 subagent brief, `classification-rules.md` long-agent-CLI and browser-row paragraphs, interleaved-days probe step |
 
 The `--cover` pair has already drifted once and cost a re-run — `TESTING.md` has the
 entry. The fix at the time touched the checklist copy and missed the owner.

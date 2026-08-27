@@ -188,6 +188,58 @@ named as the free done-marker that was sitting there unread.
 **This is the shape to watch for:** a guard family that all measures against one source is
 blind to errors in the other, however many guards there are.
 
+### A settled window gets re-litigated on recomputed evidence — `SKILL.md` Step 1
+
+**Rung 1.** Observed in production 2026-08-28, on 2026-08-21. A prior session's August audit
+proposed deleting entries `2995286924` (1.50h) and trimming `2994441296` — both on `active_ratio`
+(0.12 and 0.38) plus screenshot reads. Both entries exist *because Connor asked for them* on
+2026-08-25 after querying the day total, as user-attested AI knowledgebase work the tooling cannot
+see. `2026-08-21_harvest_responses.json` records that instruction and says in terms: "THE ACTIVITY
+RATIO DOES NOT GOVERN THAT ENTRY: do not trim it on a <0.4 argument." The proposal re-ran precisely
+that argument. Caught at the confirmation gate; nothing was deleted.
+
+**Two failures, one paragraph.** The file was named at Step 1 only as "a free done-marker", which
+teaches an agent to test its *existence* and never open it. And nothing said that a decision already
+taken binds — so recomputing the ratio felt like new evidence when it is the same argument on the
+same data. Both halves are now in the already-covered branch; the `:82` mention points at it rather
+than restating.
+
+**Why "read it whole" and not "read its `declared_judgments`".** The schema is ad hoc — across 46
+files on this machine the rulings live under `exclusions`, `notes`, `note`, `excluded`,
+`judgment_calls`, `declared_judgments`, `attribution_notes`, `tail_note`, `unbilled`, and one-off
+keys invented per run. No key name can be the rule. Same shape as Prerequisite 1's `.context.md`
+rule, and worded to match it.
+
+**Second occurrence of this shape in eight days.** `2026-08_audit_corrections.json` withdrew a
+2026-08-17 over-billing finding as a false positive on 2026-08-28, lesson recorded as "screenshots
+answer WHICH CLIENT, not how long."
+
+**Fix untested — post-fix fresh-agent arms not run** (subagents were not authorised in the session
+that made the change). The rung-1 evidence establishes the failure, not the repair.
+
+### The already-covered branch subtracts without loading the rubric — `SKILL.md` Step 1, folder mechanics
+
+**Rung 1.** Same 2026-08-21 incident. Both proposals cited single-monitor captures as evidence of a
+dead window: `13-15-01_m1` (wallpaper) for the 12:30-14:00 delete, `11-55-01_m1` (black) for the
+trim. Reading `_m2` at the same instants refuted both — ChatGPT with a typed, unsent prompt about
+the `github-llm-wiki` skill, and VS Code "Admin" with `auto mode on · ← 1 agent` and live agent
+output. `.context.md` flags that exact agent-supervision pattern *for that date*.
+
+**The rule was not missing.** `classification-rules.md` § "Focused window ≠ active attention"
+already says to read the other monitors before shrinking a thin block or dropping a stretch on ratio
+alone, and says it well. The defect is routing: the already-covered branch deliberately skips
+`classification-rules.md` (measured — see "The already-covered branch verifies time, never
+classification"), which is correct while verifying and wrong once the branch starts subtracting.
+
+**Rejected: a fourth copy of the monitor rule in `SKILL.md`.** That is the fragmentation defect —
+a rule spread across places, none complete. Fixed as routing (reductions pull in the rubric) plus
+one scope repair: the folder-mechanics line licensed checking other monitors only "when hunting a
+client signal", which still permits the single-monitor read that caused this. Widened to cover "is
+anything happening at all", with `classification-rules.md` kept as owner. Both pairs added to
+`self-development.md`'s drift table.
+
+**Fix untested — post-fix fresh-agent arms not run.**
+
 ### Timesheet-admin time gets back-billed onto real work — `classification-rules.md`
 **Rung 1.** 2026-08-19. On 2026-08-18, 17:30-17:54 was posted as internal timesheet admin,
 non-billable. Four screenshots across that window (17:31/17:39/17:46/17:51) show NZLS
@@ -514,6 +566,32 @@ The grep is the control that works; the rule alone is not.
 half is documented and never run. The drafting, the gate and the triage were measured; the
 command was not. First reachable session: file one real issue and confirm the flags.
 
+### A long browser window row is not one unit of work — `classification-rules.md` §5
+
+**Rung 1 on both failures. 2026-08-24. Not tested against a control.**
+
+Measured on the 2026-08-21 run, and the paragraph was rewritten the same day after the second
+failure. A 124.7-min `msedge.exe | ChatGPT and 8 more pages` window event sat at
+`uncategorized`. Inside it, the web-watcher rows named two clients, the second surfacing about
+a minute before the event ended; screenshots later showed an 85-minute Teams call had been
+running on a different monitor for the event's whole length.
+
+Both failures were real and they pull in opposite directions, which is why the paragraph
+covers both. **First:** the run billed the whole span to the dominant client, reading the long
+row as one unit of work. **Second:** told to fix that, the run split the span at the brief
+second-client tab hits — which were 30-second checks made *during the call*, not a switch —
+and trimmed a client's entry on the strength of them. A paragraph that had said only "treat a
+lone web row as a possible switch point" would have endorsed the second error, so it now says
+a lone row is a lead to check against the other monitors, and adds that a thin `active_ratio`
+under a long browser row can be a call rather than idle.
+
+**What was not measured.** No agent was watched attributing a long browser event either way,
+and the 3-rep control in the Rejected entry below found the switch point *without* this
+paragraph, so it is not credited with that. Its second half overlaps §3's "Focused window ≠
+active attention", deliberately: §3 owns the mechanism, and this states the browser-row
+symptom that should send a reader there. If a later round needs bytes back, test whether the
+§3 pointer alone suffices before keeping the restatement.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was
@@ -684,7 +762,104 @@ The `blip` flag next to it is what tells a reader to ignore it. Left as-is becau
 already routes on `blip`; pinned by a scenario assertion so a future change to either
 rule has to confront the interaction.
 
+### `--ponumber` doubles the synced Harvest project name — rung 1, observed
+
+Creating NLS2252S with the work-item reference in *both* the title and `--ponumber` produced
+the Harvest project name `CMS BAU backlog - … (US1240, US1242) US1240, US1242`. The sync
+appends the PO value to the name, and that name is client-facing. Instruction added to
+`references/new-client-work.md`: put the reference in one field or the other. Not measured:
+whether editing the case title afterwards re-syncs the project name, or whether the name is
+only set at creation — so the entry does not tell anyone to fix it that way.
+
+Second observation from the same case, recorded but not acted on: the synced project came
+back `hourly_rate: null` / `use_default_rates: true`, so `--rate` writes the Dataverse case
+field only. Whether it reaches invoicing is unverified.
+
+### The `S` suffix does not mean Support — rung 1, observed
+
+`create_incident.py` assigned **NLS2252S** to a case whose shape was DEVELOPMENT / BACKLOG
+(`acl_sla=False`, `casetypecode=1`). The trailing `S` is applied by CRM numbering regardless
+of case shape, so the restated "trailing `S` = Support, tag `[Support]`" rule is not safe on
+its own. Corrected in the affected user's `.context.md`; `SKILL.md` Step 4 and
+`classification-rules.md` §1 still state the `S` rule without this qualification and were
+left alone pending a decision on wording.
+
 ## Rejected
+
+### Byte size as a "static screen" signal — narrowed, 2026-08-28
+
+**Rung 2 for the half that shipped, rejected for the half that did not.**
+
+What shipped, at the folder mechanics: a black or locked capture is ~6-7 KB, so `Length` ranks a
+long screenshot index before spending image tokens. Measured on 2026-08-21. Two limits shipped with
+it because both were observed the same day: a 3.7 MB file that looked substantive by size was a
+detailed wallpaper photograph of seals, so size never confirms work either.
+
+**Rejected: "near-constant sizes across consecutive captures mean a static screen."** True as
+pixels and wrong as an inference. It is re-deriving active/idle from screenshots, which Step 5
+forbids and the AFK watcher owns — and it was the actual reasoning behind the C2 deletion proposal
+(`2994441526`, 15:08-15:55): all three monitors byte-static 15:10-15:57, therefore dead. Put to
+Connor with that evidence on 2026-08-28, he kept the entry. A heuristic whose only production
+outing produced a rejected finding does not belong in the instructions.
+
+### A "check the tail of the final block" rule — 2026-08-24
+
+**Rung 1 on the failure, and the failure was mine, not the doc's.**
+
+A real run (2026-08-21) posted the day's last block 15:55-17:20 to one client when the
+last 7 min were another client plus an internal call. The obvious conclusion was that the
+switch-point protocol probes block interiors but not trailing edges, and that `SKILL.md`
+Step 3 needed a sibling to its `work_end`-blip rule: *end the final block at the last
+substantive evidence for its own attribution, not merely at the last active moment.*
+
+**Control, 3 reps, current text, fictional day with the same signal shape** (one 125-min
+`uncategorized` browser window event, a second client appearing only in the last 7 min at
+ratio 1.0, `LockApp.exe` taking focus immediately after, and the per-user
+agent-supervision note in scope). No filesystem access, so no rep could quote the real doc
+back.
+
+**All 3 found the switch point and refused to bill the tail to the dominant client.** Each
+cited step 3's "a switch point is a real boundary even with no AFK gap". Two billed the
+tail to the second client at the 0.25 floor and said so as a flagged judgment call; one
+left it unbilled and offered the floor as the alternative. None absorbed it under step 7's
+`>=15 min` noise bar, and none needed the noise bar's scope narrowed. The rule was not
+written: the existing text already binds.
+
+**A second finding from the same 3 reps — WITHDRAWN the same day. Read this part as a
+lesson about the fixture, not about the run.** All three also refused the `.context.md`
+agent-supervision exemption ("don't shrink a thin block on ratio alone") on the grounds
+that its stated trigger — `Welcome - Admin - Visual Studio Code` + `auto mode on <- N
+agent` — was absent, the focused window being a browser. Having refused it, all three
+shrank the thin (0.67) block to its active minutes: 0.75 / 0.75 / 0.8 hr against the run's
+1.42 hr wall-clock. That looked like a clean unanimous verdict that the run had invoked the
+exemption without checking its trigger.
+
+**It was an artifact of the fixture.** The fixture was built from window-watcher rows and
+`active_ratio` slices only. Screenshots of the real day then showed a Teams call running on
+monitor 1 across the whole block and `auto mode on` + `1 agent` on monitor 2 — so the
+exemption's trigger *was* present, and the low ratio was a call rather than idle. The window
+watcher logs only the foreground window, which is precisely the blind spot the exemption
+exists to cover. By feeding the reps window rows alone, the fixture deleted the evidence the
+rule keys on and then asked whether the rule applied. Three unanimous refusals were three
+agents correctly reading a fixture that could not contain the answer.
+
+**The lesson, which is the durable part.** A fixture assembled from one watcher cannot test
+a rule about a second watcher's blind spot, and unanimity across reps does not detect this —
+it reads as a strong signal right up to the moment someone opens a screenshot. When a rule's
+trigger is *visual* (a marker on another monitor), the fixture has to carry the visual
+evidence or the arm is void. `changing-agent-instructions` states the general form of this
+("your constraints can manufacture a gap"); this is that failure committed while holding
+that skill in context, which is worth recording precisely because knowing the rule did not
+prevent it.
+
+What survives: the tail-rule rejection in the paragraph above. That arm turned on evidence
+the fixture did contain — the switch point is visible in web-watcher rows — so it stands.
+What does not survive: any claim about the exemption, in either direction. It is untested.
+
+Variance worth noting for anyone re-running this: the reps agreed on every boundary and
+disagreed only on the 7-min tail's disposition (unbilled vs the 0.25 floor) and on the
+untested head of the block.
+
 
 ### A "the machine, not a document" bucket in Step 11 — 2026-08-19
 
@@ -768,6 +943,37 @@ Full suite now **267 passed / 5 skipped**.
 helper is reachable from the product. Where a fix is one call site, test the call site.
 
 ## Open gaps
+
+### Does a piece split out of a thin block re-validate at its own ratio? — untested
+
+Surfaced by the 3-rep control in `## Rejected` ("a check the tail of the final block rule"),
+2026-08-24. Step 3's thin band (0.4-0.7) says to shrink to the contiguous active spans and
+re-merge so the entry's duration is approximately the summed active minutes. It does not say
+whether the shrunk piece is then re-validated at *its own* `active_ratio` — and the two
+readings diverge materially.
+
+Arithmetic instance (2026-08-21, and see the caveat below before using it as a case): a
+block measured 0.64 across 15:55-17:13 with 49.6 active min, whose head 15:55-16:57 is
+**0.73** on its own — the `>=0.7` band, which bills wall-clock (1.03 hr) — while its tail
+16:57-17:13 is 0.28. Duration-approximately-active-minutes instead gives 0.75 hr. The gap is
+0.28 hr on one entry, so the two readings are not interchangeable.
+
+All three reps took the summed-active-minutes reading, but none was in a position to do
+otherwise: the fixture handed them 20-min slices and never showed a shrunk piece's own ratio.
+So the reading is unanimous and uninformative on the question.
+
+**Caveat on that instance — it is arithmetic, not a worked example.** Screenshots later
+showed the block was a Teams call with an agent running alongside, so under the exemption it
+should not have been shrunk at all and neither candidate reading applies to it. The
+divergence it illustrates is real and the numbers are real; the block is the wrong case to
+settle it on. Whoever runs the control should build a fixture where the thin band genuinely
+governs — no meeting, no agent marker on any monitor — and must carry per-monitor evidence
+so the exemption can be seen to be absent rather than merely omitted (see the withdrawn
+finding in `## Rejected`).
+
+Not resolved here, because picking a side without a control is the untested-diagnosis move
+this file exists to prevent.
+
 
 - **Largely closed at the data layer, 2026-08-18** (see the `insert_data_gaps` entry
   above): holes now surface as labelled breaks, so an agent no longer has to infer an

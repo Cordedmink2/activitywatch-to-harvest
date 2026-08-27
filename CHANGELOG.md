@@ -5,6 +5,46 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.11] - 2026-08-28
+
+### Changed
+- **A day the user has already ruled on is no longer re-litigated.** Step 1's already-covered
+  branch named `Timesheets/<date>_harvest_responses.json` as "a free done-marker", which invites
+  an agent to test that the file exists and never open it. It now says to read it whole — the
+  schema is ad hoc, so there is no key to look under — and states that a ruling the user gave on a
+  window binds: recomputing an `active_ratio` or re-reading a screenshot is the same argument on
+  the same data, not new evidence.
+- **A proposed *reduction* now pulls in `references/classification-rules.md`.** The branch skips
+  the rubric deliberately to avoid redrafting, which is right while verifying and wrong the moment
+  it starts subtracting — the guards against over-reading a thin block (supervised agents, meetings
+  invisible to the window watcher, browser rows spanning hours) all live there.
+- **Screenshot guidance widened.** The folder mechanics licensed checking the other monitors only
+  "when hunting a client signal", which still permitted a single-monitor read to answer "is
+  anything happening at all". A capture showing wallpaper, a lock screen or a black screen is now
+  stated to be evidence about that monitor and nothing else; the AFK watcher owns active/idle.
+- Frontmatter `description` shortened to match `disable-model-invocation: true`.
+
+### Added
+- **Byte size as screenshot triage.** A black or locked capture is ~6-7 KB, so `Length` ranks a
+  long index before spending image tokens on it — with both observed limits: a large file can be a
+  detailed wallpaper photo, and constant sizes are a fact about a screensaver, not about the user.
+- `references/self-development.md` gains two rows in the multi-copy drift table: "screenshots never
+  settle active/idle" and "check the other monitors before trusting one".
+
+### Notes on the evidence
+Both changes are rung 1 — an observed production failure, recorded in `TESTING.md`. A prior
+session's audit proposed deleting one entry and trimming another on activity-ratio and
+single-monitor screenshot evidence; both entries existed because the user had explicitly asked for
+them a week earlier, and the response file said in terms that the ratio does not govern them.
+Reading a second monitor at the same timestamps refuted both. Caught at the confirmation gate,
+nothing was deleted. **The fixes themselves are untested** — the post-fix fresh-agent arms were not
+run, so the rung-1 evidence establishes the failure, not the repair.
+
+Also carries reference-file work from earlier sessions that had not been published: the long
+browser row rule in `classification-rules.md`, and two observed defects in `new-client-work.md`
+(`head`/`grep` buffering the Dataverse device-code prompt into an apparent hang; `--ponumber`
+doubling the work-item reference in a client-facing project name).
+
 ## [0.4.10] - 2026-08-19
 
 ### Upgrading
