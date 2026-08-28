@@ -13,6 +13,19 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Before a ticket is done
+
+On any ticket larger than a single-file change, dispatch a review subagent over the finished change
+before ticking the last acceptance criterion, closing the ticket, or reporting the work complete.
+Fix what it finds, or answer it in a comment on the ticket with the reason.
+
+The moment this governs is **claiming done**, not committing. A review that runs after the report
+is worth nothing to whoever read the report.
+
+Observed on #3: a rename whose full suite was green, and whose author had swept the tree twice,
+still shipped four real client identifiers — one of them in a runtime error string a user would
+see. The suite was never evidence about that change, because nothing in it measured the names.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
