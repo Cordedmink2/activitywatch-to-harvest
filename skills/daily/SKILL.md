@@ -16,9 +16,9 @@ This skill is **shareable** — sort every fact by who it applies to. Don't use 
 
 - **Generic mechanism** (any user) → `SKILL.md` / `references/` / `scripts/`: classification, blocking, posting, reusable heuristics, API quirks.
 - **One user's facts** → `Timesheets/.context.md` (in the user's workspace, not the skill folder): clients, colleagues, signals, billing-convention *overrides*, machine specifics, CRM URLs / account GUIDs, pac profiles, prefix→client map. Read every run. Size-budgeted — see Step 11.
-- **Secrets** → `.env` (skill root, gitignored): Harvest creds. Share `.env.example`, never `.env`.
+- **This machine and account** → declared plugin configuration, set once at install and changed with `/plugin configure billables`: Harvest credentials, `TIMESHEET_TIMEZONE`, and the optional `TIMESHEET_ACTIVITY_URL` / `TIMESHEET_SCREENSHOTS_DIR` / `TIMESHEET_WORKSPACE`. The credentials are declared sensitive, so the harness holds them in its own credential store (the OS keychain on macOS, `~/.claude/.credentials.json` elsewhere) — there is no secrets file for this skill to create, read or share. A copied-in install (no harness to ask) puts the same keys in `.env` at the skill root, gitignored; share `.env.example`, never `.env`.
 
-When the same setting is available from more than one of those, a per-command flag wins, then `.env`, then the process environment, then the script's own default; blank counts as unset. `scripts/skill_config.py` carries the reasoning and is where every script resolves a setting — read it there rather than inferring the order from a script.
+When the same setting is available from more than one of those, a per-command flag wins, then `.env`, then the process environment (where the harness's values arrive), then the script's own default; blank counts as unset. `scripts/skill_config.py` carries the reasoning and is where every script resolves a setting — read it there rather than inferring the order from a script.
 
 ## When to invoke
 
@@ -34,7 +34,7 @@ When the same setting is available from more than one of those, a per-command fl
 
 | Source | Purpose | When to use |
 |---|---|---|
-| **ActivityWatch** at `http://localhost:5600/api/0/` | Live, authoritative event stream (window titles, AFK, browser tabs) | **Primary** — but access it via the bundled scripts; query raw only per `references/activitywatch.md` |
+| **ActivityWatch** at the configured `TIMESHEET_ACTIVITY_URL` (default `http://localhost:5600`) + `/api/0/` | Live, authoritative event stream (window titles, AFK, browser tabs) | **Primary** — but access it via the bundled scripts; query raw only per `references/activitywatch.md` |
 | `daily_exports/<date>/compact.jsonl` | Pre-processed AW dump (sub-10s events pre-dropped; short keys: `b`=bucket, `t`=timestamp, `d`=duration, `a`=app, `ti`=title, `u`=url, `s`=afk) | Fallback only when AW is unreachable |
 | `~/Pictures/WorkScreenshots/<date>/HH-MM-SS_mN.png` | **Source-of-truth** screenshots, ~2.5 min cadence, 08:30–20:00 weekdays | Disambiguation only — load specific timestamps, never proactively |
 | `daily_exports/<date>/screenshots/` | Partial copy | Ignore; use the Pictures folder |
@@ -43,9 +43,9 @@ When the same setting is available from more than one of those, a per-command fl
 | `.mcp/harvest_assignments*.json` | Cached Harvest project assignments (`project.id/name/code`, `client.name`, `task_assignments[]`) | Project + task IDs, via `harvest_lookup.py` |
 | `.mcp/<catalog>.txt/.json` | User-specific catalogs (e.g. active-incident list) | Ticket-number → title |
 
-**Screenshot location:** `~/Pictures/WorkScreenshots/` above is the default. If `TIMESHEET_SCREENSHOTS_DIR` is set in the skill's `.env`, captures go there instead — read that path rather than the literal one in the commands below.
+**Screenshot location:** `~/Pictures/WorkScreenshots/` above is the default. If `TIMESHEET_SCREENSHOTS_DIR` is configured, captures go there instead — read that path rather than the literal one in the commands below.
 
-**Timezone:** AW stores UTC; all scripts take `--utc-offset` (default 12; **13 during NZ daylight saving**). User timezone from `## Preferences` in `.context.md`, default `Pacific/Auckland`.
+**Timezone:** AW stores UTC; the scripts convert using the configured `TIMESHEET_TIMEZONE`, read at the date being analysed, so a daylight-saving change needs nothing from you. **There is no assumed zone and no default offset** — a run with neither a configured zone nor `--utc-offset` stops and says so, because a guessed offset dates the day wrong without failing. `--utc-offset <hours>` still overrides it for a single run (a day spent in another zone). If a run reports it cannot *load* the zone, the machine is missing the zone database: `py -m pip install tzdata`.
 
 **Running the scripts:** every `python scripts/…` command below is relative to *this skill's own folder* — the directory this `SKILL.md` was read from — not the workspace. The session's working directory is the workspace, so prefix them with that folder's absolute path: `python "<this skill's folder>/scripts/afk_blocks.py" <date>`. **Resolve the folder once, with the Prerequisites below, from where you read this file, and reuse it for the whole run** — never assume a literal location. It differs by install (inside a plugin's own directory, a shared Agent Skills directory, or a harness's skills directory) and a guessed path fails as "script not found", which reads like a broken skill rather than a wrong prefix. Catalog paths resolve from the workspace, so run them *from* the workspace directory.
 
@@ -65,15 +65,17 @@ Each capture tick writes **one PNG per monitor** (`HH-MM-SS_m1.png`, `_m2.png`, 
 
 ## Prerequisites — check at start of every run
 
-Run in parallel before classifying anything. If any first-run piece is missing (no `.context.md`, no `.env`, no screenshot task, unknown AW buckets), follow `references/setup.md`.
+Run in parallel before classifying anything. If any first-run piece is missing (no `.context.md`, unconfigured credentials or timezone, no screenshot task, unknown AW buckets), follow `references/setup.md`.
 
 1. **`Timesheets/.context.md` — read it, whole, every run.** If missing, run first-run setup; don't classify without it. **Read the entire file into context; never grep it, never read a slice of it, never skim to the section you think you need.** Its facts are cross-cutting — an exclusion in one section decides a block whose client is named in another — so a partial read produces confident wrong answers rather than an obvious gap. The Step 11 size budget exists precisely so this file always fits in one read; if it has grown past budget, fix the budget (Step 11), don't switch to reading part of it.
-2. **ActivityWatch reachable** — `curl -s http://localhost:5600/api/0/buckets/` returns JSON. If not, fall back to `daily_exports/<date>/compact.jsonl`; if both missing, the day can only be reconstructed from screenshots + user memory — say so explicitly.
+2. **ActivityWatch reachable** — `curl -s <activity-url>/api/0/buckets/` returns JSON, where `<activity-url>` is the configured `TIMESHEET_ACTIVITY_URL` or `http://localhost:5600` if unset. Use the configured one: probing localhost on a machine that reads a remote AW reports the instrument dead when the scripts would have worked. If not, fall back to `daily_exports/<date>/compact.jsonl`; if both missing, the day can only be reconstructed from screenshots + user memory — say so explicitly.
 3. **AW bucket ids resolved** — from `.context.md` if cached, else discover and offer to cache.
 4. **Catalogs fresh** — `.mcp/harvest_assignments*.json` + client catalogs modified within 7 days; else run `scripts/refresh_catalogs.py` (details: `references/catalog-refresh.md`). Surface a >30-day gap to the user before refreshing, unless `.context.md` preferences say refresh silently.
 5. **Harvest credentials work** — `python scripts/harvest_list.py <today> <today>` runs without auth error. "credentials not found" → `references/setup.md`; `401/403` → PAT revoked, user must regenerate.
 
-**Tunable defaults** (override via `## Preferences` in `.context.md`): AFK break threshold `1050s` (17.5 min); lunch window `11:30–14:30`; work-hours rendering window `06:00–20:00`; default Harvest task `Gen - Development/Configuration`.
+**Tunable defaults** (override via `## Preferences` in `.context.md`): AFK break threshold `1050s` (17.5 min); substantive-activity floor `120s`; end-of-day blip gap `600s`; smallest uncovered stretch worth flagging `900s`; active/thin bands `0.7`/`0.4`; timeline noise floor `5s`, gap fold `60s` and minimum displayed span `3.0 min`; minimum billable block `0.25 hr`; lunch window `11:30–14:30`; work-hours rendering window `06:00–20:00`; default Harvest task `Gen - Development/Configuration`.
+
+Where `## Preferences` names a value that differs from the default, **pass it on the command line** — each entry in the template carries the flag it maps to. Never edit a constant in `scripts/`: an update overwrites it, silently reverting a preference the user set once and expects to hold.
 
 ## Workflow
 
@@ -286,9 +288,9 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `references/reporting-issues.md` — reporting a defect upstream when the user installed this skill rather than maintaining it: the repo, what to redact first, and the confirmation gate before filing
 - `references/self-development.md` — **for changing this skill, not for running it.** Start here before editing `SKILL.md`, a reference, or a script: where maintenance content goes, which instruments to test against, the rules that have more than one copy, and where the release ritual lives. Ignore it on a normal run.
 - `TESTING.md` — the record behind those decisions: test results, evidence rungs, and options already tried and rejected. Read it so you don't re-add something that was measured unnecessary; new findings go here, not in `SKILL.md`.
-- `scripts/afk_blocks.py` — deterministic day skeleton: work_start/work_end/breaks/active spans/active_ratio; `--window`, `--json`, `--utc-offset`, `--afk-threshold`, `--cover "HH:MM-HH:MM,..."` coverage check
-- `scripts/activity_timeline.py` — categorized window timeline + rollup; `--window HH:MM-HH:MM` zoom folds in web watchers; flags `uncategorized`/`!MULTI`; `--utc-offset`, `--json`
-- `scripts/aw_client.py` — shared ActivityWatch REST helpers behind `afk_blocks.py` and `activity_timeline.py`
+- `scripts/afk_blocks.py` — deterministic day skeleton: work_start/work_end/breaks/active spans/active_ratio; `--window`, `--json`, `--utc-offset`, `--cover "HH:MM-HH:MM,..."` coverage check, plus the `## Preferences` tunables `--afk-threshold`, `--solid`, `--blip-gap`, `--min-uncovered`, `--active-band`, `--thin-band`
+- `scripts/activity_timeline.py` — categorized window timeline + rollup; `--window HH:MM-HH:MM` zoom folds in web watchers; flags `uncategorized`/`!MULTI`; `--utc-offset`, `--json`, `--noise-floor`, `--gap-fold`
+- `scripts/aw_client.py` — shared ActivityWatch REST helpers behind `afk_blocks.py` and `activity_timeline.py`, plus the server address (`TIMESHEET_ACTIVITY_URL`) and the zone-to-offset resolution both need
 - `scripts/harvest_lookup.py` — project/task id lookup across ALL catalog pages by code, project name **or client name**, live-entry fallback for archived projects (a miss after the fallback = genuinely unknown project; a cache refresh won't help); `--task`, `--mcp-dir`, `--json`, `--no-live`, `--days`
 - `scripts/harvest_post.py` / `harvest_patch.py` / `harvest_list.py` — create / update / list time entries (`OK <id>` / `ERR …`)
 - `scripts/skill_config.py` — the seam every script reads a setting through; its docstring carries the flag / `.env` / environment / default precedence and the reasoning behind it

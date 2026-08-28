@@ -35,8 +35,9 @@ import urllib.parse
 # can't leak into an assertion about defaults, and `test_config_seam` asserts that any
 # script naming one of them goes through the seam.
 SETTING_KEYS = (
-    "HARVEST_ACCOUNT_ID", "HARVEST_API_KEY", "TIMESHEET_WORKSPACE",
-    "TIMESHEET_SCREENSHOTS_DIR", "DATAVERSE_URL", "PAC_AUTH_PROFILE",
+    "HARVEST_ACCOUNT_ID", "HARVEST_API_KEY", "TIMESHEET_TIMEZONE",
+    "TIMESHEET_ACTIVITY_URL", "TIMESHEET_WORKSPACE", "TIMESHEET_SCREENSHOTS_DIR",
+    "DATAVERSE_URL", "PAC_AUTH_PROFILE",
 )
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, NamedTuple
@@ -46,7 +47,11 @@ from typing import Callable, NamedTuple
 # --------------------------------------------------------------------------------------
 
 DEFAULT_DATE = dt.date(2026, 5, 28)
-DEFAULT_OFFSET = 12.0          # NZST, the skill's default
+# The offset a generated day is *written in*. It is a property of this DSL, not of the
+# scripts: they carry no built-in offset any more, so a run either passes `--utc-offset`
+# or resolves the zone `conftest._hermetic` configures — which is `Etc/GMT-12`, this same
+# fixed +12, chosen for having no daylight saving rather than for being anyone's home.
+DEFAULT_OFFSET = 12.0
 DEFAULT_HOST = "TESTHOST"
 
 

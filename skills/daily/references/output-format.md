@@ -36,7 +36,7 @@ The `Timesheets/<date>_timesheet.md` is an *optional* internal-audit artefact. G
 
 ## Conventions
 
-- **Time format**: `HH:MM` 24-hour, in the user's local timezone (from `.context.md` `## Preferences`). The separator between start and end is the en-dash `–` (U+2013), not a hyphen.
+- **Time format**: `HH:MM` 24-hour, in the user's local timezone (the configured `TIMESHEET_TIMEZONE` — which is what the scripts already render in, so their output needs no further conversion). The separator between start and end is the en-dash `–` (U+2013), not a hyphen.
 - **Duration**: decimal hours rounded to 0.25 (`0.25`, `0.5`, `0.75`, `1.0`, …). Append ` hrs` literally.
 - **Break rows**: *only* for breaks ≥17.5 min (or the user's overridden threshold). Render `*Break*` in italic, `—` em-dash in the Client column. Shorter AFK gaps fold silently into the surrounding work block.
 - **Client column**: short canonical name as defined in `.context.md`, not the long Harvest client name.

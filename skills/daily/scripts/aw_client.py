@@ -5,14 +5,80 @@ content, but both talk to the same local AW server the same way: discover a
 hostname-suffixed bucket, pull a day of events, collapse the heartbeats. Each
 used to carry its own copy of that code, so a fix to one left the other wrong.
 
+It also owns the two facts about *where and when* a day is read — the server's address and
+the user's zone — because both scripts need them and neither should answer them its own
+way. Both resolve through `skill_config`, so they arrive from wherever the user configured
+them and nothing here knows about the harness.
+
 No third-party deps - stdlib urllib, like the sibling harvest_*.py helpers.
 """
 import datetime as dt
 import json
 import urllib.error
 import urllib.request
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-AW_BASE = "http://localhost:5600/api/0"
+import skill_config
+
+DEFAULT_ACTIVITY_URL = "http://localhost:5600"
+
+
+def resolve_base() -> str:
+    """The `/api/0` prefix every request is built on, from `TIMESHEET_ACTIVITY_URL`.
+
+    Optional, and its default is the answer for almost everyone: ActivityWatch runs on the
+    machine you are typing on. It is declared configuration rather than a constant for the
+    case it isn't — a second machine, a non-standard port — which used to mean editing an
+    installed script that the next update overwrites.
+    """
+    base = skill_config.setting("TIMESHEET_ACTIVITY_URL", default=DEFAULT_ACTIVITY_URL)
+    return base.rstrip("/") + "/api/0"
+
+
+AW_BASE = resolve_base()
+
+
+def resolve_utc_offset(flag, local_date):
+    """The local zone's offset from UTC, in hours, for `local_date`.
+
+    `flag` is whatever `--utc-offset` supplied, or None; it wins, so a day spent in
+    another zone can still be reconstructed without reconfiguring anything. Otherwise the
+    configured `TIMESHEET_TIMEZONE` is read at that date, which is what makes a day from
+    the other side of a daylight-saving change come out right.
+
+    There is deliberately no fallback. This used to be `default=12.0` in both scripts'
+    argument parsers, so every user who was not in New Zealand got a day boundary up to
+    twelve hours out — and nothing failed: the events landed on the wrong date and the
+    only symptom was a day that looked oddly short. No offset is safe to guess, so an
+    unconfigured run stops and says which value it needs.
+
+    The offset is read at local noon, not local midnight: midnight is where a transition
+    lands, and asking there is asking the ambiguous question. One offset for the whole day
+    is still an approximation across a transition — issue #8 owns that.
+    """
+    if flag is not None:
+        return flag
+    name = skill_config.setting("TIMESHEET_TIMEZONE")
+    if not name:
+        skill_config.fail_missing(
+            "No timezone configured, and no --utc-offset given.\n"
+            "  A day's boundaries depend on your zone, so there is nothing safe to assume.\n"
+            "  Set it once:  /plugin configure billables  -> TIMESHEET_TIMEZONE\n"
+            "                (an IANA name, e.g. Europe/London or Pacific/Auckland)\n"
+            "  Already set it? Start a new session — the value is published at session\n"
+            "  start. If a new session still shows this, see references/setup.md\n"
+            "  § 'When the configuration does not arrive'.\n"
+            "  Or for this run only:  --utc-offset <hours>")
+    try:
+        zone = ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        skill_config.fail_missing(
+            f"Could not load the timezone '{name}' ({exc}).\n"
+            "  Check it against the IANA list (e.g. Europe/London, Pacific/Auckland).\n"
+            "  On Windows the zone database is a separate install:  pip install tzdata\n"
+            "  Or bypass it for this run:  --utc-offset <hours>")
+    noon = dt.datetime.combine(local_date, dt.time(12, 0), tzinfo=zone)
+    return noon.utcoffset().total_seconds() / 3600
 
 
 def get(path):

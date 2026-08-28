@@ -25,10 +25,17 @@ Usage:
   python scripts/afk_blocks.py 2026-05-28
   python scripts/afk_blocks.py 2026-05-28 --window 18:45-20:00
   python scripts/afk_blocks.py 2026-05-28 --json
-  python scripts/afk_blocks.py 2026-05-28 --utc-offset 13   # NZDT
+  python scripts/afk_blocks.py 2026-05-28 --utc-offset 13   # this run only
 
-Defaults assume NZ (UTC+12). During NZ daylight saving (late Sep - early Apr)
-pass --utc-offset 13. The skill's .context.md notes the user's zone.
+The day's boundaries come from the configured TIMESHEET_TIMEZONE, read at the
+date being analysed, so a daylight-saving change needs nothing from the user.
+--utc-offset overrides it for one run. There is no assumed zone: see
+aw_client.resolve_utc_offset for why.
+
+The judgement constants below (--solid, --blip-gap, --min-uncovered, the two
+bands) are defaults, not policy. They are a person's working style, so they
+belong in the user's workspace `context.md` § Preferences, from where the model
+passes them here.
 """
 import argparse
 import datetime as dt
@@ -37,7 +44,7 @@ import sys
 
 from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
                        parse_local_time, parse_range, parse_ts, pick_bucket,
-                       utc_bounds)
+                       resolve_utc_offset, utc_bounds)
 
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
 
@@ -55,9 +62,13 @@ def discover_buckets():
 # -- Day arithmetic. Pure functions over spans, so they're testable without AW. --
 # A span is (start, end, status, duration_s); `spans` is always chronological.
 
+# Defaults for the judgement calls, each exposed as a flag in main(). They are one
+# person's working rhythm, not facts about ActivityWatch, so they are overridable.
 SOLID_S = 120       # shorter not-afk runs don't count as substantive activity
 BLIP_GAP_S = 600    # gap after the last substantive activity that makes work_end a flicker
 MIN_UNCOVERED_S = 900
+ACTIVE_BAND = 0.7   # active_ratio at or above which a window reads as billable
+THIN_BAND = 0.4     # ...and below which it reads as mostly idle
 
 
 def to_spans(events):
@@ -69,7 +80,7 @@ def to_spans(events):
     return spans
 
 
-def work_bounds(spans):
+def work_bounds(spans, solid_s=SOLID_S, blip_gap_s=BLIP_GAP_S):
     """First and last not-afk moment, with the end-of-day blip guard.
 
     `blip` means work_end came from a momentary flicker (mouse nudge, auto-wake)
@@ -80,12 +91,12 @@ def work_bounds(spans):
     if not not_afk:
         return None
     work_end = max(s[1] for s in not_afk)
-    last_solid_end = max((s[1] for s in not_afk if s[3] >= SOLID_S), default=work_end)
+    last_solid_end = max((s[1] for s in not_afk if s[3] >= solid_s), default=work_end)
     return {
         "work_start": min(s[0] for s in not_afk),
         "work_end": work_end,
         "last_solid_end": last_solid_end,
-        "blip": (work_end - last_solid_end).total_seconds() >= BLIP_GAP_S,
+        "blip": (work_end - last_solid_end).total_seconds() >= blip_gap_s,
     }
 
 
@@ -164,10 +175,10 @@ def active_seconds(spans, lo, hi):
     return total
 
 
-def uncovered_segments(spans, active, proposed):
+def uncovered_segments(spans, active, proposed, min_uncovered_s=MIN_UNCOVERED_S):
     """Active time the proposed billable blocks leave out - the under-billing check,
     symmetric to the work_end ceiling that catches over-billing. Segments holding
-    less than MIN_UNCOVERED_S of activity are block rounding, not missed work.
+    less than `min_uncovered_s` of activity are block rounding, not missed work.
 
     Detected breaks already split `active`, so they never fall inside one of its
     spans - subtracting the proposed blocks alone can't report a break as a miss.
@@ -188,7 +199,7 @@ def uncovered_segments(spans, active, proposed):
             segments = nxt
         for s0, e0 in segments:
             secs = active_seconds(spans, s0, e0)
-            if secs >= MIN_UNCOVERED_S:
+            if secs >= min_uncovered_s:
                 gaps.append((s0, e0, secs))
     return gaps
 
@@ -196,22 +207,49 @@ def uncovered_segments(spans, active, proposed):
 def main():
     ap = argparse.ArgumentParser(description="Analyze AW AFK watcher for one day.")
     ap.add_argument("date", help="YYYY-MM-DD (local date)")
-    ap.add_argument("--utc-offset", type=float, default=12.0,
-                    help="Local zone offset from UTC in hours (default 12 = NZST; use 13 for NZDT)")
+    ap.add_argument("--utc-offset", type=float, default=None,
+                    help="Local zone offset from UTC in hours, for this run only. "
+                         "Omit to use the configured TIMESHEET_TIMEZONE.")
     ap.add_argument("--afk-threshold", type=int, default=DEFAULT_THRESHOLD,
                     help="Seconds of afk that counts as a real break (default 1050 = 17.5 min)")
+    ap.add_argument("--solid", type=float, default=SOLID_S,
+                    help=f"Seconds a not-afk run must reach to count as substantive "
+                         f"activity rather than a flicker (default {SOLID_S})")
+    ap.add_argument("--blip-gap", type=float, default=BLIP_GAP_S,
+                    help=f"Seconds between the last substantive activity and work_end "
+                         f"that make work_end a blip (default {BLIP_GAP_S})")
+    ap.add_argument("--min-uncovered", type=float, default=MIN_UNCOVERED_S,
+                    help=f"Smallest uncovered stretch --cover reports as missed work "
+                         f"rather than block rounding, in seconds (default {MIN_UNCOVERED_S})")
+    ap.add_argument("--active-band", type=float, default=ACTIVE_BAND,
+                    help=f"active_ratio at or above which a --window reads as active "
+                         f"(default {ACTIVE_BAND})")
+    ap.add_argument("--thin-band", type=float, default=THIN_BAND,
+                    help=f"active_ratio below which a --window reads as mostly idle "
+                         f"(default {THIN_BAND})")
     ap.add_argument("--window", help="Compute active_ratio for HH:MM-HH:MM (local)")
     ap.add_argument("--cover", help="Comma-separated proposed billable blocks "
                     "(HH:MM-HH:MM,HH:MM-HH:MM,...); reports active time they fail to cover")
     ap.add_argument("--json", action="store_true", help="Emit JSON instead of text")
     args = ap.parse_args()
 
-    offset = dt.timedelta(hours=args.utc_offset)
     try:
         local_date = dt.datetime.strptime(args.date, "%Y-%m-%d").date()
     except ValueError:
         print(f"ERR bad date '{args.date}', expected YYYY-MM-DD", file=sys.stderr)
         return 2
+
+    if args.thin_band > args.active_band:
+        # Inverted bands don't fail, they produce a verdict string nobody can act on —
+        # "thin (0.9-0.5)" — and the model bills on that verdict.
+        print(f"ERR --thin-band ({args.thin_band:g}) is above --active-band "
+              f"({args.active_band:g}); the bands would read backwards", file=sys.stderr)
+        return 2
+
+    # After the date parse, because resolving a zone for an unparseable date would report
+    # the configuration problem in front of the typo that is actually in the way.
+    utc_offset = resolve_utc_offset(args.utc_offset, local_date)
+    offset = dt.timedelta(hours=utc_offset)
 
     start_utc, end_utc = utc_bounds(local_date, offset)
 
@@ -230,7 +268,7 @@ def main():
         return (d + offset).strftime("%H:%M:%S")
 
     spans = insert_data_gaps(to_spans(afk_events), args.afk_threshold)
-    bounds = work_bounds(spans)
+    bounds = work_bounds(spans, args.solid, args.blip_gap)
     if bounds is None:
         # Same key set as a normal result, so `--json` output can be parsed without
         # first sniffing whether the day happened to have any activity in it.
@@ -277,7 +315,9 @@ def main():
         win_dur = (we - ws).total_seconds()
         overlap = active_seconds(spans, ws, we)
         ratio = overlap / win_dur if win_dur > 0 else 0.0
-        band = "active (>=0.7)" if ratio >= 0.7 else ("thin (0.4-0.7)" if ratio >= 0.4 else "mostly idle (<0.4)")
+        hi, lo = args.active_band, args.thin_band
+        band = (f"active (>={hi:g})" if ratio >= hi
+                else (f"thin ({lo:g}-{hi:g})" if ratio >= lo else f"mostly idle (<{lo:g})"))
         window_report = {
             "window": args.window,
             "active_ratio": round(ratio, 2),
@@ -304,7 +344,8 @@ def main():
             return 2
 
         uncovered = [{"start": to_local(s0), "end": to_local(e0), "active_min": round(secs / 60, 1)}
-                     for s0, e0, secs in uncovered_segments(spans, active, prop)]
+                     for s0, e0, secs in uncovered_segments(spans, active, prop,
+                                                            args.min_uncovered)]
         # Union the proposed blocks before totalling. Summing them independently let two
         # overlapping blocks report more covered activity than the day held — and a
         # coverage figure above 100% reads as "nothing was missed" at exactly the moment
@@ -346,7 +387,7 @@ def main():
     # --cover wants the whole skeleton; a bare --window does not.
     focused = bool(args.window) and not args.cover
 
-    print(f"AFK analysis for {args.date}  (offset UTC+{args.utc_offset:g}, break>={args.afk_threshold}s)")
+    print(f"AFK analysis for {args.date}  (offset UTC{utc_offset:+g}, break>={args.afk_threshold}s)")
     print(f"  bucket:      {afk_bucket}")
     print(f"  work start:  {result['work_start']}")
     print(f"  WORK END:    {result['work_end']}   <- end of day; do not bill past this")

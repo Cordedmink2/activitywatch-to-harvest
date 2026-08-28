@@ -171,13 +171,19 @@ def test_a_missing_required_value_is_an_error_line_and_a_non_zero_exit():
     assert exc.value.code != 0
 
 
-def test_missing_credentials_still_name_the_file_to_create(isolated):
-    """The message a first-run user actually sees, unchanged by the move."""
+def test_missing_credentials_name_both_ways_to_supply_them(isolated):
+    """The message a first-run user actually sees.
+
+    Plugin route first — it is the one that keeps the token out of a file — and the
+    copied-in install's `.env` second, because that install has no harness to ask and its
+    user would otherwise be told to run a command that does not exist for them.
+    """
     hc._CREDS_CACHE = None
     with pytest.raises(SystemExit) as exc:
         hc.load_creds()
     message = str(exc.value)
     assert message.startswith("ERROR: Harvest credentials not found.")
+    assert "/plugin configure" in message
     assert ".env.example" in message
     assert "HARVEST_ACCOUNT_ID" in message and "HARVEST_API_KEY" in message
 
@@ -211,12 +217,43 @@ def test_only_the_seam_parses_the_env_file():
     assert definers == ["skill_config.py"]
 
 
+def seam_readers() -> set[str]:
+    """Modules in `scripts/` that go through the seam themselves.
+
+    Naming a setting is allowed at one remove: `afk_blocks` documents
+    `TIMESHEET_TIMEZONE` in its `--utc-offset` help and never resolves it, because
+    `aw_client.resolve_utc_offset` does — through `skill_config`, like everything else.
+    Requiring the literal import in *every* script that mentions a key would push the two
+    scripts back to resolving the zone apiece, which is the duplication `aw_client` exists
+    to prevent.
+
+    Derived rather than listed: a hand-maintained allowlist is a place to quietly add the
+    next offender.
+
+    Be honest about the strength of what this buys. It checks "this script imports a module
+    that mentions the seam", not "this script's use of *this key* reaches the seam" — a
+    script could import `aw_client` and separately grow its own read of a different key and
+    stay green. What holds that line is the sibling guard below,
+    `test_only_the_seam_reads_the_process_environment`, which forbids the read itself in
+    every script. This one is the weaker half of a pair, and only the pair is a guarantee.
+    """
+    return {p.stem for p in SCRIPTS.glob("*.py")
+            if "skill_config" in p.read_text(encoding="utf-8")}
+
+
 def test_every_script_naming_a_setting_resolves_it_through_the_seam():
-    offenders = [p.name for p in scripts()
-                 if any(k in (t := p.read_text(encoding="utf-8")) for k in SETTING_KEYS)
-                 and "skill_config" not in t]
+    delegates = seam_readers()
+    offenders = []
+    for p in scripts():
+        text = p.read_text(encoding="utf-8")
+        if not any(k in text for k in SETTING_KEYS):
+            continue
+        reaches = [d for d in delegates
+                   if d != p.stem and re.search(rf"\b(?:import|from) {d}\b", text)]
+        if "skill_config" not in text and not reaches:
+            offenders.append(p.name)
     assert not offenders, (
-        "these name a setting without going through skill_config:\n  " + "\n  ".join(offenders))
+        "these name a setting with no path to skill_config:\n  " + "\n  ".join(offenders))
 
 
 @pytest.mark.parametrize("name", ["config", "find_workspace", "ENV_PATH", "_parse_env_file"])

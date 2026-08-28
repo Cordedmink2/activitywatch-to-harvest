@@ -18,13 +18,38 @@ see SKILL.md Step 11) after every edit and compacts when it's exceeded.
 
 Override the skill's defaults here. Omit any line you're happy with as default.
 
-- **Timezone**: `Pacific/Auckland`  <!-- IANA name; affects AW UTC→local conversion -->
+Your timezone is *not* here: it is machine configuration, set once at install
+(`/plugin configure billables` → `TIMESHEET_TIMEZONE`), so it can't drift out of step with
+a second workspace. Everything below is a judgement call about *your* working style, which
+is why it lives with your facts rather than in a shipped script.
+
 - **AFK threshold for a real break**: `1050s` (17.5 min) — shorter AFK folds into work
+  <!-- afk_blocks --afk-threshold -->
+- **Substantive activity floor**: `120s` — a shorter not-afk run is a flicker, not work
+  <!-- afk_blocks --solid; lower it if your real work arrives in short bursts -->
+- **End-of-day blip gap**: `600s` — this long after the last substantive activity, the
+  day's last moment is a mouse nudge, not work  <!-- afk_blocks --blip-gap -->
+- **Smallest uncovered stretch worth flagging**: `900s` (15 min) — below this, activity
+  the proposed blocks miss is rounding  <!-- afk_blocks --min-uncovered -->
+- **Active / thin bands**: at or above `0.7` active_ratio a stretch is billable, below
+  `0.4` it is mostly idle  <!-- afk_blocks --active-band / --thin-band -->
+- **Timeline noise floor**: `5s` — shorter window events are tab-switch noise
+  <!-- activity_timeline --noise-floor -->
+- **Timeline gap fold**: `60s` — a shorter gap doesn't break a span in two
+  <!-- activity_timeline --gap-fold -->
+- **Smallest span the timeline prints**: `3.0 min` — shorter ones are hidden from the text
+  view but still counted in the rollup  <!-- activity_timeline --min-span -->
+- **Minimum billable block**: `0.25 hr` — nothing shorter is posted as its own entry
+  <!-- no flag: the model applies this when it drafts, per references/output-format.md -->
 - **Lunch detection window**: `11:30`–`14:30` local — longest AFK in here is lunch
 - **Work-hours window for AW rendering**: `06:00`–`20:00` local
 - **Default Harvest task for client work**: `Gen - Development/Configuration`
 - **Default Harvest task for internal/admin time**: `Meeting - Standup Meetings`
 - **Display name in window titles**: `<YourFirstName>` (used by Edge profile signal — e.g. titles ending `… - <Profile> - <YourFirstName> - Microsoft Edge`)
+
+Each `<!-- ... -->` names the flag the skill passes when you change the value beside it.
+Changing a number here is the supported way to retune the skill; editing the constant in a
+shipped script is not — an update overwrites it.
 
 ## AW buckets
 

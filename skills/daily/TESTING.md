@@ -654,8 +654,81 @@ consequence — refresh writes to a directory the reader never opens — is arit
 resolver, not an observation.
 
 **Cost, accepted.** A plugin install now resolves *no* workspace, so `TIMESHEET_WORKSPACE`
-has to be set. That is correct rather than convenient — the alternative is guessing — and
-it goes away when the configuration surface is declared in the plugin manifest.
+has to be set. That is correct rather than convenient — the alternative is guessing. It is
+no longer a cost the user has to discover: the install asks for the workspace directory as
+a declared optional option — see the next entry.
+
+### The configuration surface is declared, and the New Zealand offset is gone
+**Rung 1.** 2026-08-28. Issue #7.
+
+Six settings are now declared in `.claude-plugin/plugin.json` under `userConfig`, so a
+fresh install asks for them once. Three platform facts were verified against the installed
+CLI rather than reasoned about, because each one would have been wrong to assume:
+
+1. **Non-interactive form.** `claude plugin install <plugin>@<marketplace> --config KEY=VALUE`,
+   repeatable, with `-y`. There is no `claude plugin config` subcommand — the first guess.
+2. **Where sensitive values land.** A non-sensitive option appears in `~/.claude/settings.json`
+   under `pluginConfigs`; a `sensitive` one does not appear there at all. That flag is the
+   entire mechanism for keeping a token out of a file — there is no second one to also set.
+3. **Whether a `directory` field validates the path.** It does not: `C:/does/not/exist/at/all`
+   was accepted and stored. So `references/setup.md`'s reimage note still stands — a
+   configured workspace path is checked by nobody, and a stale one breaks catalog lookups
+   silently while Harvest-only scripts keep working and mask it.
+
+Two further findings, both load-bearing:
+
+- The `CLAUDE_PLUGIN_OPTION_*` variables reach **hook processes only**, never the shell the
+  model runs scripts in. `hooks/publish_plugin_config.py` bridges that at SessionStart via
+  `$CLAUDE_ENV_FILE`, so the values arrive in the layer `skill_config` already documents as
+  "the process environment, which is where a harness injects values". No new precedence.
+- A manifest `default` on an option the user never set is **not injected** — it is a dialog
+  pre-fill only. So the real fallback for an optional setting stays the script-side
+  `setting(..., default=...)`, and a `default` in the manifest would be a value shown to a
+  user as though it were the considered answer for them while changing nothing.
+
+**The defect this closes.** `--utc-offset` defaulted to `12.0` in both scripts. Every user
+outside New Zealand got a day boundary up to twelve hours out, and *nothing failed*: events
+landed on the wrong date, the timesheet was filed against the wrong day, and the only
+symptom was a day that looked oddly short. It is now resolved from `TIMESHEET_TIMEZONE` at
+the date being analysed, and a run with neither that nor `--utc-offset` refuses. Refusing is
+the answer rather than a better guess: there is no offset that is right to assume.
+
+**Cost, accepted.** `zoneinfo` is stdlib but its data is not shipped with Python on Windows,
+so a machine without `tzdata` cannot resolve a zone. That is reported as an explicit error
+naming both `pip install tzdata` and the `--utc-offset` escape hatch — never a silent
+fallback, which is the failure mode being removed. The stdlib-only rule holds for the
+scripts themselves; the zone database is data, and its absence is now a message rather than
+a wrong answer.
+
+**What was not measured.** No user was watched completing a fresh install through the
+dialog. The acceptance criteria about prompting are asserted against the manifest
+(`tests/test_plugin_config.py`), which is what the dialog is generated from.
+
+**Known limitation: the session hook needs a POSIX shell.** Confirmed from the shipped
+binary, not assumed — it selects PowerShell for hook commands on Windows when Git Bash is
+absent, and warns specifically about PowerShell hook commands. The manifest's command is
+`sh "${CLAUDE_PLUGIN_ROOT}/hooks/publish_plugin_config.sh"`, so on such a machine the hook
+never starts and the user gets "I configured everything and nothing is configured".
+
+Three fixes were considered and rejected before accepting the gap:
+
+- *Name the interpreter directly* (`python3 …`, exec form, no shell). No single token
+  works everywhere: `python3.exe` is absent from a python.org install on Windows, and `py`
+  does not exist on POSIX.
+- *One hook entry per shell.* The one that cannot spawn prints an error to the user at
+  **every** session start on the other platform — trading a silent failure for permanent
+  noise.
+- *A shell polyglot.* Unreviewable, and this file argues against exactly that kind of
+  cleverness elsewhere.
+
+So the gap is closed by diagnosis rather than by mechanism: both "missing setting" messages
+name a new session first and `references/setup.md` § "When the configuration does not
+arrive" second, which carries `winget install Git.Git`. That section also carries the other
+cause, found in the same review — a `.env` left over from a copied-in install now outranks
+`/plugin configure`, because for the first time both routes carry the *same* keys and the
+seam puts `.env` above the process environment. The precedence itself was not changed here:
+reordering which of a user's two configured values wins is not something to do inside a
+ticket about declaring the surface.
 
 ## Script defects
 

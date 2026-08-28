@@ -22,7 +22,7 @@ Authorization: Bearer <HARVEST_API_KEY>
 User-Agent: <something descriptive>
 ```
 
-The token comes from the skill's `.env` file (see `SKILL.md` → Setup → "First-run: Harvest credentials"). `scripts/refresh_catalogs.py` resolves it through the same shared `harvest_client.load_creds()` helper the other Harvest scripts use, so configuring `.env` once covers everything.
+The token comes from wherever it was configured — the plugin's declared configuration, or a copied-in install's `.env` (see `references/setup.md` § "First-run: configuration"). `scripts/refresh_catalogs.py` resolves it through the same shared `harvest_client.load_creds()` helper the other Harvest scripts use, so configuring it once covers everything.
 
 **Pagination:** loop pages at `per_page=100` until `next_page` is null. Most consultants have <1000 assignments total.
 

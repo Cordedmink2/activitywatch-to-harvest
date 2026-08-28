@@ -7,7 +7,7 @@ Goal: for each proposed time block, pick a `(client, project_id, task_id, billab
 - Internal-colleague + external-contact names
 - Billing-convention *overrides* (default tasks, per-project conventions, note-style examples in the user's voice)
 - User-specific personal-browsing recognizers (on top of the generic exclusion categories below)
-- Preferences (AFK threshold, lunch window, timezone, etc.)
+- Preferences (AFK threshold, activity floor, active/thin bands, lunch window, etc.) — the timezone is *not* here, it is plugin configuration
 
 This file contains only the **generic heuristics** for *applying* `.context.md` to event data. If a rule below contradicts `.context.md`, `.context.md` wins.
 

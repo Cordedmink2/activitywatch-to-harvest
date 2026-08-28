@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-28
+
+### Added
+- **The plugin declares its configuration surface, and a fresh install asks for it once.**
+  `HARVEST_ACCOUNT_ID`, `HARVEST_API_KEY` and `TIMESHEET_TIMEZONE` are required;
+  `TIMESHEET_ACTIVITY_URL`, `TIMESHEET_SCREENSHOTS_DIR` and `TIMESHEET_WORKSPACE` are optional and
+  skipped. `/plugin configure billables` changes them later. The two Harvest fields are declared
+  sensitive, so Claude Code stores them in its own credential store instead of a file inside the
+  plugin — the OS keychain on macOS, `~/.claude/.credentials.json` on Windows and Linux. Nothing for
+  this skill to git-ignore, and a plugin update cannot carry them off. A SessionStart hook publishes
+  the values into the session so the bundled scripts resolve them through the existing seam; no new
+  precedence and no second reader.
+- **The judgement tunables are settable without editing a script.** `afk_blocks.py` gains `--solid`,
+  `--blip-gap`, `--min-uncovered`, `--active-band` and `--thin-band`; `activity_timeline.py` gains
+  `--noise-floor` and `--gap-fold`. Each shipped constant is now that flag's default, so an existing
+  run is unchanged. They belong to how a person works, so they are documented in the workspace's
+  `## Preferences` — which names the flag for each — rather than in a shipped file an update
+  overwrites.
+- **`TIMESHEET_ACTIVITY_URL`** points the scripts at an ActivityWatch running somewhere other than
+  `http://localhost:5600`.
+
 ### Changed
+- **`--utc-offset` no longer defaults to 12.** Both scripts resolved the day's boundaries at UTC+12
+  when no offset was passed, so every user outside New Zealand got a day boundary up to twelve hours
+  out — and nothing failed: events landed on the wrong date and the only symptom was a day that
+  looked oddly short. The offset now comes from the configured `TIMESHEET_TIMEZONE`, read at the
+  date being analysed; a run with neither that nor `--utc-offset` stops and says which value it
+  needs. `--utc-offset` still overrides for a single run. The `.context.md` template no longer seeds
+  a New Zealand timezone into a new user's workspace.
+- **The "credentials not found" message leads with `/plugin configure`**, keeping the `.env` route
+  for the copied-in install that has no harness to ask.
+
+### Upgrading
+- **Delete any `.env` inside an installed plugin.** The two routes now carry the *same* six keys,
+  and the seam puts `.env` above the process environment where the configured values arrive — so a
+  leftover file silently outranks `/plugin configure`. The tell is a rotated token that still 401s,
+  or a timezone change with no effect. `references/setup.md` § "When the configuration does not
+  arrive" covers it, along with the other cause: on Windows the session hook that publishes the
+  configuration runs under Git Bash, and cannot start without it (`winget install Git.Git`).
 - **The repo is now a plugin marketplace holding one plugin, `billables`.** `/plugin marketplace
   add Cordedmink2/activity-to-timesheet` then `/plugin install billables@activity-to-timesheet`
   installs it; the skill is invoked as `/billables:daily`. The repo is renamed
@@ -28,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to sit directly inside a `skills/` directory, and never treats a plugin's own root as a workspace.
   **Consequence for plugin installs:** the skill is not inside a workspace, so nothing is
   auto-detected and `TIMESHEET_WORKSPACE` has to be set. Refusing is the point — the alternative is
-  guessing — and it goes away when the configuration surface is declared in the manifest.
+  guessing — and the install now asks for it, as a declared optional option.
 
 ## [0.4.11] - 2026-08-28
 

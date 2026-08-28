@@ -1,7 +1,7 @@
 {
   "name": "billables",
   "description": "Turns captured desktop activity into a reviewable billable timesheet and, on your explicit confirmation, logs it to your timesheet provider.",
-  "version": "0.4.11",
+  "version": "0.5.0",
   "author": {
     "name": "Connor Parsons"
   },
@@ -15,5 +15,54 @@
     "activitywatch",
     "harvest",
     "consulting"
-  ]
+  ],
+  "userConfig": {
+    "HARVEST_ACCOUNT_ID": {
+      "type": "string",
+      "title": "Harvest account ID",
+      "description": "The numeric account ID shown at the top of https://id.getharvest.com/developers.",
+      "required": true,
+      "sensitive": true
+    },
+    "HARVEST_API_KEY": {
+      "type": "string",
+      "title": "Harvest personal access token",
+      "description": "A personal access token from https://id.getharvest.com/developers. Member scope is enough.",
+      "required": true,
+      "sensitive": true
+    },
+    "TIMESHEET_TIMEZONE": {
+      "type": "string",
+      "title": "Your timezone",
+      "description": "IANA name, e.g. Europe/London or Pacific/Auckland. Decides where your day starts and ends; there is no default, because guessing it would mis-date someone else's timesheet.",
+      "required": true
+    },
+    "TIMESHEET_ACTIVITY_URL": {
+      "type": "string",
+      "title": "ActivityWatch address",
+      "description": "Base URL of the ActivityWatch server holding your activity. Leave blank unless it runs somewhere other than http://localhost:5600."
+    },
+    "TIMESHEET_SCREENSHOTS_DIR": {
+      "type": "directory",
+      "title": "Screenshot directory",
+      "description": "Where the capture task writes screenshots. Leave blank for ~/Pictures/WorkScreenshots."
+    },
+    "TIMESHEET_WORKSPACE": {
+      "type": "directory",
+      "title": "Workspace directory",
+      "description": "The folder holding your Timesheets/ and .mcp/ catalogs. Leave blank to use the folder you run Claude Code from."
+    }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/publish_plugin_config.sh\""
+          }
+        ]
+      }
+    ]
+  }
 }

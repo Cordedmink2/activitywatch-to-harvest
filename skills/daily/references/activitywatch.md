@@ -4,8 +4,10 @@ The bundled scripts (`afk_blocks.py`, `activity_timeline.py`) wrap this API and 
 
 ## Endpoints
 
-- Discover buckets: `GET http://localhost:5600/api/0/buckets/` returns `{bucket_id: {...}}`. Buckets are hostname-suffixed (e.g. `aw-watcher-window_<HOST>`). A machine rename or reimage leaves the old-host buckets in the listing, no longer updating — `aw_client.py`'s `pick_bucket()` prefers a suffixed match over an unsuffixed leftover, and among suffixed candidates breaks ties by `last_updated`, so a stale old-host bucket won't get silently selected once the new one starts reporting.
-- Pull events: `GET http://localhost:5600/api/0/buckets/<bucket_id>/events?start=<ISO-UTC>&end=<ISO-UTC>&limit=10000`. Events have `timestamp` (UTC), `duration` (seconds), `data` (varies by watcher).
+`<activity-url>` throughout is the configured `TIMESHEET_ACTIVITY_URL`, or `http://localhost:5600` when it is unset — which is the usual case. Use the configured one rather than the literal: on a machine reading a remote ActivityWatch, a raw query to localhost reports the instrument dead while the bundled scripts work fine.
+
+- Discover buckets: `GET <activity-url>/api/0/buckets/` returns `{bucket_id: {...}}`. Buckets are hostname-suffixed (e.g. `aw-watcher-window_<HOST>`). A machine rename or reimage leaves the old-host buckets in the listing, no longer updating — `aw_client.py`'s `pick_bucket()` prefers a suffixed match over an unsuffixed leftover, and among suffixed candidates breaks ties by `last_updated`, so a stale old-host bucket won't get silently selected once the new one starts reporting.
+- Pull events: `GET <activity-url>/api/0/buckets/<bucket_id>/events?start=<ISO-UTC>&end=<ISO-UTC>&limit=10000`. Events have `timestamp` (UTC), `duration` (seconds), `data` (varies by watcher).
 
 ## Buckets (`<host>` = machine hostname, discover via buckets endpoint)
 
@@ -17,7 +19,7 @@ The bundled scripts (`afk_blocks.py`, `activity_timeline.py`) wrap this API and 
 
 ## Time zones
 
-AW stores everything in UTC. Compute the UTC range from the user's *local-midnight* boundaries. Example for `2026-05-13` in NZST (UTC+12): `[2026-05-12T12:00:00Z, 2026-05-13T12:00:00Z]`. Read the user's timezone from `## Preferences` in `.context.md`; default to `Pacific/Auckland` if absent. Watch for DST transitions in the offset (UTC+13 during NZ daylight saving).
+AW stores everything in UTC. Compute the UTC range from the user's *local-midnight* boundaries. Example for `2026-05-13` at UTC+12: `[2026-05-12T12:00:00Z, 2026-05-13T12:00:00Z]`. The zone is the configured `TIMESHEET_TIMEZONE` (`/plugin configure billables`), which `aw_client.resolve_utc_offset` reads *at the date being analysed*, so a daylight-saving change is handled without anyone remembering it. **Do not substitute a zone of your own if it is unset** — the scripts refuse the run instead, deliberately: a guessed offset moves the day boundary by hours and nothing fails visibly.
 
 ## Manual blocking spec (AW unreachable — `compact.jsonl` fallback only)
 

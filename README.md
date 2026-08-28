@@ -25,23 +25,24 @@ This repo is a plugin marketplace holding one plugin, `billables`. From inside C
 
 That gives you `/billables:daily`. It does **not** give you the parts only you can do —
 installing ActivityWatch, the browser extension, the browser-profile title tags, the category
-rules, scaffolding your workspace, and your Harvest credentials. The manual setup below walks
-through all of those: **steps 1–4 and 6–10 still apply**, and step 5 is the only one the two
-commands above replace.
+rules, and scaffolding your workspace. The manual setup below walks through all of those:
+**steps 1–4 and 6–10 still apply**, and step 5 is the only one the two commands above replace.
 
-Two things a plugin install needs that a hand-installed copy doesn't. Both go away once the
-configuration surface is declared in the manifest; until then:
+The install then asks you for your own details, once:
 
-- **Set `TIMESHEET_WORKSPACE`.** The scripts auto-detect a workspace only when the skill is
-  installed *inside* one, and a plugin never is — so after step 6, put
-  `TIMESHEET_WORKSPACE=<your workspace>` in the skill's `.env` beside your Harvest credentials.
-  Without it a catalog refresh refuses to run rather than guessing where to write.
-- **Keep a copy of your `.env`.** It lives at the skill root, which for a plugin install is
-  inside the installed plugin — so updating the plugin can take it with it.
+| | |
+|---|---|
+| **Harvest account ID** and **personal access token** | From https://id.getharvest.com/developers. Both are marked sensitive, so Claude Code keeps them in its own credential store — the OS keychain on macOS, `~/.claude/.credentials.json` elsewhere — rather than in a file inside the plugin or in `settings.json`. |
+| **Your timezone** | An IANA name (`Europe/London`, `Pacific/Auckland`). Required, with no default: it decides where your day starts and ends, and a guess would date someone else's timesheet wrong without anything visibly failing. |
+| **ActivityWatch address** | Optional. Leave blank unless AW runs somewhere other than `http://localhost:5600`. |
+| **Screenshot directory** | Optional. Blank means `~/Pictures/WorkScreenshots`. |
+| **Workspace directory** | Optional. Blank means the folder you run Claude Code from, if it already looks like a workspace (`.mcp/` or `Timesheets/`) — which is the normal case. Set it if you start sessions elsewhere: a plugin is never installed *inside* a workspace, so there is no second place to fall back to. Answer it after step 6, with `/plugin configure billables`. |
 
-Paths below of the form `$HOME\.claude\skills\daily\…` are where **step 5** puts the skill. On a
-plugin install, substitute the plugin's own skill directory; the skill itself resolves this at run
-time and never needs to be told.
+To change any of them later: `/plugin configure billables`.
+
+Paths below of the form `$HOME\.claude\skills\daily\…` are where the **copied-in** install puts the
+skill. On a plugin install, substitute the plugin's own skill directory; the skill itself resolves
+this at run time and never needs to be told.
 
 ---
 
@@ -235,7 +236,10 @@ It also seeds **`Timesheets/.context.md`** from the template (without overwritin
 `Timesheets/.context.md` is the **per-user source of truth** — the skill reads it on every run, and
 it's what makes classification accurate. It stays **local** (it's git-ignored). Open it and fill in:
 
-- **Preferences** — your timezone, AFK/lunch thresholds, default Harvest task.
+- **Preferences** — the judgement calls: AFK/lunch thresholds, what counts as substantive activity,
+  the active/thin bands, the timeline's noise floor, your default Harvest task. Each line names the
+  flag the skill passes for it, so retuning one never means editing a script an update would
+  overwrite. (Your *timezone* is not here — it's plugin configuration, set once at install.)
 - **AW buckets** — your machine's hostname suffix (the skill can discover this on first run).
 - **Internal colleagues** — names that, in a Teams title, mean internal work rather than a client.
 - **Known external contacts** — people who map to a specific client.
@@ -250,30 +254,28 @@ never edits it silently.
 
 ### 8. Set your Harvest API credentials
 
-The skill talks to Harvest via small local scripts that read credentials from a `.env` file at the
-skill root. Set it up:
-
-1. Copy the template:
-   ```powershell
-   Copy-Item "$HOME\.claude\skills\daily\.env.example" "$HOME\.claude\skills\daily\.env"
-   ```
-2. Go to **https://id.getharvest.com/developers**:
+1. Go to **https://id.getharvest.com/developers**:
    - Note your numeric **Account ID** (shown at the top).
-   - Create a **Personal Access Token**.
-3. Edit the new `.env` and fill in:
-   ```
-   HARVEST_ACCOUNT_ID=1234567
-   HARVEST_API_KEY=pat-...
-   ```
-4. Verify it works (on Windows use `py` — a bare `python` is often the Store stub):
+   - Create a **Personal Access Token**. A member-scope token is enough.
+2. Run **`/plugin configure billables`** and paste both in. They go to Claude Code's credential store,
+   not into the plugin folder, so there is nothing to git-ignore and a plugin update can't carry them
+   off. On macOS that store is the OS keychain; on Windows and Linux it is `~/.claude/.credentials.json`
+   — a file in your home directory, so treat that directory as holding a secret.
+   Set your **timezone** here too if you skipped it at install — the scripts refuse to date a day
+   without one.
+3. Start a new session (the values reach the scripts at session start), then verify (on Windows use
+   `py` — a bare `python` is often the Store stub):
    ```powershell
-   py "$HOME\.claude\skills\daily\scripts\harvest_list.py" 2026-01-01 2026-01-01
+   py "<skill folder>\scripts\harvest_list.py" 2026-01-01 2026-01-01
    ```
    Entries print one per line; a day with no entries prints `(no time entries from … to …)`.
    Either of those with no auth error is success — a 401/403 means the token is wrong.
 
-> **Security:** your `.env` grants full access to your Harvest account. It is git-ignored — never
-> commit it, and never share the skill folder with `.env` still in it. A member-scope token is enough.
+> **Copied-in install** (step 5's clone route, rather than `/plugin install`): there's no
+> configuration dialog, so the same keys go in a `.env` at the skill root instead — copy
+> `.env.example` beside it and fill in `HARVEST_ACCOUNT_ID`, `HARVEST_API_KEY` and
+> `TIMESHEET_TIMEZONE`. That file grants full access to your Harvest account: it is git-ignored,
+> never commit it, and never share the skill folder with it still in place.
 
 ### 9. (Optional) Dataverse ticket catalog
 
@@ -346,15 +348,20 @@ uncertain, and asks before posting anything to Harvest.
 - **`skills/daily/references/setup.md`** — first-run setup the skill walks you through.
 - **`skills/daily/references/activitywatch.md`** — what the skill reads out of ActivityWatch.
 - **`skills/daily/references/new-client-work.md`** — raising a new ticket for unmatched work.
-- Thresholds (AFK break length, lunch window, default task) are overridable in `.context.md` under
-  `## Preferences`.
+- Thresholds (AFK break length, what counts as substantive activity, the active/thin bands, the
+  timeline's noise floor and gap fold, lunch window, default task) are overridable in `.context.md`
+  under `## Preferences` — each line names the flag it maps to. Machine and account facts
+  (credentials, timezone, ActivityWatch address, screenshot and workspace directories) are plugin
+  configuration instead: `/plugin configure billables`.
 
 ---
 
 ## Security
 
-- **`.env` holds a token with full Harvest access.** It's git-ignored at both the repo and skill
-  level. Don't commit it; don't share the skill folder with it inside.
+- **Your Harvest token has full access to your account.** On a plugin install it is declared
+  sensitive, so Claude Code holds it in your OS keychain — it is never written into the plugin
+  folder or into `settings.json`. On a copied-in install it lives in a `.env`, which is git-ignored
+  at both the repo and skill level: don't commit it, and don't share the skill folder with it inside.
 - The skill **never writes to Harvest without explicit confirmation.**
 - Screenshots stay **local** on your machine (`~/Pictures/WorkScreenshots/`); nothing is uploaded.
 - Your client list, colleagues, and billing conventions live in `Timesheets/.context.md`, which is
@@ -373,7 +380,8 @@ activity-to-timesheet/
 ├── LICENSE                   # MIT
 ├── demo/
 │   └── tag-rule-demo.html    # interactive demo of the tag/category-rule failure modes
-├── .claude-plugin/           # marketplace + plugin manifests (this repo is the plugin)
+├── .claude-plugin/           # marketplace + plugin manifests, incl. the configuration it asks for
+├── hooks/                    # SessionStart: hands that configuration to the bundled scripts
 ├── skills/daily/             # the skill itself
 │   ├── SKILL.md              # the skill's instructions
 │   ├── .env.example          # credential + optional-config template

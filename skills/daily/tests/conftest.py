@@ -46,6 +46,9 @@ from support import (SETTING_KEYS, Day, aw_server, day,  # noqa: E402,F401
 # and it fails in ~30ms where a closed loopback port costs 2s of SYN retries on Windows.
 DEAD = "http://127.0.0.1:0"
 
+# UTC+12, fixed. See `_hermetic` below for why the suite configures one at all.
+TEST_ZONE = "Etc/GMT-12"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch, tmp_path):
@@ -63,6 +66,13 @@ def _hermetic(monkeypatch, tmp_path):
     # Left set, a developer's own shell would leak into assertions about defaults.
     for key in SETTING_KEYS:
         monkeypatch.delenv(key, raising=False)
+    # ...and then one is put back, because there is no longer a built-in offset to fall
+    # back on: a script with no `--utc-offset` and no configured zone refuses to date a
+    # day at all, which is the point of that change. `Etc/GMT-12` is UTC+12 with no
+    # daylight saving (the sign in the name is inverted, per POSIX), so it matches
+    # `support.DEFAULT_OFFSET` on every date and the golden files stay stable. A test
+    # about the unconfigured state deletes it again.
+    monkeypatch.setenv("TIMESHEET_TIMEZONE", TEST_ZONE)
     yield
 
 

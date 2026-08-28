@@ -25,7 +25,11 @@ Usage:
   python scripts/activity_timeline.py 2026-06-19
   python scripts/activity_timeline.py 2026-06-19 --window 12:30-14:00
   python scripts/activity_timeline.py 2026-06-19 --json
-  python scripts/activity_timeline.py 2026-06-19 --utc-offset 13   # NZDT
+  python scripts/activity_timeline.py 2026-06-19 --utc-offset 13   # this run only
+
+The day's boundaries come from the configured TIMESHEET_TIMEZONE; --utc-offset
+overrides it for one run. There is no assumed zone — see
+aw_client.resolve_utc_offset.
 """
 import argparse
 import datetime as dt
@@ -34,8 +38,12 @@ import re
 import sys
 
 from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
-                       parse_range, parse_ts, pick_bucket, utc_bounds)
+                       parse_range, parse_ts, pick_bucket, resolve_utc_offset,
+                       utc_bounds)
 
+# Defaults for the two noise constants, each exposed as a flag in main(): what counts as
+# noise depends on how a person works, so they belong in the user's `context.md`
+# § Preferences rather than only here.
 NOISE_FLOOR = 5    # drop sub-5s events (tab-switch noise), per SKILL.md
 GAP_FOLD = 60      # inter-event gaps shorter than this don't break a span (seconds)
 
@@ -77,7 +85,7 @@ def categorize(app, title, classes):
     return [label for label, rx in classes if rx.search(hay)]
 
 
-def build_window_spans(events, classes):
+def build_window_spans(events, classes, noise_floor=NOISE_FLOOR, gap_fold=GAP_FOLD):
     """Merge chronological window events into spans sharing a category.
     Each span: start, end (datetime), category, multi (bool), categories (set of
     every class label matched within the span), titles {label: secs}."""
@@ -85,7 +93,7 @@ def build_window_spans(events, classes):
     spans = []
     cur = None
     for e in evs:
-        if e["duration"] < NOISE_FLOOR:
+        if e["duration"] < noise_floor:
             continue
         s = parse_ts(e["timestamp"])
         en = s + dt.timedelta(seconds=e["duration"])
@@ -95,7 +103,7 @@ def build_window_spans(events, classes):
         primary = cats[0] if cats else "uncategorized"
         key = f"{app} | {title}"
         if (cur is not None and cur["category"] == primary
-                and (s - cur["end"]).total_seconds() < GAP_FOLD):
+                and (s - cur["end"]).total_seconds() < gap_fold):
             cur["end"] = max(cur["end"], en)
             cur["titles"][key] = cur["titles"].get(key, 0) + e["duration"]
             cur["categories"].update(cats)
@@ -111,11 +119,11 @@ def build_window_spans(events, classes):
     return spans
 
 
-def category_rollup(events, classes):
-    """Minutes per category across all (deduped, >=5s) events."""
+def category_rollup(events, classes, noise_floor=NOISE_FLOOR):
+    """Minutes per category across all deduped events at or above the noise floor."""
     totals = {}
     for e in dedupe_heartbeats(events):
-        if e["duration"] < NOISE_FLOOR:
+        if e["duration"] < noise_floor:
             continue
         cats = categorize(e["data"].get("app", "?"), e["data"].get("title", "") or "", classes)
         label = cats[0] if cats else "uncategorized"
@@ -126,8 +134,15 @@ def category_rollup(events, classes):
 def main():
     ap = argparse.ArgumentParser(description="Categorized window-activity timeline for one day.")
     ap.add_argument("date", help="YYYY-MM-DD (local date)")
-    ap.add_argument("--utc-offset", type=float, default=12.0,
-                    help="Local zone offset from UTC in hours (default 12 = NZST; 13 for NZDT)")
+    ap.add_argument("--utc-offset", type=float, default=None,
+                    help="Local zone offset from UTC in hours, for this run only. "
+                         "Omit to use the configured TIMESHEET_TIMEZONE.")
+    ap.add_argument("--noise-floor", type=float, default=NOISE_FLOOR,
+                    help=f"Drop events shorter than this many seconds as tab-switch noise "
+                         f"(default {NOISE_FLOOR})")
+    ap.add_argument("--gap-fold", type=float, default=GAP_FOLD,
+                    help=f"Inter-event gaps shorter than this many seconds do not break a "
+                         f"span (default {GAP_FOLD})")
     ap.add_argument("--window", help="Zoom HH:MM-HH:MM and include web-watcher detail")
     ap.add_argument("--json", action="store_true", help="Emit JSON instead of text")
     ap.add_argument("--full", action="store_true",
@@ -139,12 +154,16 @@ def main():
                          "still counts hidden spans. Ignored with --full or --window.")
     args = ap.parse_args()
 
-    offset = dt.timedelta(hours=args.utc_offset)
     try:
         local_date = dt.datetime.strptime(args.date, "%Y-%m-%d").date()
     except ValueError:
         print(f"ERR bad date '{args.date}', expected YYYY-MM-DD", file=sys.stderr)
         return 2
+
+    # After the date parse: a typo in the date should be reported before a configuration
+    # problem the user cannot act on until the date is right anyway.
+    utc_offset = resolve_utc_offset(args.utc_offset, local_date)
+    offset = dt.timedelta(hours=utc_offset)
 
     start_utc, end_utc = utc_bounds(local_date, offset)
     try:
@@ -168,8 +187,8 @@ def main():
     def to_local(d):
         return (d + offset).strftime("%H:%M:%S")
 
-    spans = build_window_spans(win_events, classes)
-    rollup = category_rollup(win_events, classes)
+    spans = build_window_spans(win_events, classes, args.noise_floor, args.gap_fold)
+    rollup = category_rollup(win_events, classes, args.noise_floor)
 
     # Zoom mode: restrict spans + pull web watchers for the window.
     web_rows = None
@@ -186,7 +205,7 @@ def main():
             try:
                 b = pick_bucket(buckets, pref)
                 for e in dedupe_heartbeats(fetch_events(b, start_utc, end_utc)):
-                    if e["duration"] < NOISE_FLOOR:
+                    if e["duration"] < args.noise_floor:
                         continue
                     t = parse_ts(e["timestamp"])
                     # Overlap, not containment — matching the span filter above. A tab
@@ -218,7 +237,7 @@ def main():
         print(json.dumps(result, indent=2))
         return 0
 
-    hdr = f"Window timeline for {args.date} (offset UTC+{args.utc_offset:g})"
+    hdr = f"Window timeline for {args.date} (offset UTC{utc_offset:+g})"
     if args.window:
         hdr += f"  [zoom {args.window}]"
     print(hdr)

@@ -9,7 +9,8 @@ wait for the user to confirm before moving on.
 ## Hard rules
 
 - **Never invent or guess secrets.** When you need the Harvest Account ID or API key, ask the user to
-  paste them. Do not fabricate placeholder values into a real `.env`.
+  paste them into `/plugin configure` (or, on a copied-in install, into `.env`). Do not fabricate
+  placeholder values into either.
 - **Never commit `.env`** or any secret. It is git-ignored; keep it that way.
 - **Never post to Harvest** as part of setup. Setup ends at "verified credentials work". Actually
   logging time is a separate, user-initiated action handled by the skill with a confirmation gate.
@@ -54,6 +55,8 @@ wait for the user to confirm before moving on.
   https://activitywatch.net/downloads/ is the fallback and the only route on macOS/Linux.
 - Verify it's running: GET http://localhost:5600/api/0/buckets/ should return JSON. If it doesn't,
   stop and help the user start ActivityWatch before continuing.
+- If the user runs AW on another machine or port, that address is `TIMESHEET_ACTIVITY_URL` in step 8,
+  and it is the address to verify here and to use everywhere this runbook writes `localhost:5600`.
 
 ### 2. Browser extension (manual — human installs)
 - Ask the user to install "URL in Title":
@@ -81,22 +84,23 @@ wait for the user to confirm before moving on.
   vs bare code is the classic). Also flag: spaces inside alternations (`Contract | ACME` requires
   the literal spaces), and leftover placeholder rules (`New class` → `FILL ME`).
 
-### 5. Install the skill (you run this)
+### 5. Install the plugin (the user runs this)
+- `/plugin marketplace add Cordedmink2/activity-to-timesheet`
+- `/plugin install billables@activity-to-timesheet`
+- The install prompts for the values in step 8. The user can fill them in now or leave the dialog
+  and run `/plugin configure billables` after step 6 — the workspace path is easier to answer once
+  the workspace exists.
+- Every `~/.claude/skills/daily/...` path later in this runbook is the *copied-in* location below.
+  On a plugin install, substitute the plugin's own skill directory — resolve it from where you read
+  `SKILL.md`, never from a written-down location.
+
+**Copied-in alternative** (a clone the user wants to edit in place, or a machine with no plugin
+marketplace access):
 - Windows: `pwsh -File install\install_skill.ps1`
 - POSIX:   `./install/install_skill.sh`
 - This copies `skills/daily` to `~/.claude/skills/daily`, excluding `.env` and `__pycache__`.
   Safe to re-run.
-- A user who would rather not clone can install the plugin instead: `/plugin marketplace add
-  Cordedmink2/activity-to-timesheet` then `/plugin install billables@activity-to-timesheet`. Every
-  other step in this runbook still applies; only this one is replaced. Two consequences, both
-  temporary until the configuration surface is declared in the manifest:
-  - Every `~/.claude/skills/daily/...` path later in this runbook is where *this* step puts the
-    skill. On a plugin install, substitute the plugin's own skill directory — resolve it from where
-    you read `SKILL.md`, never from a written-down location.
-  - Workspace auto-detection deliberately fails for a plugin install (the skill is not installed
-    inside a workspace, and guessing is what it refuses to do). After step 6, set
-    `TIMESHEET_WORKSPACE=<workspace>` in the skill's `.env`, and tell the user their `.env` sits
-    inside the installed plugin, so a plugin update can take it with it.
+- There is no `/plugin configure` for this route: step 8's values go in the skill's `.env` instead.
 
 ### 6. Scaffold the workspace (you run this)
 - Ask the user which folder should be their workspace (default: current directory).
@@ -106,21 +110,42 @@ wait for the user to confirm before moving on.
   template (without overwriting an existing one).
 
 ### 7. Fill in `.context.md` (collaborate)
-- Open `Timesheets/.context.md`. Walk the user through it section by section: Preferences (timezone,
-  thresholds, default task), AW buckets (hostname suffix — you can discover this from the buckets
+- Open `Timesheets/.context.md`. Walk the user through it section by section: Preferences (the
+  judgement thresholds and default task — *not* the timezone, which is plugin configuration in step
+  8; each line names the flag it maps to), AW buckets (hostname suffix — you can discover this from the buckets
   endpoint), Internal colleagues, Known external contacts, Active client projects (one block per
   client with its code/Edge profile/URLs/repo signals), How I bill, and exclusions.
 - Write only confirmed facts. This file stays local (git-ignored).
 
-### 8. Harvest credentials (you create the file; user supplies values)
-- Copy `~/.claude/skills/daily/.env.example` to `.env` in the same folder.
+### 8. Configuration (the user supplies the values)
+- **Plugin install:** the user runs `/plugin configure billables` and fills in the dialog. The two
+  Harvest fields are declared sensitive, so Claude Code puts them in its own credential store rather
+  than any file in the plugin — nothing to create, nothing to git-ignore, and a plugin update cannot
+  carry them off. Be accurate about where when you tell the user: that store is the OS keychain on
+  **macOS** only; on Windows and Linux it is `~/.claude/.credentials.json`, a file in their home
+  directory. Promising a keychain to a Windows user invites them to treat that directory as safe to
+  sync or share.
+- **Copied-in install:** copy `~/.claude/skills/daily/.env.example` to `.env` in the same folder and
+  write the same keys there.
+- What is asked for, and what happens if it is left out:
+
+  | Key | Required | If unset |
+  | --- | --- | --- |
+  | `HARVEST_ACCOUNT_ID` | yes | every Harvest command stops with a message naming this key |
+  | `HARVEST_API_KEY` | yes | as above |
+  | `TIMESHEET_TIMEZONE` | yes | `afk_blocks` / `activity_timeline` refuse to date a day. There is no assumed zone: the old default put every non-NZ user's day up to twelve hours out, silently |
+  | `TIMESHEET_ACTIVITY_URL` | no | `http://localhost:5600` |
+  | `TIMESHEET_SCREENSHOTS_DIR` | no | `~/Pictures/WorkScreenshots` |
+  | `TIMESHEET_WORKSPACE` | no | the folder Claude Code is run from, if it looks like a workspace |
+
 - Ask the user for their Harvest Account ID and a Personal Access Token from
   https://id.getharvest.com/developers. Do NOT guess these.
-- Prefer values that never enter the chat: offer to open `.env` so the user pastes the token into
-  the file themselves. Anything typed into the conversation is saved to disk in the plaintext
-  session transcript — if the user does paste the token in chat, say so, and suggest rotating it
-  before that transcript is shared anywhere.
-- Write them into `.env` as `HARVEST_ACCOUNT_ID=` and `HARVEST_API_KEY=`.
+- Prefer values that never enter the chat. `/plugin configure` is the route that achieves this by
+  construction — the user types the token into the dialog, not the conversation. Anything typed into
+  the conversation is saved to disk in the plaintext session transcript; if the user does paste the
+  token in chat, say so, and suggest rotating it before that transcript is shared anywhere.
+- `TIMESHEET_TIMEZONE` is an IANA name (`Europe/London`, `Pacific/Auckland`). On Windows, resolving
+  one needs the zone database: if a run reports it cannot load the zone, `py -m pip install tzdata`.
 - Verify it runs with no auth error:
   - Windows: `py "$HOME/.claude/skills/daily/scripts/harvest_list.py" <today> <today>`
     — `py` not `python` (the stub), and `"$HOME/…"` not `~/…` (5.1 passes a bare `~` through literally).
@@ -132,6 +157,10 @@ wait for the user to confirm before moving on.
 - If the user creates tickets in a Dataverse org that sync to Harvest: set `DATAVERSE_URL` and
   `PAC_AUTH_PROFILE` in `.env` (requires the `pac` CLI authenticated). Otherwise leave both blank — the
   skill runs Harvest-only and `refresh_catalogs.py` will simply skip the Dataverse step.
+- These two are deliberately *not* declared plugin configuration: they belong to one org's setup, not
+  to every install, so asking every new user for them would be asking a question almost nobody has an
+  answer to. On a plugin install, set them as ordinary environment variables — the skill's `.env` sits
+  inside the plugin folder, where an update can overwrite it.
 - The pac profile MUST be *named*: `refresh_catalogs.py` selects it with `pac auth select --name`,
   and `pac auth create` without `--name` makes an unnamed profile it can never select. The login is
   interactive, so the user runs it:
