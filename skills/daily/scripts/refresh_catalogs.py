@@ -1,6 +1,6 @@
 """
 refresh_catalogs.py — refresh the Harvest project-assignment and Dataverse active-incident
-caches used by the daily-timesheet skill.
+caches used by the billables `daily` skill.
 
 Usage: python refresh_catalogs.py [--harvest-only | --dataverse-only]
 
@@ -242,7 +242,7 @@ def refresh_dataverse():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Refresh Harvest + Dataverse catalogs for daily-timesheet skill.")
+    parser = argparse.ArgumentParser(description="Refresh Harvest + Dataverse catalogs for the billables daily skill.")
     parser.add_argument("--harvest-only", action="store_true")
     parser.add_argument("--dataverse-only", action="store_true")
     args = parser.parse_args()

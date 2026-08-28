@@ -625,6 +625,38 @@ duplicate reader was found by reading, not by a failure. The suite is evidence o
 the move changed no behaviour the tests cover, which for the AW scripts is the whole
 golden set and for the Harvest ones is the recorded request bodies.
 
+### Workspace resolution is anchored on the install shape, not on a depth
+**Rung 1.** 2026-08-28. Supersedes "Both shapes are now checked" in § "Script defects"
+below, and owns the rule the two install-shape tests in `test_config_seam.py` pin.
+
+`find_workspace()` walked `SKILL_ROOT.parents[1:3]` — two arbitrary ancestors — and took
+the first that held `.mcp/` or `Timesheets/`. That is not "two shapes checked", it is *any*
+ancestor at either of two depths accepted, and the difference is the whole defect: an
+install nested one level deeper than either shape resolves to whatever real workspace
+happens to be above it. Already observed once — see § "A test's result depended on where
+the checkout sat", where the public checkout inside `~/Admin` resolved to `~/Admin`.
+
+It now requires the skill to sit directly inside a `skills/` directory and takes that
+directory's parent, skipping Claude Code's `.claude/`. A plugin install is the shape that
+forced the rule rather than a third depth: `<plugin>/skills/<name>` matches the first shape
+exactly, while the directory above the plugin is the harness's plugin cache or whatever a
+clone sits inside. The plugin holds no user data, so `.claude-plugin/` beside the skills
+directory means "not a workspace, stop".
+
+**Why this needed its own test rather than a green run.** The wrong answer is silent and
+delayed: the refresh reports success, writes catalogs where no lookup reads them, and the
+staleness surfaces days later as a bad classification. The suite could not catch the
+original because it only ever ran from one leg at a time; the release mirror caught it.
+With the mirror going away, the pinned tests are what replaces it.
+
+**What was not measured.** No agent was watched acting on the stale catalogs. The
+consequence — refresh writes to a directory the reader never opens — is arithmetic on the
+resolver, not an observation.
+
+**Cost, accepted.** A plugin install now resolves *no* workspace, so `TIMESHEET_WORKSPACE`
+has to be set. That is correct rather than convenient — the alternative is guessing — and
+it goes away when the configuration surface is declared in the plugin manifest.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was
@@ -715,7 +747,9 @@ produced a plausible-looking wrong answer rather than an error.**
   levels from the skill — right for `<workspace>/skills/<name>`, one short of Claude
   Code's `<workspace>/.claude/skills/<name>`. Masked here only because
   `TIMESHEET_WORKSPACE` is set explicitly. Both shapes are now checked, and the "refuse
-  to guess" behaviour is pinned alongside.
+  to guess" behaviour is pinned alongside. **Superseded 2026-08-28** — widening the walk to
+  two depths was itself the next defect; § "Settled decisions" → "Workspace resolution is
+  anchored on the install shape, not on a depth" replaces it.
 - **The live lookup fallback was not scoped to the caller.** `/time_entries` without a
   `user_id`; on an admin-scope PAT that pages the whole company and can surface a
   project/task the user has no assignment to.

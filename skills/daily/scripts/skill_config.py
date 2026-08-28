@@ -100,6 +100,43 @@ def fail_missing(message: str) -> NoReturn:
     sys.exit(f"ERROR: {message}")
 
 
+def _looks_like_a_workspace(candidate: Path) -> bool:
+    return (candidate / ".mcp").is_dir() or (candidate / "Timesheets").is_dir()
+
+
+def _install_workspace() -> Path | None:
+    """The workspace this skill is installed *inside*, if its install shape has one.
+
+    Anchored on the shape rather than on a depth. The skill has to sit directly inside a
+    `skills/` directory, and the candidate is that directory's parent — with Claude Code's
+    own `.claude/` skipped, because its skills directory sits one level deeper than a
+    workspace-local one.
+
+    A depth is the thing that must not be guessed here. The walk this replaces took two
+    arbitrary ancestors and accepted whichever first looked workspace-shaped, so any
+    install nested one level further than expected resolved to whatever real workspace
+    happened to be above it — a public checkout inside `~/Admin` resolved to `~/Admin`.
+    Nothing fails at that point: the refresh reports success, and the stale catalogs
+    surface days later. `TESTING.md` § "Workspace resolution is anchored on the install
+    shape, not on a depth" owns the record.
+
+    A plugin install is the third shape, and the reason this is a rule rather than one
+    more depth to add: `<plugin>/skills/<name>` matches the first shape exactly, while the
+    directory above it is the harness's plugin cache, or whatever a clone happens to sit
+    inside. The plugin holds no user data, so its own root is never the workspace, and
+    `.claude-plugin/` beside the skills directory is what identifies one.
+    """
+    parent = SKILL_ROOT.parent
+    if parent.name != "skills":
+        return None
+    root = parent.parent
+    if root.name == ".claude":
+        root = root.parent
+    if (root / ".claude-plugin").is_dir():
+        return None
+    return root if _looks_like_a_workspace(root) else None
+
+
 def find_workspace() -> Path | None:
     """Locate the workspace root holding the `.mcp/` catalogs, or None if it can't be found.
 
@@ -109,11 +146,8 @@ def find_workspace() -> Path | None:
 
     1. TIMESHEET_WORKSPACE, through `setting()` above — explicit wins.
     2. The current directory, if it already looks like a workspace (`.mcp/` or `Timesheets/`).
-    3. The directories the skill is installed under, if one looks like a workspace. Two
-       install shapes are checked: `<workspace>/skills/<name>` and Claude Code's own
-       `<workspace>/.claude/skills/<name>`, which sits one level deeper. Checking only the
-       first meant auto-detection could never succeed on a stock install, while
-       `.env.example` promised that it would.
+    3. The directory the skill is installed under, per `_install_workspace()` — which is
+       where the install shapes, and the one that deliberately resolves to nothing, live.
 
     Returning None instead of guessing is deliberate: deriving a path from the install
     location and using it regardless is how refreshes used to report success while
@@ -122,7 +156,7 @@ def find_workspace() -> Path | None:
     ws = setting("TIMESHEET_WORKSPACE")
     if ws:
         return Path(ws).expanduser()
-    for cand in (Path.cwd(), *SKILL_ROOT.parents[1:3]):
-        if (cand / ".mcp").is_dir() or (cand / "Timesheets").is_dir():
-            return cand
-    return None
+    cwd = Path.cwd()
+    if _looks_like_a_workspace(cwd):
+        return cwd
+    return _install_workspace()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Install the daily-timesheet skill into your Claude Code skills folder.
+# Install the billables `daily` skill into your Claude Code skills folder.
 #
-# Copies skill/daily-timesheet from this repo to ~/.claude/skills/daily-timesheet.
+# Copies skills/daily from this repo to ~/.claude/skills/daily.
 # Never copies a .env (yours stays local) or __pycache__. Safe to re-run.
 #
 # Usage: ./install/install_skill.sh [SKILLS_DIR]
@@ -11,8 +11,8 @@ SKILLS_DIR="${1:-$HOME/.claude/skills}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-SOURCE="$REPO_ROOT/skill/daily-timesheet"
-DEST="$SKILLS_DIR/daily-timesheet"
+SOURCE="$REPO_ROOT/skills/daily"
+DEST="$SKILLS_DIR/daily"
 
 if [ ! -d "$SOURCE" ]; then
   echo "ERROR: cannot find skill source at: $SOURCE" >&2
@@ -23,7 +23,7 @@ mkdir -p "$SKILLS_DIR"
 
 VERSION="$(cat "$SOURCE/VERSION")"
 
-echo "Installing daily-timesheet skill v$VERSION..."
+echo "Installing the billables daily skill v$VERSION..."
 echo "  from: $SOURCE"
 echo "  to:   $DEST"
 
@@ -48,7 +48,16 @@ else
   fi
 fi
 
-echo "Done. daily-timesheet v$VERSION installed to $DEST"
+echo "Done. daily v$VERSION installed to $DEST"
+
+# The skill used to install under its old name. Left in place it is a second, stale copy
+# of the same skill, and either one can answer.
+if [ -d "$SKILLS_DIR/daily-timesheet" ]; then
+  echo
+  echo "NOTE: an older copy of this skill is still at $SKILLS_DIR/daily-timesheet."
+  echo "      Move any .env you filled in there across, then delete that folder."
+fi
+
 echo
 echo "Next steps:"
 echo "  1. Scaffold your workspace:  ./install/setup_workspace.sh"

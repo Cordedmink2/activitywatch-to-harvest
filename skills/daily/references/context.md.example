@@ -1,6 +1,6 @@
 # Timesheet context
 
-The daily-timesheet skill reads this file every run. It's your source of truth for
+The billables `daily` skill reads this file every run. It's your source of truth for
 *who's who* and *which client each activity belongs to*. Keep only confirmed facts;
 the skill will propose additions when it learns something new — review and merge
 those additions rather than letting them accumulate elsewhere.

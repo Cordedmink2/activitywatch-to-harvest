@@ -1,4 +1,4 @@
-"""Shared Harvest API helper for the daily-timesheet skill.
+"""Shared Harvest API helper for the billables `daily` skill.
 
   load_creds() -> (account_id, api_key)
   request(method, path, body=None, query=None) -> dict (parsed JSON) or raises RuntimeError
@@ -22,7 +22,7 @@ import urllib.request
 import skill_config
 
 API_BASE = "https://api.harvestapp.com/v2"
-USER_AGENT = "daily-timesheet-skill"
+USER_AGENT = "billables-daily-skill"
 
 _CREDS_CACHE: tuple[str, str] | None = None
 

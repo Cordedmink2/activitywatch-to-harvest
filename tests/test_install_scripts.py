@@ -17,7 +17,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL = REPO / "install"
-SKILL = REPO / "skill" / "daily-timesheet"
+SKILL = REPO / "skills" / "daily"
 PS_SCRIPTS = [
     INSTALL / "install_skill.ps1",
     INSTALL / "setup_workspace.ps1",
@@ -118,14 +118,14 @@ def test_sh_install_preserves_an_existing_env_file(tmp_path):
     first = subprocess.run([BASH, sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert first.returncode == 0, first.stderr
 
-    env_file = skills / "daily-timesheet" / ".env"
+    env_file = skills / "daily" / ".env"
     env_file.write_text("HARVEST_ACCOUNT_ID=1234567\nHARVEST_API_KEY=pat.mine\n", encoding="utf-8")
 
     second = subprocess.run([BASH, sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert second.returncode == 0, second.stderr
     assert env_file.is_file(), "the update deleted the user's .env"
     assert "pat.mine" in env_file.read_text(encoding="utf-8"), "the update overwrote the user's .env"
-    assert (skills / "daily-timesheet" / "SKILL.md").is_file(), "skill files missing after update"
+    assert (skills / "daily" / "SKILL.md").is_file(), "skill files missing after update"
 
 
 @requires_bash
@@ -138,7 +138,7 @@ def test_sh_install_still_excludes_a_source_env(tmp_path):
         skills = tmp_path / "skills"
         subprocess.run([BASH, posix(INSTALL / "install_skill.sh"), posix(skills)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
-        assert not (skills / "daily-timesheet" / ".env").exists(), "source .env leaked into the install"
+        assert not (skills / "daily" / ".env").exists(), "source .env leaked into the install"
     finally:
         os.unlink(source_env)
 
@@ -365,7 +365,7 @@ def installed(request, tmp_path_factory):
                  "-SkillsDir", str(skills)])
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode == 0, f"{shell} installer exited {res.returncode}:\n{res.stdout}{res.stderr}"
-    return res, skills / "daily-timesheet"
+    return res, skills / "daily"
 
 
 def test_install_copies_the_skill(installed):
@@ -418,9 +418,41 @@ def test_shell_scripts_check_out_with_lf_endings(script):
 
 
 def test_skill_says_where_the_script_paths_resolve_from():
-    """Every run's cwd is the workspace, so bare `scripts/...` paths don't resolve."""
+    """Every run's cwd is the workspace, so bare `scripts/...` paths don't resolve.
+
+    What the instruction may not do is name a directory. It used to spell out
+    `$HOME/.claude/skills/daily-timesheet/scripts/...`, which is one install shape out of
+    several — a plugin, a shared Agent Skills directory, a harness's own skills folder —
+    and a wrong prefix fails as "script not found", reading like a broken skill.
+    """
     skill_md = (SKILL / "SKILL.md").read_text(encoding="utf-8")
     head = skill_md.split("## Workflow", 1)[0]
-    assert "skills/daily-timesheet" in head or "skills\\daily-timesheet" in head, (
+    assert "this skill's own folder" in head, (
         "SKILL.md never says the `scripts/` commands are relative to the skill folder"
     )
+    # The instruction is only usable if it also says *how* to get that folder. Matched as
+    # the whole phrase, because "SKILL.md" and "read" each occur incidentally all over the
+    # head — a substring pair would pass with the instruction deleted.
+    assert re.search(r"the directory this `SKILL\.md` was read from", head), (
+        "SKILL.md never says to resolve that folder from where this file was read, so the "
+        "model has nothing to build the prefix out of"
+    )
+
+
+INSTRUCTIONS = [SKILL / "SKILL.md", *sorted((SKILL / "references").glob("*.md"))]
+
+
+@pytest.mark.parametrize("doc", INSTRUCTIONS, ids=lambda p: p.name)
+def test_no_shipped_instruction_hardcodes_a_harness_skills_directory(doc):
+    """A path into one harness's skills directory is wrong for every other install.
+
+    The skill ships as a plugin, is exported into the shared Agent Skills directory, and
+    can still be copied in by hand — so its own location is something to resolve at run
+    time, never something to write down. Describing the *shapes* is fine and belongs in
+    `scripts/skill_config.py`; an instruction the model will paste into a command is not.
+    """
+    text = doc.read_text(encoding="utf-8")
+    offenders = [line.strip() for line in text.splitlines()
+                 if ".claude/skills" in line or ".claude\\skills" in line]
+    assert not offenders, (
+        f"{doc.name} hardcodes a harness-specific skills path:\n  " + "\n  ".join(offenders))

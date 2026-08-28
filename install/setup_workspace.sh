@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scaffold a workspace for the daily-timesheet skill.
+# Scaffold a workspace for the billables `daily` skill.
 #
 # Creates Timesheets/, daily_exports/, .mcp/ in the chosen workspace and seeds
 # Timesheets/.context.md from the bundled template if it doesn't already exist.
@@ -12,7 +12,7 @@ WORKSPACE="${1:-$(pwd)}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-TEMPLATE="$REPO_ROOT/skill/daily-timesheet/references/context.md.example"
+TEMPLATE="$REPO_ROOT/skills/daily/references/context.md.example"
 
 echo "Scaffolding workspace at: $WORKSPACE"
 

@@ -1,9 +1,9 @@
 ﻿<#
 .SYNOPSIS
-  Install the daily-timesheet skill into your Claude Code skills folder.
+  Install the billables `daily` skill into your Claude Code skills folder.
 
 .DESCRIPTION
-  Copies skill\daily-timesheet from this repo to ~\.claude\skills\daily-timesheet.
+  Copies skills\daily from this repo to ~\.claude\skills\daily.
   Never copies a .env (yours stays local) or __pycache__. Safe to re-run - it
   refreshes the skill files in place.
 
@@ -19,8 +19,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$source   = Join-Path $repoRoot "skill\daily-timesheet"
-$dest     = Join-Path $SkillsDir "daily-timesheet"
+$source   = Join-Path $repoRoot "skills\daily"
+$dest     = Join-Path $SkillsDir "daily"
 
 if (-not (Test-Path $source)) {
   throw "Cannot find skill source at: $source"
@@ -30,7 +30,7 @@ New-Item -ItemType Directory -Force -Path $SkillsDir | Out-Null
 
 $version = (Get-Content (Join-Path $source "VERSION") -Raw).Trim()
 
-Write-Host "Installing daily-timesheet skill v$version..." -ForegroundColor Cyan
+Write-Host "Installing the billables daily skill v$version..." -ForegroundColor Cyan
 Write-Host "  from: $source"
 Write-Host "  to:   $dest"
 
@@ -39,7 +39,17 @@ Write-Host "  to:   $dest"
 robocopy $source $dest /E /XF .env /XD __pycache__ .pytest_cache | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 
-Write-Host "Done. daily-timesheet v$version installed to $dest" -ForegroundColor Green
+Write-Host "Done. daily v$version installed to $dest" -ForegroundColor Green
+
+# The skill used to install under its old name. Left in place it is a second, stale copy
+# of the same skill, and either one can answer.
+$stale = Join-Path $SkillsDir "daily-timesheet"
+if (Test-Path $stale) {
+  Write-Host ""
+  Write-Host "NOTE: an older copy of this skill is still at $stale." -ForegroundColor Yellow
+  Write-Host "      Move any .env you filled in there across, then delete that folder."
+}
+
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Scaffold your workspace:  pwsh -File install\setup_workspace.ps1"

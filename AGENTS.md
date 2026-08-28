@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Steering for agents **working on this repo**. If you are instead helping a user *install* the
-daily-timesheet skill on their machine, the runbook you want is [`llms.txt`](./llms.txt), not this
+billables plugin's `daily` skill on their machine, the runbook you want is [`llms.txt`](./llms.txt), not this
 file.
 
 ## Agent skills

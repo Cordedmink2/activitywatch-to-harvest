@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Scaffold a workspace for the daily-timesheet skill.
+  Scaffold a workspace for the billables `daily` skill.
 
 .DESCRIPTION
   Creates the folders the skill reads/writes (Timesheets\, daily_exports\, .mcp\)
@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$template = Join-Path $repoRoot "skill\daily-timesheet\references\context.md.example"
+$template = Join-Path $repoRoot "skills\daily\references\context.md.example"
 
 Write-Host "Scaffolding workspace at: $Workspace" -ForegroundColor Cyan
 

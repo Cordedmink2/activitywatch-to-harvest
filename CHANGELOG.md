@@ -5,6 +5,31 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The repo is now a plugin marketplace holding one plugin, `billables`.** `/plugin marketplace
+  add Cordedmink2/activity-to-timesheet` then `/plugin install billables@activity-to-timesheet`
+  installs it; the skill is invoked as `/billables:daily`. The repo is renamed
+  `activity-to-timesheet` — the old name still resolves through GitHub's rename redirect.
+- **The skill moved from `skill/daily-timesheet/` to `skills/daily/` and is declared as `daily`.**
+  The manual install scripts still work and now copy to `~/.claude/skills/daily`; they print a note
+  if an older `daily-timesheet` folder is still installed, because two copies of one skill means
+  either can answer.
+- **`SKILL.md` no longer hardcodes a path into a Claude-specific skills directory.** The `scripts/`
+  prefix is resolved from the directory `SKILL.md` was read from, so the bundled scripts are
+  findable wherever the skill is installed. A test now fails on any instruction that writes one down.
+
+### Fixed
+- **Workspace auto-detection is anchored on the install shape instead of a depth.** It walked two
+  arbitrary ancestors and took the first that looked workspace-shaped, so an install nested one
+  level deeper than expected resolved to whatever real workspace happened to be above it — silently:
+  the refresh reported success and the stale catalogs surfaced days later. It now requires the skill
+  to sit directly inside a `skills/` directory, and never treats a plugin's own root as a workspace.
+  **Consequence for plugin installs:** the skill is not inside a workspace, so nothing is
+  auto-detected and `TIMESHEET_WORKSPACE` has to be set. Refusing is the point — the alternative is
+  guessing — and it goes away when the configuration surface is declared in the manifest.
+
 ## [0.4.11] - 2026-08-28
 
 ### Changed

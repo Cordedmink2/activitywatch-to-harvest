@@ -5,7 +5,7 @@
   ~2.5 minutes across the workday.
 
 .DESCRIPTION
-  This is the only screenshot task the daily-timesheet skill needs. It runs as
+  This is the only screenshot task the billables daily skill needs. It runs as
   the current (non-admin) user while you're logged in, capturing into
   ~/Pictures/WorkScreenshots/<date>/. The capture script creates the dated
   folders itself, so there's no separate folder-structure step.
@@ -179,7 +179,7 @@ if ($DryRun) {
 
 Register-ScheduledTask -TaskName $TaskName -Trigger $trigger -Action $action `
     -Principal $principal -Settings $settings `
-    -Description "Workday screenshot grabber for the daily-timesheet skill." -Force | Out-Null
+    -Description "Workday screenshot grabber for the billables daily skill." -Force | Out-Null
 
 Write-Host ""
 Write-Host "Registered '$TaskName': weekdays $StartTime-$EndTime, every ${IntervalSeconds}s -> $ScreenshotsDir"

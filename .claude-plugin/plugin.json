@@ -1,0 +1,19 @@
+{
+  "name": "billables",
+  "description": "Turns captured desktop activity into a reviewable billable timesheet and, on your explicit confirmation, logs it to your timesheet provider.",
+  "version": "0.4.11",
+  "author": {
+    "name": "Connor Parsons"
+  },
+  "homepage": "https://github.com/Cordedmink2/activity-to-timesheet#readme",
+  "repository": "https://github.com/Cordedmink2/activity-to-timesheet",
+  "license": "MIT",
+  "keywords": [
+    "timesheet",
+    "time-tracking",
+    "billable-hours",
+    "activitywatch",
+    "harvest",
+    "consulting"
+  ]
+}

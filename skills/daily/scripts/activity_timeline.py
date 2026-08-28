@@ -1,4 +1,4 @@
-"""Window-activity timeline for the daily-timesheet skill, tagged with the
+"""Window-activity timeline for the billables `daily` skill, tagged with the
 client categories ActivityWatch already knows.
 
 afk_blocks.py gives the day *skeleton* (start/end/breaks). This gives the

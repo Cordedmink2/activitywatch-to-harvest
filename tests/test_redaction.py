@@ -71,7 +71,7 @@ WORD = re.compile(r"[a-z]+|[0-9]+")
 FIX = """
 Those are real client, employer or colleague names. Replace each with a neutral
 placeholder in the house style — Acme, Beta Industries, Contoso, Northwind Consulting;
-`skill/daily-timesheet/references/context.md.example` is the model — rather than deleting
+`skills/daily/references/context.md.example` is the model — rather than deleting
 the sentence around it. A genuine coincidence (an ordinary word that happens to collide)
 is a reason to reword that line, not to drop the digest.
 """

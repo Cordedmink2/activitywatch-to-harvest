@@ -163,7 +163,7 @@ def test_workspace_is_found_when_the_skill_is_installed_under_dot_claude(tmp_pat
     """
     ws = tmp_path / "Admin"
     (ws / "Timesheets").mkdir(parents=True)
-    skill_root = ws / ".claude" / "skills" / "daily-timesheet"
+    skill_root = ws / ".claude" / "skills" / "daily"
     skill_root.mkdir(parents=True)
     monkeypatch.setattr(skill_config, "SKILL_ROOT", skill_root)
     monkeypatch.setattr(skill_config, "ENV_PATH", skill_root / ".env")
@@ -174,7 +174,7 @@ def test_workspace_is_found_when_the_skill_is_installed_under_dot_claude(tmp_pat
 def test_workspace_detection_still_refuses_to_guess(tmp_path, monkeypatch):
     """Widening the search must not turn "I don't know" into a confident wrong answer:
     with nothing workspace-shaped anywhere above the skill, the result stays None."""
-    skill_root = tmp_path / "nowhere" / ".claude" / "skills" / "daily-timesheet"
+    skill_root = tmp_path / "nowhere" / ".claude" / "skills" / "daily"
     skill_root.mkdir(parents=True)
     monkeypatch.setattr(skill_config, "SKILL_ROOT", skill_root)
     monkeypatch.setattr(skill_config, "ENV_PATH", skill_root / ".env")
