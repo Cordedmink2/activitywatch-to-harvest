@@ -13,7 +13,10 @@ Issues and specs live in this repo's GitHub Issues, via the `gh` CLI. See
 
 ### Triage labels
 
-<!-- RECOVERED FRAGMENT: 409 of 682 bytes.
-     The rest of this file was lost in the 2026-08-28 filesystem loss and no copy
-     survives anywhere. This text is verbatim from the surviving record, but the file
-     is INCOMPLETE - do not treat it as the whole. See docs/RECOVERY.md. -->
+The five canonical roles, with label strings unchanged. See
+[`docs/agents/triage-labels.md`](./docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See
+[`docs/agents/domain.md`](./docs/agents/domain.md).
