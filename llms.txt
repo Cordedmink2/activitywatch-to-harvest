@@ -1,7 +1,7 @@
-# activitywatch-to-harvest — setup runbook for an AI coding agent
+# activity-to-timesheet — setup runbook for an AI coding agent
 
-You are helping a user install and configure the **daily-timesheet** Claude Code skill from this
-repo. This file is the authoritative, ordered runbook. Follow it top to bottom. Do the steps you
+You are helping a user install and configure the **billables** Claude Code plugin's `daily` skill
+from this repo. This file is the authoritative, ordered runbook. Follow it top to bottom. Do the steps you
 *can* do (run scripts, create files, verify services); for steps only a human can do (installing
 desktop apps, clicking through browser-extension options), give clear, copy-pasteable instructions and
 wait for the user to confirm before moving on.
@@ -84,8 +84,19 @@ wait for the user to confirm before moving on.
 ### 5. Install the skill (you run this)
 - Windows: `pwsh -File install\install_skill.ps1`
 - POSIX:   `./install/install_skill.sh`
-- This copies `skill/daily-timesheet` to `~/.claude/skills/daily-timesheet`, excluding `.env` and
-  `__pycache__`. Safe to re-run.
+- This copies `skills/daily` to `~/.claude/skills/daily`, excluding `.env` and `__pycache__`.
+  Safe to re-run.
+- A user who would rather not clone can install the plugin instead: `/plugin marketplace add
+  Cordedmink2/activity-to-timesheet` then `/plugin install billables@activity-to-timesheet`. Every
+  other step in this runbook still applies; only this one is replaced. Two consequences, both
+  temporary until the configuration surface is declared in the manifest:
+  - Every `~/.claude/skills/daily/...` path later in this runbook is where *this* step puts the
+    skill. On a plugin install, substitute the plugin's own skill directory — resolve it from where
+    you read `SKILL.md`, never from a written-down location.
+  - Workspace auto-detection deliberately fails for a plugin install (the skill is not installed
+    inside a workspace, and guessing is what it refuses to do). After step 6, set
+    `TIMESHEET_WORKSPACE=<workspace>` in the skill's `.env`, and tell the user their `.env` sits
+    inside the installed plugin, so a plugin update can take it with it.
 
 ### 6. Scaffold the workspace (you run this)
 - Ask the user which folder should be their workspace (default: current directory).
@@ -102,7 +113,7 @@ wait for the user to confirm before moving on.
 - Write only confirmed facts. This file stays local (git-ignored).
 
 ### 8. Harvest credentials (you create the file; user supplies values)
-- Copy `~/.claude/skills/daily-timesheet/.env.example` to `.env` in the same folder.
+- Copy `~/.claude/skills/daily/.env.example` to `.env` in the same folder.
 - Ask the user for their Harvest Account ID and a Personal Access Token from
   https://id.getharvest.com/developers. Do NOT guess these.
 - Prefer values that never enter the chat: offer to open `.env` so the user pastes the token into
@@ -111,9 +122,9 @@ wait for the user to confirm before moving on.
   before that transcript is shared anywhere.
 - Write them into `.env` as `HARVEST_ACCOUNT_ID=` and `HARVEST_API_KEY=`.
 - Verify it runs with no auth error:
-  - Windows: `py "$HOME/.claude/skills/daily-timesheet/scripts/harvest_list.py" <today> <today>`
+  - Windows: `py "$HOME/.claude/skills/daily/scripts/harvest_list.py" <today> <today>`
     — `py` not `python` (the stub), and `"$HOME/…"` not `~/…` (5.1 passes a bare `~` through literally).
-  - POSIX: `python ~/.claude/skills/daily-timesheet/scripts/harvest_list.py <today> <today>`
+  - POSIX: `python ~/.claude/skills/daily/scripts/harvest_list.py <today> <today>`
   A day with no entries prints `(no time entries from … to …)` on stderr — exit 0 plus that notice is
   success, not a silent no-op. A 401/403 means the token is wrong — ask the user to regenerate.
 
@@ -131,7 +142,7 @@ wait for the user to confirm before moving on.
 
 ### 10. Screenshot pipeline (you run this — REQUIRED, Windows)
 - This is a core part of the skill (screenshots disambiguate generic activity into the right client).
-- Run: `pwsh -File "$HOME/.claude/skills/daily-timesheet/scripts/setup_screenshot_pipeline.ps1"`
+- Run: `pwsh -File "$HOME/.claude/skills/daily/scripts/setup_screenshot_pipeline.ps1"`
 - Installs Pillow + mss if needed and registers the `WorkScreenshots` scheduled task (weekdays
   08:30–20:00, ~every 2.5 min). Params: `-StartTime`, `-EndTime`, `-IntervalSeconds`.
 - The script probes every interpreter candidate with a real import and refuses broken ones (0-byte
@@ -140,7 +151,7 @@ wait for the user to confirm before moving on.
 - VERIFY it actually works — this is the step most likely to be silently blocked by AV/EDR:
   1. `Get-ScheduledTaskInfo -TaskName WorkScreenshots` returns without error (the task registered).
   2. Fire one capture by hand and confirm PNGs land: run
-     `py "$HOME/.claude/skills/daily-timesheet/scripts/screenshot_capture.py"`, then check that
+     `py "$HOME/.claude/skills/daily/scripts/screenshot_capture.py"`, then check that
      `$HOME/Pictures/WorkScreenshots/<today>/` now holds `HH-MM-SS_m1.png` files.
   If the task registers but no images ever appear, endpoint security has likely quarantined
   `screenshot_capture.py` or is blocking the silent `pythonw` process — tell the user and ask them to

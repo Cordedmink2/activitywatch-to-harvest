@@ -35,7 +35,7 @@ body:
     id: version
     attributes:
       label: Skill version
-      description: The contents of `skill/daily-timesheet/VERSION`, or of `VERSION` in your installed skill folder.
+      description: The contents of `skills/daily/VERSION`, or of `VERSION` in your installed skill folder.
       placeholder: "0.4.10"
     validations:
       required: true

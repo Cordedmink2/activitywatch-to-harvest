@@ -36,10 +36,10 @@ def isolated(env_file, tmp_path, monkeypatch):
 
     A test whose precondition is "nothing resolves" has to neutralise every source the
     resolver reads: the walk up from `SKILL_ROOT` found a real workspace when the suite
-    ran from one checkout and not from another, which is the 2026-08-27 `TESTING.md`
-    entry. Returns the `.env` path for a test to write settings into.
+    ran from one checkout and not from another — `TESTING.md` § "A test's result depended on where the checkout sat". Returns the `.env` path for a
+    test to write settings into.
     """
-    monkeypatch.setattr(skill_config, "SKILL_ROOT", tmp_path / "skills" / "daily-timesheet")
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", tmp_path / "skills" / "daily")
     monkeypatch.chdir(tmp_path)
     return env_file
 
@@ -114,6 +114,47 @@ def test_find_workspace_uses_cwd_when_it_looks_like_a_workspace(isolated, tmp_pa
 def test_find_workspace_returns_none_rather_than_guessing(isolated):
     # No override, and nothing nearby looks like a workspace. Callers must be told
     # so they can fail loudly instead of writing catalogs to an invented path.
+    assert skill_config.find_workspace() is None
+
+
+def test_find_workspace_uses_the_directory_the_skill_is_installed_under(isolated, tmp_path,
+                                                                       monkeypatch):
+    """`<workspace>/skills/<name>` — the shape a workspace-local install has."""
+    ws = tmp_path / "Admin"
+    (ws / "Timesheets").mkdir(parents=True)
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", ws / "skills" / "daily")
+    assert skill_config.find_workspace() == ws
+
+
+def test_find_workspace_does_not_climb_past_the_skills_directory(isolated, tmp_path,
+                                                                monkeypatch):
+    """Anchored on the install shape, so an unrelated ancestor is not a candidate at all.
+
+    Reasoning and the record: `TESTING.md` § "Workspace resolution is anchored on the
+    install shape, not on a depth".
+    """
+    ws = tmp_path / "Admin"
+    (ws / "Timesheets").mkdir(parents=True)
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", ws / "checkout" / "skills" / "daily")
+    assert skill_config.find_workspace() is None
+
+
+def test_a_plugin_install_never_resolves_to_a_workspace_around_it(isolated, tmp_path,
+                                                                 monkeypatch):
+    """`<plugin>/skills/<name>` matches the workspace-local shape exactly, and must not
+    resolve: the plugin holds no user data, so nothing around it is this user's workspace.
+    `.claude-plugin/` beside the skills directory is what says so.
+
+    Pinned rather than left to a green suite because the wrong answer is silent and
+    delayed — the refresh reports success and the staleness surfaces days later.
+    Reasoning: `TESTING.md` § "Workspace resolution is anchored on the install shape, not
+    on a depth".
+    """
+    ws = tmp_path / "Admin"
+    (ws / "Timesheets").mkdir(parents=True)
+    plugin = ws / "activity-to-timesheet"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", plugin / "skills" / "daily")
     assert skill_config.find_workspace() is None
 
 

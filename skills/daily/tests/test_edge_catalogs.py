@@ -364,8 +364,9 @@ def test_find_catalog_dir_falls_back_to_a_dot_mcp_under_the_current_directory(
     # checkout happened to sit: it passed from `~/.claude/skills/`, and failed from the
     # public repo at `~/Admin/activitywatch-to-harvest/skill/`, because `~/Admin` is a real
     # workspace and the walk resolved to it. Caught by the release mirror, not by this suite.
+    # TESTING.md § "A test's result depended on where the checkout sat" has the entry.
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(skill_config, "SKILL_ROOT", tmp_path / "skills" / "daily-timesheet")
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", tmp_path / "skills" / "daily")
     assert skill_config.find_workspace() is None, "the fallback branch is only reachable unresolved"
 
     got = hl.find_catalog_dir(None)

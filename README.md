@@ -1,4 +1,4 @@
-# activitywatch-to-harvest
+# activity-to-timesheet
 
 A [Claude Code](https://claude.com/claude-code) skill that reconstructs your workday from
 [ActivityWatch](https://activitywatch.net/) + periodic screenshots, classifies the activity into
@@ -11,6 +11,37 @@ this skill turns it into a reviewable, billable timesheet.
 
 > **You stay in control.** Nothing is ever posted to Harvest without an explicit "yes". The skill
 > proposes; you approve.
+
+---
+
+## Install
+
+This repo is a plugin marketplace holding one plugin, `billables`. From inside Claude Code:
+
+```
+/plugin marketplace add Cordedmink2/activity-to-timesheet
+/plugin install billables@activity-to-timesheet
+```
+
+That gives you `/billables:daily`. It does **not** give you the parts only you can do —
+installing ActivityWatch, the browser extension, the browser-profile title tags, the category
+rules, scaffolding your workspace, and your Harvest credentials. The manual setup below walks
+through all of those: **steps 1–4 and 6–10 still apply**, and step 5 is the only one the two
+commands above replace.
+
+Two things a plugin install needs that a hand-installed copy doesn't. Both go away once the
+configuration surface is declared in the manifest; until then:
+
+- **Set `TIMESHEET_WORKSPACE`.** The scripts auto-detect a workspace only when the skill is
+  installed *inside* one, and a plugin never is — so after step 6, put
+  `TIMESHEET_WORKSPACE=<your workspace>` in the skill's `.env` beside your Harvest credentials.
+  Without it a catalog refresh refuses to run rather than guessing where to write.
+- **Keep a copy of your `.env`.** It lives at the skill root, which for a plugin install is
+  inside the installed plugin — so updating the plugin can take it with it.
+
+Paths below of the form `$HOME\.claude\skills\daily\…` are where **step 5** puts the skill. On a
+plugin install, substitute the plugin's own skill directory; the skill itself resolves this at run
+time and never needs to be told.
 
 ---
 
@@ -35,8 +66,8 @@ machine-readable runbook for the setup. Just open Claude Code anywhere and paste
 Claude where to find everything, so you don't even need to clone first:
 
 ```
-Clone https://github.com/Cordedmink2/activitywatch-to-harvest, read its llms.txt, and set up the
-daily-timesheet skill for me on this machine. Walk me through anything you can't do yourself
+Clone https://github.com/Cordedmink2/activity-to-timesheet, read its llms.txt, and set up the
+billables `daily` skill for me on this machine. Walk me through anything you can't do yourself
 (installing ActivityWatch, the browser extension, the browser-profile title tags, the AW
 categories). Ask me for any secrets — don't guess them — and never commit my .env.
 ```
@@ -63,11 +94,11 @@ repo files and re-running it.
   pwsh -File install\install_skill.ps1        # macOS/Linux: ./install/install_skill.sh
   ```
 - **If you used the lazy path above** (no local clone), just ask Claude Code to *"update the
-  daily-timesheet skill from the latest activitywatch-to-harvest repo"* — it'll fetch the current
+  billables `daily` skill from the latest activity-to-timesheet repo"* — it'll fetch the current
   version and re-run the installer.
 
 Re-running never touches your `.env`, your workspace, or your `.context.md`. Note it **copies over**
-`~/.claude/skills/daily-timesheet` rather than mirroring it, so a file *removed* upstream won't be
+`~/.claude/skills/daily` rather than mirroring it, so a file *removed* upstream won't be
 deleted from your copy. For a clean reinstall, delete the skill folder first (back up your `.env`),
 then run the install script.
 
@@ -82,7 +113,7 @@ then run the install script.
 > is present. Re-run the screenshot setup once to install it (it also safely re-registers the task):
 >
 > ```powershell
-> pwsh -File "$HOME\.claude\skills\daily-timesheet\scripts\setup_screenshot_pipeline.ps1"
+> pwsh -File "$HOME\.claude\skills\daily\scripts\setup_screenshot_pipeline.ps1"
 > ```
 
 ---
@@ -176,7 +207,7 @@ pwsh -File install\install_skill.ps1
 
 (macOS/Linux: `./install/install_skill.sh`.)
 
-This copies the skill to `~/.claude/skills/daily-timesheet`. It never copies a `.env` or build
+This copies the skill to `~/.claude/skills/daily`. It never copies a `.env` or build
 artifacts, and it's safe to re-run to update the skill.
 
 ### 6. Scaffold your workspace
@@ -224,7 +255,7 @@ skill root. Set it up:
 
 1. Copy the template:
    ```powershell
-   Copy-Item "$HOME\.claude\skills\daily-timesheet\.env.example" "$HOME\.claude\skills\daily-timesheet\.env"
+   Copy-Item "$HOME\.claude\skills\daily\.env.example" "$HOME\.claude\skills\daily\.env"
    ```
 2. Go to **https://id.getharvest.com/developers**:
    - Note your numeric **Account ID** (shown at the top).
@@ -236,7 +267,7 @@ skill root. Set it up:
    ```
 4. Verify it works (on Windows use `py` — a bare `python` is often the Store stub):
    ```powershell
-   py "$HOME\.claude\skills\daily-timesheet\scripts\harvest_list.py" 2026-01-01 2026-01-01
+   py "$HOME\.claude\skills\daily\scripts\harvest_list.py" 2026-01-01 2026-01-01
    ```
    Entries print one per line; a day with no entries prints `(no time entries from … to …)`.
    Either of those with no auth error is success — a 401/403 means the token is wrong.
@@ -272,7 +303,7 @@ generic activity (a bare browser, a terminal, `XrmToolBox`, an IDE with no works
 into the right client — the window title alone often can't.
 
 ```powershell
-pwsh -File "$HOME\.claude\skills\daily-timesheet\scripts\setup_screenshot_pipeline.ps1"
+pwsh -File "$HOME\.claude\skills\daily\scripts\setup_screenshot_pipeline.ps1"
 ```
 
 This installs [Pillow](https://pillow.readthedocs.io/) and [mss](https://python-mss.readthedocs.io/)
@@ -309,12 +340,12 @@ uncertain, and asks before posting anything to Harvest.
 ## Customize
 
 - **`Timesheets/.context.md`** (in your workspace) — all your per-user facts. Edit any time.
-- **`skill/daily-timesheet/references/classification-rules.md`** — the generic rubric the skill uses
+- **`skills/daily/references/classification-rules.md`** — the generic rubric the skill uses
   to turn signals into a `(client, project, task, billable)` decision.
-- **`skill/daily-timesheet/references/output-format.md`** — the markdown timesheet template.
-- **`skill/daily-timesheet/references/setup.md`** — first-run setup the skill walks you through.
-- **`skill/daily-timesheet/references/activitywatch.md`** — what the skill reads out of ActivityWatch.
-- **`skill/daily-timesheet/references/new-client-work.md`** — raising a new ticket for unmatched work.
+- **`skills/daily/references/output-format.md`** — the markdown timesheet template.
+- **`skills/daily/references/setup.md`** — first-run setup the skill walks you through.
+- **`skills/daily/references/activitywatch.md`** — what the skill reads out of ActivityWatch.
+- **`skills/daily/references/new-client-work.md`** — raising a new ticket for unmatched work.
 - Thresholds (AFK break length, lunch window, default task) are overridable in `.context.md` under
   `## Preferences`.
 
@@ -334,7 +365,7 @@ uncertain, and asks before posting anything to Harvest.
 ## What's in this repo
 
 ```
-activitywatch-to-harvest/
+activity-to-timesheet/
 ├── README.md                 # you are here
 ├── .github/ISSUE_TEMPLATE/   # the form behind "New issue"
 ├── CHANGELOG.md              # what changed in each release
@@ -342,7 +373,8 @@ activitywatch-to-harvest/
 ├── LICENSE                   # MIT
 ├── demo/
 │   └── tag-rule-demo.html    # interactive demo of the tag/category-rule failure modes
-├── skill/daily-timesheet/    # the skill itself (installed into ~/.claude/skills)
+├── .claude-plugin/           # marketplace + plugin manifests (this repo is the plugin)
+├── skills/daily/             # the skill itself
 │   ├── SKILL.md              # the skill's instructions
 │   ├── .env.example          # credential + optional-config template
 │   ├── references/           # classification rules, setup, context template, formats

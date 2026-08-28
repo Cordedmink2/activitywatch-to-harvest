@@ -1,4 +1,4 @@
-"""Test support for the daily-timesheet scripts: fake servers, a day-builder DSL,
+"""Test support for the billables `daily` scripts: fake servers, a day-builder DSL,
 and an in-process CLI runner.
 
 Three jobs, in order of how much trouble they save:

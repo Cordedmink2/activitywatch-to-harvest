@@ -12,7 +12,7 @@ don't know; the answer is stable, so it is worth recording under `## Preferences
 
 ## The repository
 
-    https://github.com/Cordedmink2/activitywatch-to-harvest
+    https://github.com/Cordedmink2/activity-to-timesheet
 
 Nothing an agent reads on a run names the origin — not `SKILL.md`, not `VERSION` — so read
 it from here rather than asking the user, who may well not remember either.
@@ -39,7 +39,7 @@ is the wrong default: a defect that stays on one machine gets rediscovered by th
 person. Show the full title and body, then:
 
 ```
-gh issue create -R Cordedmink2/activitywatch-to-harvest \
+gh issue create -R Cordedmink2/activity-to-timesheet \
   --title "<what goes wrong, not what to change>" \
   --body-file <path>
 ```

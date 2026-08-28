@@ -1,10 +1,10 @@
 ---
-name: daily-timesheet
+name: daily
 description: Fill in, review, regenerate, or backfill a daily timesheet from ActivityWatch data and log the time to Harvest. User-invoked.
 disable-model-invocation: true
 ---
 
-# daily-timesheet
+# daily
 
 For consultants who track time across multiple clients. ActivityWatch plus a scheduled screenshot grabber (`~/Pictures/WorkScreenshots/`) capture the workday; this skill turns that into a reviewable billable timesheet and (with confirmation) posts it to Harvest.
 
@@ -47,9 +47,9 @@ When the same setting is available from more than one of those, a per-command fl
 
 **Timezone:** AW stores UTC; all scripts take `--utc-offset` (default 12; **13 during NZ daylight saving**). User timezone from `## Preferences` in `.context.md`, default `Pacific/Auckland`.
 
-**Running the scripts:** every `python scripts/…` command below is relative to *this skill's own folder*, not the workspace. The session's working directory is the workspace, so prefix them with the skill path — `python "$HOME/.claude/skills/daily-timesheet/scripts/afk_blocks.py" <date>` (Windows: `$HOME\.claude\skills\daily-timesheet\scripts\…`). Catalog paths resolve from the workspace, so run them *from* the workspace directory.
+**Running the scripts:** every `python scripts/…` command below is relative to *this skill's own folder* — the directory this `SKILL.md` was read from — not the workspace. The session's working directory is the workspace, so prefix them with that folder's absolute path: `python "<this skill's folder>/scripts/afk_blocks.py" <date>`. **Resolve the folder once, with the Prerequisites below, from where you read this file, and reuse it for the whole run** — never assume a literal location. It differs by install (inside a plugin's own directory, a shared Agent Skills directory, or a harness's skills directory) and a guessed path fails as "script not found", which reads like a broken skill rather than a wrong prefix. Catalog paths resolve from the workspace, so run them *from* the workspace directory.
 
-`python` in those commands means *the interpreter this machine actually uses*, not the literal string. Check `.context.md` first — if it records one, use it and don't re-probe. Otherwise resolve it once during Step 0 and reuse it for the whole run. On Windows a bare `python` is often the Store app-execution stub, whose tell is a **help message about installing from the Microsoft Store and exit code 49** — that is a missing interpreter, not a broken script, so don't debug the script. `py` (the launcher) is the usual working answer there. Record the resolved answer in `.context.md` → Machine so the next run skips the probe.
+`python` in those commands means *the interpreter this machine actually uses*, not the literal string. Check `.context.md` first — if it records one, use it and don't re-probe. Otherwise resolve it once with the Prerequisites below and reuse it for the whole run. On Windows a bare `python` is often the Store app-execution stub, whose tell is a **help message about installing from the Microsoft Store and exit code 49** — that is a missing interpreter, not a broken script, so don't debug the script. `py` (the launcher) is the usual working answer there. Record the resolved answer in `.context.md` → Machine so the next run skips the probe.
 
 ### Reading the screenshot folder (Windows)
 

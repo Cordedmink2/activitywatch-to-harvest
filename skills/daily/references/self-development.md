@@ -65,6 +65,8 @@ to have in front of you.
 | Screenshots never settle active/idle | Step 5, first bullet | `SKILL.md` folder mechanics, `classification-rules.md` §"Focused window ≠ active attention" |
 | Check the other monitors before trusting one | `classification-rules.md` §"Focused window ≠ active attention" | `SKILL.md` folder mechanics + Step 5 subagent brief, `classification-rules.md` long-agent-CLI and browser-row paragraphs, interleaved-days probe step |
 | Setting precedence: flag, then `.env`, then the process environment, then the script default; blank counts as unset | `scripts/skill_config.py` docstring | `SKILL.md` "What lives where", `references/setup.md` §"First-run: Harvest credentials", the `refresh_catalogs.py` and `screenshot_capture.py` module docstrings |
+| Workspace resolution is anchored on the install shape, not a depth; a plugin's own root is never a workspace | `TESTING.md` §"Workspace resolution is anchored on the install shape, not on a depth" | `scripts/skill_config.py` `_install_workspace()` docstring, the two install-shape tests in `tests/test_config_seam.py`, `CHANGELOG.md` |
+| The `scripts/` prefix is resolved from the directory `SKILL.md` was read from, never written down | `SKILL.md` "Running the scripts" | the repo-level `tests/test_install_scripts.py` guards |
 
 The `--cover` pair has already drifted once and cost a re-run — `TESTING.md` has the
 entry. The fix at the time touched the checklist copy and missed the owner.

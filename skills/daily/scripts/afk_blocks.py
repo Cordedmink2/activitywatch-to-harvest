@@ -1,4 +1,4 @@
-"""Deterministic AFK-watcher analyzer for the daily-timesheet skill.
+"""Deterministic AFK-watcher analyzer for the billables `daily` skill.
 
 The skill's Step 3 needs a few facts that are easy to get *wrong* by eyeballing
 raw ActivityWatch JSON: where the day genuinely ends, where the real breaks are,

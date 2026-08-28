@@ -1,4 +1,4 @@
-"""Shared ActivityWatch REST helpers for the daily-timesheet skill.
+"""Shared ActivityWatch REST helpers for the billables `daily` skill.
 
 `afk_blocks.py` reads the day skeleton and `activity_timeline.py` reads its
 content, but both talk to the same local AW server the same way: discover a

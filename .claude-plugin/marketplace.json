@@ -1,0 +1,14 @@
+{
+  "name": "activity-to-timesheet",
+  "description": "Turn captured desktop activity into billable time. Hosts the billables plugin.",
+  "owner": {
+    "name": "Connor Parsons"
+  },
+  "plugins": [
+    {
+      "name": "billables",
+      "source": "./",
+      "description": "Turns captured desktop activity into a reviewable billable timesheet and, on your explicit confirmation, logs it to your timesheet provider."
+    }
+  ]
+}
