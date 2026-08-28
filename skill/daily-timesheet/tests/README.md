@@ -52,7 +52,7 @@ so a regeneration that bakes one in still fails the assertions. Keep both.
 
 ```python
 d = (day(dt.date(2026, 8, 12))
-     .classify("NZLS", r"NZLS|example-uat")
+     .classify("ACME", r"ACME|example-uat")
      .afk("00:00", "08:12")
      .active("08:12", "10:57")
      .locked("10:57", "11:45")                    # lock: sub-threshold AFK fragments

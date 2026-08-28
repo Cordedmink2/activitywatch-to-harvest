@@ -19,7 +19,7 @@ this skill turns it into a reviewable, billable timesheet.
 1. **ActivityWatch** runs locally and logs which app/window/browser-tab is in focus, plus when you're
    away from the keyboard (AFK).
 2. The **"URL in Title" browser extension** stamps a short **client code** into every tab's title
-   (e.g. `… - [NZLS]`), so browser activity carries which client it belongs to.
+   (e.g. `… - [ACME]`), so browser activity carries which client it belongs to.
 3. **ActivityWatch categories** use those codes to auto-classify browser time per client.
 4. A small **screenshot grabber** takes a periodic screenshot during work hours, used only to
    disambiguate activity that the window title alone can't pin to a client.
@@ -131,11 +131,11 @@ each profile configure the extension to append that client's short code to every
 In the URL in Title options, set the title format to something like:
 
 ```
-{title}-{hostname}{path}{args}{hash} - [NZLS]
+{title}-{hostname}{path}{args}{hash} - [ACME]
 ```
 
-Replace **`NZLS`** with a short code for the client this profile is for (pick your own — `ACME`,
-`CON`, whatever). Do this **separately in each browser profile**, using that profile's client code.
+Replace **`ACME`** with a short code for the client this profile is for (pick your own — `BETA`,
+`NIMBUS`, whatever). Do this **separately in each browser profile**, using that profile's client code.
 
 The result: every tab you open in your "Acme" profile gets ` - [ACME]` on the end of its title, your
 "Beta" profile gets ` - [BETA]`, and so on. ActivityWatch now sees which client each tab belongs to.

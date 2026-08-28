@@ -30,7 +30,7 @@ Override the skill's defaults here. Omit any line you're happy with as default.
 
 (The skill caches these after first discovery so subsequent runs skip the buckets endpoint.)
 
-- Hostname suffix: `<YOUR-MACHINE-NAME>`  <!-- e.g. ACL-113359 -->
+- Hostname suffix: `<YOUR-MACHINE-NAME>`  <!-- e.g. WS-113359 -->
 - Window: `aw-watcher-window_<HOST>`
 - AFK: `aw-watcher-afk_<HOST>`
 - Web (Firefox): `aw-watcher-web-firefox_<HOST>`

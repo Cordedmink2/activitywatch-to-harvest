@@ -150,8 +150,8 @@ def test_a_title_matching_two_clients_is_flagged_multi(live_aw):
     """The span the skill is told never to accept without a screenshot."""
     got = probe(BY_NAME["interleaved-clients-day"], live_aw)
     multi = [s for s in got["timeline_json"]["spans"] if s["multi"]]
-    assert multi, "a NZLS/Connexis title must be flagged, not silently assigned to one"
-    assert sorted(multi[0]["categories"]) == ["Connexis", "NZLS"]
+    assert multi, "an ACME/BETA title must be flagged, not silently assigned to one"
+    assert sorted(multi[0]["categories"]) == ["ACME", "BETA"]
 
 
 def test_a_generic_tool_lands_uncategorized_rather_than_guessed(live_aw):

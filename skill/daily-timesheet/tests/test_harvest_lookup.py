@@ -9,18 +9,18 @@ from support import run_cli
 
 
 def _write_catalog(mcp_dir):
-    # Page 1 holds NLS-CR202; a later page holds a different project + a dupe of NLS-CR202.
+    # Page 1 holds ACM-CR202; a later page holds a different project + a dupe of ACM-CR202.
     page1 = {"project_assignments": [
-        {"project": {"id": 48084036, "code": "NLS-CR202",
-                     "name": "CMS Backlog Requirements Implementation Phase 2"},
+        {"project": {"id": 48084036, "code": "ACM-CR202",
+                     "name": "Case Backlog Requirements Implementation Phase 2"},
          "task_assignments": [
              {"billable": True,  "task": {"id": 20753151, "name": "Gen - Development/Configuration"}},
              {"billable": False, "task": {"id": 20878969, "name": "Gen - Development/Configuration (NB)"}}]}]}
     page7 = {"project_assignments": [
-        {"project": {"id": 37122824, "code": "ACL-001", "name": "Admin"},
+        {"project": {"id": 37122824, "code": "NWC-001", "name": "Admin"},
          "task_assignments": [
              {"billable": False, "task": {"id": 20759111, "name": "Meeting - Standup Meetings"}}]},
-        {"project": {"id": 48084036, "code": "NLS-CR202", "name": "CMS Backlog Phase 2"},
+        {"project": {"id": 48084036, "code": "ACM-CR202", "name": "Case Backlog Phase 2"},
          "task_assignments": []}]}  # duplicate project id, must be de-duped
     with open(os.path.join(mcp_dir, "harvest_assignments.json"), "w", encoding="utf-8") as f:
         json.dump(page1, f)
@@ -38,7 +38,7 @@ def test_finds_project_on_first_page_across_pages(tmp_path):
 
 def test_lookup_returns_billable_task(tmp_path):
     _write_catalog(str(tmp_path))
-    matches = hl.lookup("NLS-CR202", str(tmp_path))
+    matches = hl.lookup("ACM-CR202", str(tmp_path))
     assert len(matches) == 1
     m = matches[0]
     assert m["project_id"] == 48084036
@@ -81,7 +81,7 @@ def test_lookup_matches_on_client_name(tmp_path):
 
 def test_lookup_tolerates_a_catalog_without_client_names(tmp_path):
     _write_catalog(str(tmp_path))
-    assert hl.lookup("NLS-CR202", str(tmp_path))[0]["client"] == ""
+    assert hl.lookup("ACM-CR202", str(tmp_path))[0]["client"] == ""
 
 
 def test_cli_exit_nonzero_on_no_match(tmp_path):

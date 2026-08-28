@@ -342,7 +342,7 @@ def test_patch_passes_a_non_numeric_entry_id_straight_through_to_the_url(live_ha
 # ======================================================================================
 
 def _entry(eid: int, date: str, start: str, end: str, *, hours: float = 1.0,
-           notes: str = "note", code: str | None = "NLS-CR202",
+           notes: str = "note", code: str | None = "ACM-CR202",
            task: str | None = "Gen - Development") -> dict:
     """One Harvest time entry, in the shape the API returns it."""
     out: dict = {"id": eid, "spent_date": date, "started_time": start, "ended_time": end,
@@ -450,7 +450,7 @@ def _columns(line: str) -> list[str]:
 @pytest.mark.parametrize("code,task,shown_code,shown_task", [
     (None, None, "?", "?"),
     (None, "Gen - Development", "?", "Gen - Development"),
-    ("NLS-CR202", None, "NLS-CR202", "?"),
+    ("ACM-CR202", None, "ACM-CR202", "?"),
 ], ids=["both-missing", "code-missing", "task-missing"])
 def test_list_renders_a_missing_project_code_or_task_name_as_a_question_mark(
         live_harvest, code, task, shown_code, shown_task):

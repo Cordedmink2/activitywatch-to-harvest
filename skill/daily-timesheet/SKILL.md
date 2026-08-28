@@ -206,8 +206,8 @@ First self-check every line of the proposal:
 Then show:
 
 > "Ready to post to Harvest. This will create N time entries:
-> - 0.5 hrs · [Adaptable Consulting Limited] · Adaptable Internal — Team Standup
-> - 0.75 hrs · [Connexis] · CON2020S Connexis Fabrics Copy job — Gen - Investigation [Support]
+> - 0.5 hrs · [Northwind Consulting Ltd] · Northwind Internal — Team Standup
+> - 0.75 hrs · [Beta Industries] · BET2020S Beta Fabrics Copy job — Gen - Investigation [Support]
 >
 > Proceed? (yes / no / edit block <n>)"
 
@@ -233,7 +233,7 @@ Fix a wrong entry with `python scripts/harvest_patch.py <entry_id> [--start HH:M
 
 ### Step 10 — Wrap-up
 
-Summarise: total hours posted, blocks deferred/skipped, and whether more days are outstanding — but **don't name the next date here**; Step 12 does that after the reset ask. Save the entry ids to `Timesheets/<date>_harvest_responses.json`: `{"entries": [{"id": 2933345845, "project_code": "ACL-001", "hours": 0.25, "notes": "..."}], ...}`.
+Summarise: total hours posted, blocks deferred/skipped, and whether more days are outstanding — but **don't name the next date here**; Step 12 does that after the reset ask. Save the entry ids to `Timesheets/<date>_harvest_responses.json`: `{"entries": [{"id": 2933345845, "project_code": "NWC-001", "hours": 0.25, "notes": "..."}], ...}`.
 
 ### Step 11 — Surface skill or `.context.md` improvements
 
@@ -243,7 +243,7 @@ A run frequently reveals a fact the skill or `.context.md` doesn't know (a new s
 - The *workflow itself* (a generic heuristic, data-source change, API quirk) → propose for `SKILL.md`/`references/`.
 - The *skill is wrong* — a script returns a wrong answer, a guard didn't fire, an instruction is wrong for every user → `references/reporting-issues.md` if the user installed this skill, `references/self-development.md` if they maintain it.
 
-Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in `.context.md`; I guessed EarnLearn. Add `XrmToolBox connecting to env X → EarnLearn` under EarnLearn?"
+Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in `.context.md`; I guessed Ledger Learning. Add `XrmToolBox connecting to env X → Ledger Learning` under Ledger Learning?"
 
 **`.context.md` size budget — check after every edit to it.** `(Get-Item Timesheets/.context.md).Length` must stay under **14,000 bytes** (override via `## Preferences`). The budget exists to keep Prerequisite 1's whole-file read affordable on every run — that is what it is *for*, so a file over budget gets trimmed, never partially read. Over budget → compact in the same session, in this order: (1) move any *generic* rule that crept in into this skill's references — that's skill drift, not a user fact; (2) delete facts proven wrong or superseded (finished workstreams, retired clients, one-off ticket examples older than a few months); (3) shorten confirmed-example parentheticals to the date stamp. If getting under budget would drop a live user fact, ask the user which to drop — never silently delete.
 
@@ -266,7 +266,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - **No Harvest write without explicit confirmation.**
 - **Honor `.context.md` exclusions** — personal browsing, AFK breaks, personal home admin are NEVER billable.
 - **Don't fabricate confidence.** A block that could be 2–3 clients gets surfaced, not arbitrated.
-- **Harvest notes are client-readable.** They go out on invoices: describe *what part of the client's project* was worked on, never the internal mechanism, file names, internal app names, or chat partners. If a term wouldn't appear in the SOW or on the client's own board, it doesn't go in the note. Tickets (`NLS2232S`) and recurring meeting names are fine. The markdown timesheet stays internal and can be granular. Style defaults: the rubric's "Writing the Harvest note" section; the user's own examples in `.context.md` "How I bill".
+- **Harvest notes are client-readable.** They go out on invoices: describe *what part of the client's project* was worked on, never the internal mechanism, file names, internal app names, or chat partners. If a term wouldn't appear in the SOW or on the client's own board, it doesn't go in the note. Tickets (`ACM2232S`) and recurring meeting names are fine. The markdown timesheet stays internal and can be granular. Style defaults: the rubric's "Writing the Harvest note" section; the user's own examples in `.context.md` "How I bill".
 - **`.context.md` is the source of truth for per-user facts** — propose new user facts there, not in the skill.
 
 ## Files in this skill

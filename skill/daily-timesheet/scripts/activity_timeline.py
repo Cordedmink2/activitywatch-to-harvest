@@ -9,8 +9,8 @@ flagged — both are exactly the spans to confirm with --window or a screenshot.
 
 AW category rules are read live from GET /api/0/settings -> "classes", so the
 tags mirror what the AW web UI shows (regex on the window app + title). The
-rules are *client*-level, not project/ticket-level: they get you to "NZLS",
-never to "NLS-CR202 vs NLS2232S", and are a first-pass signal only — never
+rules are *client*-level, not project/ticket-level: they get you to "ACME",
+never to "ACM-CR202 vs ACM2232S", and are a first-pass signal only — never
 taken as 100% certain.
 
 Two modes:

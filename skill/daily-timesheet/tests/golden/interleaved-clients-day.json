@@ -77,14 +77,14 @@
         "start": "08:35:00",
         "end": "10:10:00",
         "min": 95.0,
-        "category": "NZLS",
+        "category": "ACME",
         "multi": false,
         "categories": [
-          "NZLS"
+          "ACME"
         ],
         "top_titles": [
           [
-            "Code.exe | CMSPlugins - NZLS",
+            "Code.exe | CasePlugins - ACME",
             5700.0
           ]
         ]
@@ -93,18 +93,18 @@
         "start": "10:10:00",
         "end": "11:50:00",
         "min": 100.0,
-        "category": "Connexis",
+        "category": "BETA",
         "multi": false,
         "categories": [
-          "Connexis"
+          "BETA"
         ],
         "top_titles": [
           [
-            "msedge.exe | Connexis Short Courses - admin",
+            "msedge.exe | BETA Field Services - admin",
             5100.0
           ],
           [
-            "ms-teams.exe | Call with Connexis - Short Courses handover",
+            "ms-teams.exe | Call with BETA - Field Services handover",
             900.0
           ]
         ]
@@ -127,15 +127,15 @@
         "start": "13:40:00",
         "end": "14:05:00",
         "min": 25.0,
-        "category": "NZLS",
+        "category": "ACME",
         "multi": true,
         "categories": [
-          "Connexis",
-          "NZLS"
+          "ACME",
+          "BETA"
         ],
         "top_titles": [
           [
-            "msedge.exe | NZLS / Connexis shared migration notes",
+            "msedge.exe | ACME / BETA shared migration notes",
             1500.0
           ]
         ]
@@ -144,27 +144,27 @@
         "start": "14:05:00",
         "end": "16:45:00",
         "min": 160.0,
-        "category": "Connexis",
+        "category": "BETA",
         "multi": false,
         "categories": [
-          "Connexis"
+          "BETA"
         ],
         "top_titles": [
           [
-            "Code.exe | short-courses-api - Connexis",
+            "Code.exe | field-services-api - BETA",
             9600.0
           ]
         ]
       }
     ],
     "rollup_min_by_category": {
-      "Connexis": 260.0,
-      "NZLS": 120.0,
+      "BETA": 260.0,
+      "ACME": 120.0,
       "uncategorized": 80.0
     },
     "web": null
   },
-  "timeline_text": "Window timeline for 2026-08-06 (offset UTC+12)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 2\n  08:20:00-08:35:00   15.0m  uncategorized   ms-teams.exe | Meeting | Standup\n  08:35:00-10:10:00   95.0m  NZLS            Code.exe | CMSPlugins - NZLS\n  10:10:00-11:50:00  100.0m  Connexis        msedge.exe | Connexis Short Courses - admin\n  12:35:00-13:40:00   65.0m  uncategorized   XrmToolBox.exe | XrmToolBox\n  13:40:00-14:05:00   25.0m  NZLS           !MULTI  msedge.exe | NZLS / Connexis shared migration notes\n  14:05:00-16:45:00  160.0m  Connexis        Code.exe | short-courses-api - Connexis\n  --- day totals by category (min) ---\n     Connexis         260.0\n     NZLS             120.0\n     uncategorized    80.0\n",
+  "timeline_text": "Window timeline for 2026-08-06 (offset UTC+12)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 2\n  08:20:00-08:35:00   15.0m  uncategorized   ms-teams.exe | Meeting | Standup\n  08:35:00-10:10:00   95.0m  ACME            Code.exe | CasePlugins - ACME\n  10:10:00-11:50:00  100.0m  BETA            msedge.exe | BETA Field Services - admin\n  12:35:00-13:40:00   65.0m  uncategorized   XrmToolBox.exe | XrmToolBox\n  13:40:00-14:05:00   25.0m  ACME           !MULTI  msedge.exe | ACME / BETA shared migration notes\n  14:05:00-16:45:00  160.0m  BETA            Code.exe | field-services-api - BETA\n  --- day totals by category (min) ---\n     BETA             260.0\n     ACME             120.0\n     uncategorized    80.0\n",
   "zoom_json": {
     "date": "2026-08-06",
     "window_bucket": "aw-watcher-window_TESTHOST",
@@ -173,34 +173,34 @@
         "start": "10:10:00",
         "end": "11:50:00",
         "min": 100.0,
-        "category": "Connexis",
+        "category": "BETA",
         "multi": false,
         "categories": [
-          "Connexis"
+          "BETA"
         ],
         "top_titles": [
           [
-            "msedge.exe | Connexis Short Courses - admin",
+            "msedge.exe | BETA Field Services - admin",
             5100.0
           ],
           [
-            "ms-teams.exe | Call with Connexis - Short Courses handover",
+            "ms-teams.exe | Call with BETA - Field Services handover",
             900.0
           ]
         ]
       }
     ],
     "rollup_min_by_category": {
-      "Connexis": 260.0,
-      "NZLS": 120.0,
+      "BETA": 260.0,
+      "ACME": 120.0,
       "uncategorized": 80.0
     },
     "web": [
       {
         "time": "10:25:00",
         "secs": 5100,
-        "title": "Connexis admin",
-        "url": "https://connexis.example/admin"
+        "title": "BETA admin",
+        "url": "https://beta.example/admin"
       }
     ]
   }

@@ -28,9 +28,9 @@ from support import day, run_cli
 # Fixtures-in-miniature for the pure functions
 # --------------------------------------------------------------------------------------
 
-NZLS_FIRST = [("NZLS", re.compile("NZLS", re.IGNORECASE)),
-              ("Connexis", re.compile("Connexis", re.IGNORECASE))]
-CONNEXIS_FIRST = list(reversed(NZLS_FIRST))
+ACME_FIRST = [("ACME", re.compile("ACME", re.IGNORECASE)),
+              ("BETA", re.compile("BETA", re.IGNORECASE))]
+BETA_FIRST = list(reversed(ACME_FIRST))
 
 _EPOCH = dt.datetime(2026, 6, 19, tzinfo=dt.timezone.utc)
 
@@ -73,36 +73,36 @@ def test_an_event_of_exactly_five_seconds_is_kept_as_activity():
     """`NOISE_FLOOR` is a `<` test, so five seconds is the shortest thing that counts.
     Were it a `<=`, every glance at a client's window that lasted exactly the floor would
     vanish, and the day would read as if that client had never been opened at all."""
-    spans = at.build_window_spans([_ev(0, 5, "Code.exe", "CMS - NZLS")], NZLS_FIRST)
+    spans = at.build_window_spans([_ev(0, 5, "Code.exe", "CMS - ACME")], ACME_FIRST)
     assert len(spans) == 1
-    assert spans[0]["category"] == "NZLS"
+    assert spans[0]["category"] == "ACME"
 
 
 def test_an_event_just_under_five_seconds_is_dropped_as_tab_switch_noise():
     """A tab flicked through on the way somewhere else must not open a span. If it did,
     passing through a client's tab would plant that client's name in the middle of another
     client's block, which is the misattribution the noise floor exists to prevent."""
-    assert at.build_window_spans([_ev(0, 4.9, "Code.exe", "CMS - NZLS")], NZLS_FIRST) == []
+    assert at.build_window_spans([_ev(0, 4.9, "Code.exe", "CMS - ACME")], ACME_FIRST) == []
 
 
 def test_a_gap_of_exactly_sixty_seconds_breaks_a_span_in_two():
     """`GAP_FOLD` is a `<` test: a full minute away from the keyboard ends the span. The
     two halves stay separately timestamped, so a reader can see the minute of nothing
     rather than being shown one continuous stretch that was never continuous."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - NZLS"),
-           _ev(120, 60, "Code.exe", "CMS - NZLS")]      # ends 60s, next starts 120s
-    spans = at.build_window_spans(evs, NZLS_FIRST)
+    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
+           _ev(120, 60, "Code.exe", "CMS - ACME")]      # ends 60s, next starts 120s
+    spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 2
-    assert [s["category"] for s in spans] == ["NZLS", "NZLS"]
+    assert [s["category"] for s in spans] == ["ACME", "ACME"]
 
 
 def test_a_gap_of_fifty_nine_seconds_folds_into_one_span():
     """Below the fold the same-category halves become one span. Without this the timeline
     would shatter every real hour of work into dozens of rows, and the substantive blocks
     the skill is looking for would be buried under its own noise."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - NZLS"),
-           _ev(119, 60, "Code.exe", "CMS - NZLS")]      # ends 60s, next starts 119s
-    spans = at.build_window_spans(evs, NZLS_FIRST)
+    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
+           _ev(119, 60, "Code.exe", "CMS - ACME")]      # ends 60s, next starts 119s
+    spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 1
     assert (spans[0]["end"] - spans[0]["start"]).total_seconds() == 179
 
@@ -111,10 +111,10 @@ def test_two_touching_events_with_different_categories_stay_two_spans():
     """Zero gap is not a reason to merge. Switching straight from one client's window to
     another's is the commonest boundary in a real day, and folding it would hand the
     second client's minutes to the first under the first client's name."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - NZLS"),
-           _ev(60, 60, "Code.exe", "Portal - Connexis")]
-    spans = at.build_window_spans(evs, NZLS_FIRST)
-    assert [s["category"] for s in spans] == ["NZLS", "Connexis"]
+    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
+           _ev(60, 60, "Code.exe", "Portal - BETA")]
+    spans = at.build_window_spans(evs, ACME_FIRST)
+    assert [s["category"] for s in spans] == ["ACME", "BETA"]
     assert spans[0]["end"] == spans[1]["start"], "the two spans must abut, not overlap"
 
 
@@ -126,10 +126,10 @@ def test_an_event_with_no_app_key_is_categorised_from_its_title():
     """Some watcher builds omit `app` entirely. The script must fall back rather than
     raise: a `KeyError` here kills the whole timeline, so one malformed event costs the
     skill its view of the entire day and it falls back to guessing from memory."""
-    evs = [_ev(0, 60, data={"title": "CMS Board - NZLS"})]
-    spans = at.build_window_spans(evs, NZLS_FIRST)
+    evs = [_ev(0, 60, data={"title": "CMS Board - ACME"})]
+    spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 1
-    assert spans[0]["category"] == "NZLS"
+    assert spans[0]["category"] == "ACME"
 
 
 @pytest.mark.parametrize("data", [{"app": "Code.exe"}, {"app": "Code.exe", "title": None}],
@@ -138,7 +138,7 @@ def test_an_event_with_a_missing_or_null_title_still_produces_a_span(data):
     """A titleless window is not a broken one — it is a splash screen, or an app that has
     not painted yet. It has to land as an uncategorized span the reader can see and ask
     about, not disappear and not take the timeline down with it."""
-    spans = at.build_window_spans([_ev(0, 60, data=data)], NZLS_FIRST)
+    spans = at.build_window_spans([_ev(0, 60, data=data)], ACME_FIRST)
     assert len(spans) == 1
     assert spans[0]["category"] == "uncategorized"
 
@@ -147,10 +147,10 @@ def test_a_locked_windows_screen_logs_as_unknown_and_lands_uncategorized():
     """Windows records a locked screen as app `unknown` with an empty title. That stretch
     is the user being *away*; it must read as uncategorized so the skill treats it as time
     to question, never inherit the client of the window that happened to precede it."""
-    evs = [_ev(0, 600, "Code.exe", "CMS - NZLS"),
+    evs = [_ev(0, 600, "Code.exe", "CMS - ACME"),
            _ev(600, 1800, "unknown", "")]
-    spans = at.build_window_spans(evs, NZLS_FIRST)
-    assert [s["category"] for s in spans] == ["NZLS", "uncategorized"]
+    spans = at.build_window_spans(evs, ACME_FIRST)
+    assert [s["category"] for s in spans] == ["ACME", "uncategorized"]
     assert spans[1]["categories"] == set()
     assert spans[1]["multi"] is False
 
@@ -190,7 +190,7 @@ def test_a_timeline_with_no_classes_still_reports_every_span(live_aw):
     """The consequence of the rule above, end to end: no settings endpoint means no
     labels, but the day's shape and its totals must survive so the user can still be
     asked "what were you doing at 09:00?"."""
-    d = day().window("09:00", "09:30", "Code.exe", "CMS - NZLS")
+    d = day().window("09:00", "09:30", "Code.exe", "CMS - ACME")
     live_aw(d, settings_status=404)
     r = run_cli(at, [d.date_str(), "--json"])
     assert r.code == 0
@@ -204,8 +204,8 @@ def test_load_classes_skips_a_parent_category_whose_rule_is_not_a_regex(live_aw)
     a rule would either crash on the absent regex or, worse, invent a label that matches
     everything — attaching the parent's client name to the whole day."""
     classes = [{"name": ["Work"], "rule": {"type": "none"}},
-               _regex_class("Work>NZLS", "NZLS")]
-    assert [label for label, _ in _loaded(live_aw, classes)] == ["Work>NZLS"]
+               _regex_class("Work>ACME", "ACME")]
+    assert [label for label, _ in _loaded(live_aw, classes)] == ["Work>ACME"]
 
 
 def test_load_classes_skips_an_uncompilable_regex_without_losing_its_neighbours(live_aw):
@@ -219,28 +219,28 @@ def test_load_classes_skips_an_uncompilable_regex_without_losing_its_neighbours(
 
 
 def test_load_classes_honours_ignore_case_when_it_is_set(live_aw):
-    """Window titles do not agree on capitalisation — `nzls.co.nz` in a browser tab, `NZLS`
+    """Window titles do not agree on capitalisation — `acme.example` in a browser tab, `ACME`
     in a repo path. With the flag set they are the same client, and a span that misses only
     because of case lands uncategorized and gets billed to nobody."""
-    classes = _loaded(live_aw, [_regex_class("NZLS", "NZLS", ignore_case=True)])
-    assert at.categorize("firefox.exe", "concerns - nzls intranet", classes) == ["NZLS"]
+    classes = _loaded(live_aw, [_regex_class("ACME", "ACME", ignore_case=True)])
+    assert at.categorize("firefox.exe", "concerns - acme intranet", classes) == ["ACME"]
 
 
 def test_load_classes_does_not_fold_case_when_ignore_case_is_off(live_aw):
     """The flag has to mean something in both directions. A user who deliberately made a
     rule case-sensitive — to keep an acronym apart from an ordinary word — must get the
     narrow match, or the rule quietly claims spans belonging to another client."""
-    classes = _loaded(live_aw, [_regex_class("NZLS", "NZLS", ignore_case=False)])
-    assert at.categorize("firefox.exe", "concerns - nzls intranet", classes) == []
-    assert at.categorize("firefox.exe", "concerns - NZLS intranet", classes) == ["NZLS"]
+    classes = _loaded(live_aw, [_regex_class("ACME", "ACME", ignore_case=False)])
+    assert at.categorize("firefox.exe", "concerns - acme intranet", classes) == []
+    assert at.categorize("firefox.exe", "concerns - ACME intranet", classes) == ["ACME"]
 
 
 def test_load_classes_joins_a_nested_category_name_with_a_chevron(live_aw):
     """AW stores a nested category as a list of path segments. The joined label is what the
     skill reads the client off, so flattening it wrongly — or showing only the leaf —
     strands the reader with `CMS` and no idea which client's CMS it was."""
-    classes = _loaded(live_aw, [_regex_class("Work>NZLS>CMS", "NZLS")])
-    assert [label for label, _ in classes] == ["Work>NZLS>CMS"]
+    classes = _loaded(live_aw, [_regex_class("Work>ACME>CMS", "ACME")])
+    assert [label for label, _ in classes] == ["Work>ACME>CMS"]
 
 
 # --------------------------------------------------------------------------------------
@@ -251,9 +251,9 @@ def test_the_primary_category_is_the_first_matching_class_in_settings_order():
     """When two clients' rules both match, the winner is decided by AW's own ordering and
     nothing else. Pinned in both directions, because a stable tie-break is the only reason
     the same day categorises the same way twice — and `!MULTI` is what says "check me"."""
-    evs = [_ev(0, 60, "msedge.exe", "NZLS board vs Connexis migration")]
-    assert at.build_window_spans(evs, NZLS_FIRST)[0]["category"] == "NZLS"
-    assert at.build_window_spans(evs, CONNEXIS_FIRST)[0]["category"] == "Connexis"
+    evs = [_ev(0, 60, "msedge.exe", "ACME board vs BETA migration")]
+    assert at.build_window_spans(evs, ACME_FIRST)[0]["category"] == "ACME"
+    assert at.build_window_spans(evs, BETA_FIRST)[0]["category"] == "BETA"
 
 
 def test_the_rollup_gives_an_ambiguous_event_wholly_to_its_primary_category():
@@ -273,13 +273,13 @@ def test_the_rollup_gives_an_ambiguous_event_wholly_to_its_primary_category():
     about how the minutes actually divided, so any split would be invented precision — a
     plausible wrong number in place of a flagged one.
     """
-    evs = [_ev(0, 600, "msedge.exe", "NZLS board vs Connexis migration")]
+    evs = [_ev(0, 600, "msedge.exe", "ACME board vs BETA migration")]
 
-    assert at.category_rollup(evs, NZLS_FIRST) == {"NZLS": 10.0}
-    assert at.category_rollup(evs, CONNEXIS_FIRST) == {"Connexis": 10.0}
+    assert at.category_rollup(evs, ACME_FIRST) == {"ACME": 10.0}
+    assert at.category_rollup(evs, BETA_FIRST) == {"BETA": 10.0}
 
-    span = at.build_window_spans(evs, NZLS_FIRST)[0]
-    assert sorted(span["categories"]) == ["Connexis", "NZLS"]
+    span = at.build_window_spans(evs, ACME_FIRST)[0]
+    assert sorted(span["categories"]) == ["ACME", "BETA"]
     assert span["multi"] is True, "the flag is the only signal that the rollup is contested"
 
 
@@ -287,21 +287,21 @@ def test_a_span_accumulates_every_category_matched_by_the_events_merged_into_it(
     """`category` names one client; `categories` is the honest list. Merging is what makes
     them diverge, and if the second client's name were dropped at the merge the span would
     look like a clean single-client block that nobody ever thinks to check."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - NZLS"),
-           _ev(60, 60, "msedge.exe", "NZLS board vs Connexis migration")]
-    spans = at.build_window_spans(evs, NZLS_FIRST)
+    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
+           _ev(60, 60, "msedge.exe", "ACME board vs BETA migration")]
+    spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 1
-    assert sorted(spans[0]["categories"]) == ["Connexis", "NZLS"]
+    assert sorted(spans[0]["categories"]) == ["ACME", "BETA"]
 
 
 def test_multi_stays_set_for_the_whole_span_once_any_event_matched_two_clients():
     """The flag is sticky by design: a single ambiguous window contaminates everything
     folded around it. If a later single-client event cleared it, the span would print
     without `!MULTI` and the one thing the skill must never bill unreviewed sails through."""
-    ambiguous = _ev(0, 60, "msedge.exe", "NZLS board vs Connexis migration")
-    single = _ev(60, 60, "Code.exe", "CMS - NZLS")
+    ambiguous = _ev(0, 60, "msedge.exe", "ACME board vs BETA migration")
+    single = _ev(60, 60, "Code.exe", "CMS - ACME")
     for order in ([ambiguous, single], [single, ambiguous]):
-        spans = at.build_window_spans(order, NZLS_FIRST)
+        spans = at.build_window_spans(order, ACME_FIRST)
         assert len(spans) == 1, "same primary, no gap — these must merge"
         assert spans[0]["multi"] is True
 
@@ -310,16 +310,16 @@ def test_the_rollup_totals_the_event_durations_that_fed_the_spans():
     """The rollup counts *events*, while a span's width counts wall-clock including the
     sub-minute gaps folded inside it. The rollup is the number a day's split between
     clients is argued from, so it has to reconcile against the events, not the spans."""
-    evs = [_ev(0, 600, "Code.exe", "CMS - NZLS"),          # 10 min NZLS
-           _ev(630, 600, "Code.exe", "CMS - NZLS"),        # 10 min NZLS, gap folds
-           _ev(1800, 300, "msedge.exe", "Portal - Connexis"),   # 5 min Connexis
+    evs = [_ev(0, 600, "Code.exe", "CMS - ACME"),          # 10 min ACME
+           _ev(630, 600, "Code.exe", "CMS - ACME"),        # 10 min ACME, gap folds
+           _ev(1800, 300, "msedge.exe", "Portal - BETA"),   # 5 min BETA
            _ev(2400, 60, "explorer.exe", "Downloads"),     # 1 min uncategorized
            _ev(2500, 4, "explorer.exe", "Downloads")]      # noise, counted nowhere
-    assert at.category_rollup(evs, NZLS_FIRST) == {
-        "NZLS": 20.0, "Connexis": 5.0, "uncategorized": 1.0}
+    assert at.category_rollup(evs, ACME_FIRST) == {
+        "ACME": 20.0, "BETA": 5.0, "uncategorized": 1.0}
     # ...and the merged span is wider than the events inside it, which is why the two
     # numbers are not interchangeable.
-    spans = at.build_window_spans(evs, NZLS_FIRST)
+    spans = at.build_window_spans(evs, ACME_FIRST)
     assert (spans[0]["end"] - spans[0]["start"]).total_seconds() == 1230
 
 
@@ -330,10 +330,10 @@ def test_the_rollup_totals_the_event_durations_that_fed_the_spans():
 def _two_client_day():
     """A day holding one substantial block, one short ambiguous blip, one short dull blip."""
     return (day()
-            .classify("NZLS", "NZLS")
-            .classify("Connexis", "Connexis")
-            .window("09:00", "09:30", "Code.exe", "CMS Board - NZLS")
-            .window("11:00", "11:00:30", "msedge.exe", "NZLS board vs Connexis migration")
+            .classify("ACME", "ACME")
+            .classify("BETA", "BETA")
+            .window("09:00", "09:30", "Code.exe", "CMS Board - ACME")
+            .window("11:00", "11:00:30", "msedge.exe", "ACME board vs BETA migration")
             .window("13:00", "13:00:30", "explorer.exe", "Downloads"))
 
 
@@ -387,7 +387,7 @@ def test_a_span_hidden_from_the_text_output_is_still_counted_in_the_rollup(live_
     text = run_cli(at, [d.date_str()])
     assert "13:00:00" not in text.out
     rollup = run_cli(at, [d.date_str(), "--json"]).json()["rollup_min_by_category"]
-    assert rollup == {"NZLS": 30.5, "uncategorized": 0.5}
+    assert rollup == {"ACME": 30.5, "uncategorized": 0.5}
     # the printed day totals say the same thing the JSON does, hidden span included
     totals = [ln.split() for ln in text.lines if ln.startswith("     ")]
     assert ["uncategorized", "0.5"] in totals
@@ -420,18 +420,18 @@ def test_window_restricts_the_spans_and_folds_in_both_browsers(live_aw):
     that explains it, and dropping it would leave the zoom explaining the wrong half.
     """
     d = (day()
-         .classify("NZLS", "NZLS")
-         .window("09:00", "09:30", "Code.exe", "CMS Board - NZLS")
-         .window("13:20", "13:40", "Code.exe", "Straddles the zoom edge - NZLS")
-         .window("14:00", "14:30", "Code.exe", "Concerns - NZLS")
-         .web("14:05", "14:10", "Board - NZLS", "https://dev.azure.com/nzls", browser="firefox")
-         .web("14:12", "14:15", "Confidential teams", "https://learn.example.com/teams",
+         .classify("ACME", "ACME")
+         .window("09:00", "09:30", "Code.exe", "CMS Board - ACME")
+         .window("13:20", "13:40", "Code.exe", "Straddles the zoom edge - ACME")
+         .window("14:00", "14:30", "Code.exe", "Concerns - ACME")
+         .web("14:05", "14:10", "Board - ACME", "https://dev.azure.com/acme", browser="firefox")
+         .web("14:12", "14:15", "Restricted teams", "https://learn.example.com/teams",
               browser="chrome"))
     live_aw(d)
     payload = run_cli(at, [d.date_str(), "--window", "13:30-15:00", "--json"]).json()
     assert [s["start"] for s in payload["spans"]] == ["13:20:00", "14:00:00"], (
         "09:00 is outside the zoom; 13:20-13:40 overlaps its start and must be kept")
-    assert [r["url"] for r in payload["web"]] == ["https://dev.azure.com/nzls",
+    assert [r["url"] for r in payload["web"]] == ["https://dev.azure.com/acme",
                                                   "https://learn.example.com/teams"]
     assert [r["time"] for r in payload["web"]] == ["14:05:00", "14:12:00"]
 
@@ -446,9 +446,9 @@ def test_a_browser_tab_open_across_the_start_of_the_zoom_is_not_dropped(live_aw)
     leaves the zoom reporting "no web activity" for a block spent in one browser tab.
     """
     d = (day()
-         .classify("NZLS", "NZLS")
+         .classify("ACME", "ACME")
          .window("13:00", "14:30", "msedge.exe", "Power Apps")
-         .web("13:20", "13:50", "Confidential Matter - example-uat", "https://example-uat.crm6.dynamics.com/main.aspx")
+         .web("13:20", "13:50", "Restricted case - example-uat", "https://example-uat.crm6.dynamics.com/main.aspx")
          .web("13:45", "13:50", "Started inside the zoom", "https://example.invalid/inside"))
     live_aw(d)
     payload = run_cli(at, [d.date_str(), "--window", "13:30-14:00", "--json"]).json()
@@ -461,7 +461,7 @@ def test_a_browser_tab_open_across_the_start_of_the_zoom_is_not_dropped(live_aw)
 def test_a_browser_tab_that_closed_before_the_zoom_stays_out(live_aw):
     """The other half of the overlap rule: widening it must not drag in the whole day."""
     d = (day()
-         .classify("NZLS", "NZLS")
+         .classify("ACME", "ACME")
          .window("13:00", "14:30", "msedge.exe", "Power Apps")
          .web("09:00", "09:30", "Breakfast reading", "https://example.invalid/morning"))
     live_aw(d)

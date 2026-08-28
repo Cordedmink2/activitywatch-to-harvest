@@ -189,9 +189,9 @@ def test_wait_for_project_returns_the_assignment_from_whichever_page_holds_the_c
     slept = []
     monkeypatch.setattr(time, "sleep", slept.append)
     live_harvest(_paged([_page(1, 2, [_project(1, "OTHER-1")]),
-                         _page(2, 2, [_project(2, "NLS-CR900", "Brand new case")])]))
+                         _page(2, 2, [_project(2, "ACM-CR900", "Brand new case")])]))
 
-    pa = refresh.wait_for_project("NLS-CR900", attempts=3, delay=15)
+    pa = refresh.wait_for_project("ACM-CR900", attempts=3, delay=15)
 
     assert pa["project"]["id"] == 2
     assert pa["project"]["name"] == "Brand new case"
@@ -264,11 +264,11 @@ def test_a_project_appearing_on_several_pages_is_yielded_once_from_the_first_pag
     """
     _write_pages(tmp_path, {
         "harvest_assignments.json": _page(1, 2, [
-            _project(48084036, "NLS-CR202", "Full row, with tasks",
+            _project(48084036, "ACM-CR202", "Full row, with tasks",
                      [{"billable": True, "task": {"id": 7, "name": "Gen - Development"}}])]),
         "harvest_assignments_p2.json": _page(2, 2, [
-            _project(48084036, "NLS-CR202", "Duplicate row, no tasks"),
-            _project(37122824, "ACL-001", "Admin")]),
+            _project(48084036, "ACM-CR202", "Duplicate row, no tasks"),
+            _project(37122824, "NWC-001", "Admin")]),
     })
 
     rows = list(hl.iter_assignments(str(tmp_path)))

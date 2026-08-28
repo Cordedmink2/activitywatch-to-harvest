@@ -62,23 +62,23 @@
         "start": "19:30:00",
         "end": "01:12:00",
         "min": 342.0,
-        "category": "NZLS",
+        "category": "ACME",
         "multi": false,
         "categories": [
-          "NZLS"
+          "ACME"
         ],
         "top_titles": [
           [
-            "Code.exe | release-cutover - NZLS",
+            "Code.exe | release-cutover - ACME",
             20520.0
           ]
         ]
       }
     ],
     "rollup_min_by_category": {
-      "NZLS": 342.0
+      "ACME": 342.0
     },
     "web": null
   },
-  "timeline_text": "Window timeline for 2026-08-04 (offset UTC+12)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  19:30:00-01:12:00  342.0m  NZLS            Code.exe | release-cutover - NZLS\n  --- day totals by category (min) ---\n     NZLS             342.0\n"
+  "timeline_text": "Window timeline for 2026-08-04 (offset UTC+12)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  19:30:00-01:12:00  342.0m  ACME            Code.exe | release-cutover - ACME\n  --- day totals by category (min) ---\n     ACME             342.0\n"
 }

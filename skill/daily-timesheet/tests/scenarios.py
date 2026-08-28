@@ -16,10 +16,12 @@ from typing import Callable
 
 from support import Day, day
 
-# Environment hostnames here are deliberately `example-*` — these fixtures ship in a public
-# repo, so a real tenant URL in a window title would publish infrastructure detail.
-NZLS = ("NZLS", r"NZLS|example-uat|example-dev|sharepoint-access-sync")
-CONNEXIS = ("Connexis", r"Connexis|Short Courses")
+# Client names and environment hostnames here are deliberately fictional — these fixtures ship
+# in a public repo, so a real client name or tenant URL in a window title would publish the
+# maintainer's client list or their infrastructure detail. Keep new fixtures to the same
+# placeholder family (ACME / BETA / Ledger / Nimbus) and to `example.*` / `*.invalid` hosts.
+ACME = ("ACME", r"ACME|example-uat|example-dev|sharepoint-access-sync")
+BETA = ("BETA", r"BETA|Field Services")
 
 
 @dataclass
@@ -47,7 +49,7 @@ def _locked_screen_day() -> Day:
     tail that falls under the 0.25 hr floor.
     """
     d = day(dt.date(2026, 8, 12))
-    d.classify(*NZLS)
+    d.classify(*ACME)
     d.afk("00:00", "08:12")
     d.active("08:12", "10:57")
     d.locked("10:57", "11:45")
@@ -66,7 +68,7 @@ def _locked_screen_day() -> Day:
     d.window("13:48", "18:02", "WindowsTerminal.exe", "claude - AGENTS.md")
     d.window("18:02", "18:53", "unknown", "")
     d.window("18:53", "19:01", "msedge.exe", "Power Apps - example-uat.crm6.dynamics.com")
-    d.web("13:26", "13:48", "Jellyfin", "https://jellyfin.4438080.xyz/web/index.html")
+    d.web("13:26", "13:48", "Jellyfin", "https://jellyfin.example.invalid/web/index.html")
     return d
 
 
@@ -79,7 +81,7 @@ def _blip_and_tail_day() -> Day:
     either number invents most of an evening.
     """
     d = day(dt.date(2026, 8, 11))
-    d.classify(*NZLS)
+    d.classify(*ACME)
     d.afk("00:00", "08:00")
     d.active("08:00", "12:15")
     d.afk("12:15", "13:10")                          # a real, reported lunch break
@@ -88,7 +90,7 @@ def _blip_and_tail_day() -> Day:
     d.active("19:30", "19:31")                       # the flicker
     d.afk("19:31", "24:00")
 
-    d.window("08:00", "12:15", "Code.exe", "CMSPlugins - NZLS - Visual Studio Code")
+    d.window("08:00", "12:15", "Code.exe", "CasePlugins - ACME - Visual Studio Code")
     d.window("13:10", "17:20", "msedge.exe", "Complaints - example-dev.crm6.dynamics.com")
     d.window("17:20", "22:00", "WindowsTerminal.exe", "pwsh")   # left in focus
     return d
@@ -102,8 +104,8 @@ def _interleaved_clients_day() -> Day:
     the skill is told to investigate rather than accept.
     """
     d = day(dt.date(2026, 8, 6))
-    d.classify(*NZLS)
-    d.classify(*CONNEXIS)
+    d.classify(*ACME)
+    d.classify(*BETA)
     d.afk("00:00", "08:20")
     d.active("08:20", "11:50")
     d.afk("11:50", "12:35")
@@ -111,13 +113,13 @@ def _interleaved_clients_day() -> Day:
     d.afk("16:45", "24:00")
 
     d.window("08:20", "08:35", "ms-teams.exe", "Meeting | Standup")
-    d.window("08:35", "10:10", "Code.exe", "CMSPlugins - NZLS")
-    d.window("10:10", "10:25", "ms-teams.exe", "Call with Connexis - Short Courses handover")
-    d.window("10:25", "11:50", "msedge.exe", "Connexis Short Courses - admin")
+    d.window("08:35", "10:10", "Code.exe", "CasePlugins - ACME")
+    d.window("10:10", "10:25", "ms-teams.exe", "Call with BETA - Field Services handover")
+    d.window("10:25", "11:50", "msedge.exe", "BETA Field Services - admin")
     d.window("12:35", "13:40", "XrmToolBox.exe", "XrmToolBox")            # names no client
-    d.window("13:40", "14:05", "msedge.exe", "NZLS / Connexis shared migration notes")  # !MULTI
-    d.window("14:05", "16:45", "Code.exe", "short-courses-api - Connexis")
-    d.web("10:25", "11:50", "Connexis admin", "https://connexis.example/admin")
+    d.window("13:40", "14:05", "msedge.exe", "ACME / BETA shared migration notes")  # !MULTI
+    d.window("14:05", "16:45", "Code.exe", "field-services-api - BETA")
+    d.web("10:25", "11:50", "BETA admin", "https://beta.example/admin")
     return d
 
 
@@ -129,7 +131,7 @@ def _no_break_day() -> Day:
     before Step 6 guard 1 was scoped (see TESTING.md).
     """
     d = day(dt.date(2026, 8, 5))
-    d.classify(*NZLS)
+    d.classify(*ACME)
     d.afk("00:00", "08:15")
     d.active("08:15", "10:30")
     d.locked("10:30", "11:00", chunk_min=10)
@@ -139,7 +141,7 @@ def _no_break_day() -> Day:
     d.locked("15:40", "16:10", chunk_min=15)
     d.active("16:10", "17:30")
     d.afk("17:30", "24:00")
-    d.window("08:15", "17:30", "Code.exe", "CMSPlugins - NZLS")
+    d.window("08:15", "17:30", "Code.exe", "CasePlugins - ACME")
     return d
 
 
@@ -151,19 +153,19 @@ def _overnight_day() -> Day:
     output where a naive string comparison of the two times gives the wrong answer.
     """
     d = day(dt.date(2026, 8, 4))
-    d.classify(*NZLS)
+    d.classify(*ACME)
     d.afk("00:00", "19:30")
     d.active("19:30", "22:40")
     d.afk("22:40", "23:05")
     d.active("23:05", "25:12")            # 01:12 the following morning
-    d.window("19:30", "25:12", "Code.exe", "release-cutover - NZLS")
+    d.window("19:30", "25:12", "Code.exe", "release-cutover - ACME")
     return d
 
 
 def _idle_day() -> Day:
     """A machine left on with nobody at it: AFK all day, not one `not-afk` event."""
     d = day(dt.date(2026, 8, 3))
-    d.classify(*NZLS)
+    d.classify(*ACME)
     d.afk("00:00", "24:00")
     d.window("09:00", "17:00", "unknown", "")
     return d
@@ -176,13 +178,13 @@ def _daylight_saving_day() -> Day:
     rendering exactly; an offset bug shifts the whole day by an hour.
     """
     d = day(dt.date(2026, 1, 20), offset=13.0)
-    d.classify(*NZLS)
+    d.classify(*ACME)
     d.afk("00:00", "08:30")
     d.active("08:30", "12:00")
     d.afk("12:00", "12:45")
     d.active("12:45", "17:15")
     d.afk("17:15", "24:00")
-    d.window("08:30", "17:15", "Code.exe", "CMSPlugins - NZLS")
+    d.window("08:30", "17:15", "Code.exe", "CasePlugins - ACME")
     return d
 
 

@@ -76,14 +76,14 @@
         "start": "08:00:00",
         "end": "12:15:00",
         "min": 255.0,
-        "category": "NZLS",
+        "category": "ACME",
         "multi": false,
         "categories": [
-          "NZLS"
+          "ACME"
         ],
         "top_titles": [
           [
-            "Code.exe | CMSPlugins - NZLS - Visual Studio Code",
+            "Code.exe | CasePlugins - ACME - Visual Studio Code",
             15300.0
           ]
         ]
@@ -92,10 +92,10 @@
         "start": "13:10:00",
         "end": "17:20:00",
         "min": 250.0,
-        "category": "NZLS",
+        "category": "ACME",
         "multi": false,
         "categories": [
-          "NZLS"
+          "ACME"
         ],
         "top_titles": [
           [
@@ -120,10 +120,10 @@
       }
     ],
     "rollup_min_by_category": {
-      "NZLS": 505.0,
+      "ACME": 505.0,
       "uncategorized": 280.0
     },
     "web": null
   },
-  "timeline_text": "Window timeline for 2026-08-11 (offset UTC+12)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  08:00:00-12:15:00  255.0m  NZLS            Code.exe | CMSPlugins - NZLS - Visual Studio Code\n  13:10:00-17:20:00  250.0m  NZLS            msedge.exe | Complaints - example-dev.crm6.dynamics.com\n  17:20:00-22:00:00  280.0m  uncategorized   WindowsTerminal.exe | pwsh\n  --- day totals by category (min) ---\n     NZLS             505.0\n     uncategorized    280.0\n"
+  "timeline_text": "Window timeline for 2026-08-11 (offset UTC+12)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  08:00:00-12:15:00  255.0m  ACME            Code.exe | CasePlugins - ACME - Visual Studio Code\n  13:10:00-17:20:00  250.0m  ACME            msedge.exe | Complaints - example-dev.crm6.dynamics.com\n  17:20:00-22:00:00  280.0m  uncategorized   WindowsTerminal.exe | pwsh\n  --- day totals by category (min) ---\n     ACME             505.0\n     uncategorized    280.0\n"
 }

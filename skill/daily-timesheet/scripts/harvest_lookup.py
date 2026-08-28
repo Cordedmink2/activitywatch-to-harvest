@@ -14,11 +14,11 @@ has entries against it — the user's entry history is the reliable place to
 recover its project_id and task ids. Disable with --no-live (e.g. offline).
 
 Usage:
-  python scripts/harvest_lookup.py NLS-CR202
-  python scripts/harvest_lookup.py "Short Courses"
+  python scripts/harvest_lookup.py ACM-CR202
+  python scripts/harvest_lookup.py "Field Services"
   python scripts/harvest_lookup.py Contoso           # matches on client name
-  python scripts/harvest_lookup.py CON --task Development
-  python scripts/harvest_lookup.py NLS-CR202 --mcp-dir /path/to/.mcp --json
+  python scripts/harvest_lookup.py BET --task Development
+  python scripts/harvest_lookup.py ACM-CR202 --mcp-dir /path/to/.mcp --json
 """
 import argparse
 import glob

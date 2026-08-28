@@ -509,7 +509,7 @@ produced a *silently wrong answer* rather than a crash:
 
 ### Fixed
 - `SKILL.md`'s Step 8 confirmation example showed a trailing-`S` ticket
-  (`CON2020S`) without the `[Support]` tag its own documented rule requires —
+  (`BET2020S`) without the `[Support]` tag its own documented rule requires —
   the example now matches the rule.
 - `SKILL.md`'s screenshot-delegation guidance pointed to a procedure
   "above" that wasn't in that file; now cites

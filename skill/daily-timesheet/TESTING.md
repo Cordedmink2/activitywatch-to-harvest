@@ -242,7 +242,7 @@ anything happening at all", with `classification-rules.md` kept as owner. Both p
 
 ### Timesheet-admin time gets back-billed onto real work — `classification-rules.md`
 **Rung 1.** 2026-08-19. On 2026-08-18, 17:30-17:54 was posted as internal timesheet admin,
-non-billable. Four screenshots across that window (17:31/17:39/17:46/17:51) show NZLS
+non-billable. Four screenshots across that window (17:31/17:39/17:46/17:51) show client
 access-sync work — `design.md` on the retry-backoff note, terminal on intake libraries,
 Power Apps on the SOW15+SOW05 solution — and no Harvest or timesheet surface on any of the
 three monitors through 18:06.
@@ -365,16 +365,17 @@ Guard 3 already said an excluded stretch is "declared under the table and never 
 
 ### Prefix → client is derived from the catalogs, not hand-listed — user `.context.md`
 **Rung 2.** 2026-08-18. `.context.md` carried a hand-written prefix → client list of 12
-entries with a hedge on one (`HER`→Heart Foundation "confirm vs Herman Pacific").
+entries with a hedge on one (`NIM`→Harbour Foundation "confirm vs Nimbus Pacific").
 Deriving the mapping from `.mcp/harvest_assignments*.json` (`project.code` prefix →
-`client.name`) yields **46** prefixes and contradicts the list twice: `HER` is **Herman
-Pacific** and Heart Foundation is **`NHF`**; `TEP` is **EarnLearn** alone, with Connexis
-under `CON`. No agent was watched misbilling on it, so rung 2 — but the hedge shows the
-ambiguity was live, and a stale mapping excludes evidence silently rather than erroring.
+`client.name`) yields **46** prefixes and contradicts the list twice: `NIM` is **Nimbus
+Pacific** and Harbour Foundation is **`HRB`**; `LRN` is **Ledger Learning** alone, with Beta
+Industries under `BET`. No agent was watched misbilling on it, so rung 2 — but the hedge
+shows the ambiguity was live, and a stale mapping excludes evidence silently rather than
+erroring.
 
 The derivation also surfaces what the list's format could not express: **`PSO` (14
 clients) and `SLA` (9) are cross-client prefixes**, so the prefix alone never identifies
-the client for those two. That is the general case of the existing Technoform note that
+the client for those two. That is the general case of the existing note that
 `PSO-1037` is a dead presales shell.
 
 `classification-rules.md` §1 step 1 sends the agent to `.context.md` for this mapping, so
@@ -399,17 +400,17 @@ was renamed URL pattern → *Environment identifier* to cover connections that n
 in a title (no other file referenced §5 by name or number — §3 at line 80 is the only
 cross-reference and is unaffected).
 
-Rung 2: measured on 2026-08-17, where XrmToolBox connected to `ccamsdev` was the *first*
-evidence of an NZLS→QEII switch, but no agent was watched misattributing it. That day is
+Rung 2: measured on 2026-08-17, where XrmToolBox connected to `beta-dev` was the *first*
+evidence of an ACME→BETA switch, but no agent was watched misattributing it. That day is
 also why the entry says §6's terminal-adjacency rule does not extend to these tools —
 connecting to a different environment tends to *be* the switch point, so the adjacent
 block is wrong by construction. Script-level behaviour is already pinned by
 `test_scenarios.py::test_a_generic_tool_lands_uncategorized_rather_than_guessed`; the new
 text is the classification-time counterpart and has no validator.
 
-The client-specific half (`ccamsdev`/`ccamsuat` → QEII, `cmsdev`/`cmsuat` → NZLS) was
+The client-specific half (`beta-dev`/`beta-uat` → BETA, `acme-dev`/`acme-uat` → ACME) was
 **deleted** from `.context.md` rather than moved: lines 23 and 55 already list those
-environments under the NZLS and QEII sections, which own env → client mapping. Net −203
+environments under the ACME and BETA sections, which own env → client mapping. Net −203
 bytes against the Step 11 budget.
 
 **Rejected: moving the rule wholesale into the skill as asked.** The mapping is one user's
@@ -421,8 +422,8 @@ so every other user of the skill would have had to rediscover it.
 
 **Rung 1.** Three fresh agents, 2026-08-19, identical undigested prompt ("do my timesheet
 for the 18th") against 0.4.8, hard no-write constraint. The 18th was already fully billed
-and contained a known bad entry: `2991009175`, 17:30-17:54, 0.40h on `ACL-001 Billing -
-Timesheet & Exp`, while every capture across the window shows NZLS access-sync work.
+and contained a known bad entry: `2991009175`, 17:30-17:54, 0.40h on `NWC-001 Billing -
+Timesheet & Exp`, while every capture across the window shows client access-sync work.
 
 **2 of 3 reported the day holds.** Both followed the branch exactly and both said in their
 own logs that they had deliberately skipped the screenshot index and
@@ -430,7 +431,7 @@ own logs that they had deliberately skipped the screenshot index and
 nothing else. Both are *time* checks: an entry with the right clock and the wrong project
 passes `--cover` perfectly, so the branch could not see the defect it was pointed at. The
 third agent found it only by departing from the branch, and reconstructed the mechanism —
-the draft visible on screen at 17:49 proposed four entries ending 17:30 with no `ACL-001`
+the draft visible on screen at 17:49 proposed four entries ending 17:30 with no `NWC-001`
 line, so the admin entry was added after that and back-dated.
 
 This is the "one rule for all operations" mistake. `classification-rules.md` required a
@@ -629,7 +630,7 @@ raises `AttributeError`, which is why those three had no tests at all while
 identically.
 
 ### Bad numeric arguments produced tracebacks, not `ERR` lines
-`harvest_post.py NLS-CR202 …` (a project *code* where an id belongs) died in `int()`;
+`harvest_post.py ACM-CR202 …` (a project *code* where an id belongs) died in `int()`;
 `harvest_patch --hours abc` died in the flag caster. Both before any HTTP. A traceback
 tells the model the script is broken and sends it debugging the tool instead of its own
 argument, so both now print `ERR …` and exit 1.
@@ -764,8 +765,8 @@ rule has to confront the interaction.
 
 ### `--ponumber` doubles the synced Harvest project name — rung 1, observed
 
-Creating NLS2252S with the work-item reference in *both* the title and `--ponumber` produced
-the Harvest project name `CMS BAU backlog - … (US1240, US1242) US1240, US1242`. The sync
+Creating ACM2252S with the work-item reference in *both* the title and `--ponumber` produced
+the Harvest project name `Case BAU backlog - … (US1240, US1242) US1240, US1242`. The sync
 appends the PO value to the name, and that name is client-facing. Instruction added to
 `references/new-client-work.md`: put the reference in one field or the other. Not measured:
 whether editing the case title afterwards re-syncs the project name, or whether the name is
@@ -777,10 +778,10 @@ field only. Whether it reaches invoicing is unverified.
 
 ### The `S` suffix does not mean Support — rung 1, observed
 
-`create_incident.py` assigned **NLS2252S** to a case whose shape was DEVELOPMENT / BACKLOG
-(`acl_sla=False`, `casetypecode=1`). The trailing `S` is applied by CRM numbering regardless
-of case shape, so the restated "trailing `S` = Support, tag `[Support]`" rule is not safe on
-its own. Corrected in the affected user's `.context.md`; `SKILL.md` Step 4 and
+`create_incident.py` assigned **ACM2252S** to a case whose shape was DEVELOPMENT / BACKLOG
+(`<prefix>_sla=False`, `casetypecode=1`). The trailing `S` is applied by CRM numbering
+regardless of case shape, so the restated "trailing `S` = Support, tag `[Support]`" rule is
+not safe on its own. Corrected in the affected user's `.context.md`; `SKILL.md` Step 4 and
 `classification-rules.md` §1 still state the `S` rule without this qualification and were
 left alone pending a decision on wording.
 
@@ -863,7 +864,7 @@ untested head of the block.
 
 ### A "the machine, not a document" bucket in Step 11 — 2026-08-19
 
-Planned for 0.4.10 and dropped before it was written. The trigger was the CCAMS ADO board
+Planned for 0.4.10 and dropped before it was written. The trigger was a client's ADO board
 coming back `uncategorized`, which is an ActivityWatch category rule and fits neither of
 Step 11's two destinations. Three fresh agents all routed it correctly anyway — to
 `references/setup.md` § categories — because Step 2 already tells a run that maintenance is

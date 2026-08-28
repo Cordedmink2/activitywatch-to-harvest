@@ -53,7 +53,7 @@ def main() -> None:
     except ValueError:
         print(
             f"ERR project_id and task_id must be numeric Harvest ids, got "
-            f"{project_id!r} and {task_id!r}. A project *code* like 'NLS-CR202' is not "
+            f"{project_id!r} and {task_id!r}. A project *code* like 'ACM-CR202' is not "
             "an id — run harvest_lookup.py to resolve it.",
             file=sys.stderr,
         )

@@ -62,7 +62,7 @@ def synthetic_window_events(n: int = AW_EVENT_LIMIT) -> list[dict]:
     assert 6.0 >= tl.NOISE_FLOOR
     return [{"timestamp": (base + dt.timedelta(seconds=i * 6)).strftime("%Y-%m-%dT%H:%M:%SZ"),
              "duration": 6.0,
-             "data": {"app": apps[i % len(apps)], "title": f"ticket NLS{2000 + i % 40}S - work"}}
+             "data": {"app": apps[i % len(apps)], "title": f"ticket ACM{2000 + i % 40}S - work"}}
             for i in range(n)]
 
 
@@ -102,7 +102,7 @@ def test_bench_dedupe_heartbeats_on_a_storm():
 def test_bench_timeline_span_building_with_a_full_ruleset():
     """Every event is matched against every class regex, so cost scales with the product.
     A user with a rule per client accumulates these faster than they expect."""
-    classes = [(f"Client{i}", re.compile(f"NLS{2000 + i}|client-{i}", re.IGNORECASE))
+    classes = [(f"Client{i}", re.compile(f"ACM{2000 + i}|client-{i}", re.IGNORECASE))
                for i in range(40)]
     events = synthetic_window_events()
     spans = None

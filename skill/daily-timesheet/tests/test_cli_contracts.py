@@ -73,7 +73,7 @@ def test_post_rejects_a_non_numeric_project_id():
     """`int(project_id)` on a fat-fingered argument raised a bare ValueError. The
     documented contract is `ERR …` + exit 1, and this path runs *before* any HTTP, so a
     traceback here is pure noise between the model and its own typo."""
-    r = run_cli(hpost, ["NLS-CR202", "20753151", "2026-08-12", "09:00", "10:00", "notes"])
+    r = run_cli(hpost, ["ACM-CR202", "20753151", "2026-08-12", "09:00", "10:00", "notes"])
     assert r.code == 1
     assert r.err.startswith("ERR")
     assert "project" in r.err.lower()
@@ -93,7 +93,7 @@ def test_patch_rejects_a_non_numeric_hours_value():
 
 
 def test_patch_rejects_a_non_numeric_project_id():
-    r = run_cli(hp, ["2988748904", "--project-id", "NLS-CR202"])
+    r = run_cli(hp, ["2988748904", "--project-id", "ACM-CR202"])
     assert r.code == 1
     assert r.err.startswith("ERR")
 

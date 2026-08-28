@@ -78,7 +78,7 @@ wait for the user to confirm before moving on.
   browses for a minute in a tagged profile, read recent events from
   `GET http://localhost:5600/api/0/buckets/<window-bucket>/events?limit=100` and check each
   category regex matches at least one title. Zero matches means tag and rule disagree (brackets
-  vs bare code is the classic). Also flag: spaces inside alternations (`Covenant | QEII` requires
+  vs bare code is the classic). Also flag: spaces inside alternations (`Contract | ACME` requires
   the literal spaces), and leftover placeholder rules (`New class` → `FILL ME`).
 
 ### 5. Install the skill (you run this)
