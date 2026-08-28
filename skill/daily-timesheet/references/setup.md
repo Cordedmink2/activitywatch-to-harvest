@@ -51,7 +51,7 @@ If `Timesheets/.context.md` doesn't exist:
 
 ## First-run: Harvest credentials
 
-The skill talks to Harvest via three local scripts (`scripts/harvest_post.py`, `scripts/harvest_patch.py`, `scripts/harvest_list.py`) — no MCP needed. They read credentials from a `.env` file at the skill root, falling back to OS env vars.
+The skill talks to Harvest via three local scripts (`scripts/harvest_post.py`, `scripts/harvest_patch.py`, `scripts/harvest_list.py`) — no MCP needed. They read credentials the way every setting is read, through `scripts/skill_config.py`: the `.env` file at the skill root first, then the process environment. That module's docstring carries the full precedence and the reasoning for it.
 
 1. Copy `.env.example` → `.env` (same folder as `SKILL.md`). `.env` is `.gitignore`d.
 2. Visit https://id.getharvest.com/developers. Note the numeric **Account ID** at the top, then create a **Personal Access Token**.

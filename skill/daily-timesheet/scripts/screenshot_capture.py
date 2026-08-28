@@ -10,7 +10,8 @@ task and installs the mss + Pillow dependencies; you normally don't run this
 by hand.
 
 Output directory: first positional argument, else TIMESHEET_SCREENSHOTS_DIR,
-else ~/Pictures/WorkScreenshots.
+else ~/Pictures/WorkScreenshots — resolved by `skill_config`, which owns the
+precedence between a flag, the skill `.env` and the process environment.
 
 Folder structure it produces (one file per monitor, left-to-right):
   SCREENSHOTS_DIR\
@@ -32,30 +33,24 @@ import os
 import sys
 import datetime
 
+from skill_config import setting
+
 DEFAULT_SCREENSHOTS_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "WorkScreenshots")
 
 
-def configured_screenshots_dir():
-    """TIMESHEET_SCREENSHOTS_DIR from the skill `.env`, else an OS env var.
+def resolve_screenshots_dir(argv):
+    """Where to write: the first positional argument, else TIMESHEET_SCREENSHOTS_DIR,
+    else ~/Pictures/WorkScreenshots.
 
-    Goes through the same resolver as every other setting so a value put in `.env`
-    - the only config mechanism the skill documents - isn't silently ignored.
-    Imported here rather than at module scope to keep this script importable on a
-    machine that only has pytest; harvest_client is stdlib-only, so this is cheap.
+    The scheduled task registered by setup_screenshot_pipeline.ps1 passes its
+    -ScreenshotsDir as that argument. Merging the argument with the setting is the
+    standard flag-beats-configuration order, so it is `skill_config`'s to apply rather
+    than this script's — including the rule that a blank argument, which Task Scheduler
+    hands through for an omitted one, does not count as a value.
     """
-    from harvest_client import config
-    return config("TIMESHEET_SCREENSHOTS_DIR")
-
-
-def resolve_screenshots_dir(argv, configured):
-    """Where to write: the first positional argument, else the configured setting,
-    else ~/Pictures/WorkScreenshots. The scheduled task registered by
-    setup_screenshot_pipeline.ps1 passes its -ScreenshotsDir as that argument."""
-    if argv and argv[0].strip():
-        return argv[0]
-    if configured and configured.strip():
-        return configured
-    return DEFAULT_SCREENSHOTS_DIR
+    return setting("TIMESHEET_SCREENSHOTS_DIR",
+                   flag=argv[0] if argv else None,
+                   default=DEFAULT_SCREENSHOTS_DIR)
 
 
 # mss / Pillow are imported lazily inside take_screenshots() so this module
@@ -93,7 +88,7 @@ def take_screenshots(dest):
 
 
 if __name__ == "__main__":
-    dest = resolve_screenshots_dir(sys.argv[1:], configured_screenshots_dir())
+    dest = resolve_screenshots_dir(sys.argv[1:])
 
     # Under pythonw.exe there is no console: sys.stdout / sys.stderr are None and
     # any print() would crash. Redirect them to a log file so prints are safe.

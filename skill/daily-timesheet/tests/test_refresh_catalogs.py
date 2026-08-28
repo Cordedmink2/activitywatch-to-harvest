@@ -21,21 +21,24 @@ def test_no_hardcoded_dataverse_org():
 
 def test_no_config_reader_with_default():
     # The replaced _env(key, default) reader let an unset key fall back to a
-    # baked-in org. config(key) returns None instead.
+    # baked-in org. setting(key) returns None instead.
     assert "_env(" not in SOURCE
 
 
-def test_dataverse_settings_read_from_config():
-    assert 'DV_URL = config("DATAVERSE_URL")' in SOURCE
-    assert 'PAC_PROFILE = config("PAC_AUTH_PROFILE")' in SOURCE
+def test_dataverse_settings_read_from_the_config_seam():
+    assert "from skill_config import" in SOURCE
+    assert 'DV_URL = setting("DATAVERSE_URL")' in SOURCE
+    assert 'PAC_PROFILE = setting("PAC_AUTH_PROFILE")' in SOURCE
 
 
 def test_workspace_resolution_can_fail_loudly():
     # An unresolved workspace must stop the refresh, not fall back to a guessed path.
+    # `fail_missing()` is the shared error contract — an ERROR line and a non-zero exit,
+    # asserted in test_config_seam.py; here we only pin that this guard routes through it.
     assert "WORKSPACE = find_workspace()" in SOURCE
     assert "if WORKSPACE is None:" in SOURCE
     guard = SOURCE.index("if WORKSPACE is None:")
-    assert "sys.exit(" in SOURCE[guard:SOURCE.index("MCP_DIR", guard)]
+    assert "fail_missing(" in SOURCE[guard:SOURCE.index("MCP_DIR", guard)]
 
 
 def test_dataverse_refresh_skips_when_unconfigured():

@@ -3,8 +3,8 @@ import pytest
 
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "scripts")
 sys.path.insert(0, SCRIPTS)
-import harvest_client as hc
 import harvest_lookup as hl
+import skill_config
 from support import run_cli
 
 
@@ -129,7 +129,7 @@ def test_catalog_dir_honours_workspace_from_env_file(tmp_path, monkeypatch):
     (ws / ".mcp").mkdir(parents=True)
     env = tmp_path / ".env"
     env.write_text(f"TIMESHEET_WORKSPACE={ws}\n", encoding="utf-8")
-    monkeypatch.setattr(hc, "ENV_PATH", env)
+    monkeypatch.setattr(skill_config, "ENV_PATH", env)
     monkeypatch.delenv("TIMESHEET_WORKSPACE", raising=False)
 
     assert hl.find_catalog_dir(None) == str(ws / ".mcp")
@@ -138,11 +138,24 @@ def test_catalog_dir_honours_workspace_from_env_file(tmp_path, monkeypatch):
 def test_explicit_mcp_dir_wins_over_configured_workspace(tmp_path, monkeypatch):
     env = tmp_path / ".env"
     env.write_text(f"TIMESHEET_WORKSPACE={tmp_path / 'ws'}\n", encoding="utf-8")
-    monkeypatch.setattr(hc, "ENV_PATH", env)
+    monkeypatch.setattr(skill_config, "ENV_PATH", env)
     assert hl.find_catalog_dir("/explicit") == "/explicit"
+
+
+def test_a_blank_mcp_dir_does_not_beat_the_configured_workspace(tmp_path, monkeypatch):
+    """`--mcp-dir ""` is an omitted flag, not a directory named "". A bare truth test
+    here let the blank win and sent every lookup to `./.mcp` — the seam's `has_value()`
+    is what keeps this flag on the same rule as every other one."""
+    ws = tmp_path / "ws"
+    (ws / ".mcp").mkdir(parents=True)
+    env = tmp_path / ".env"
+    env.write_text(f"TIMESHEET_WORKSPACE={ws}\n", encoding="utf-8")
+    monkeypatch.setattr(skill_config, "ENV_PATH", env)
+
+    assert hl.find_catalog_dir("  ") == str(ws / ".mcp")
 
 
 def test_reader_shares_the_writers_resolver():
     # Guards against a private copy of the resolution logic reappearing here: the two
     # copies drifting apart is what caused the bug above.
-    assert hl.find_workspace is hc.find_workspace
+    assert hl.find_workspace is skill_config.find_workspace

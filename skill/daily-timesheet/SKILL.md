@@ -18,6 +18,8 @@ This skill is **shareable** — sort every fact by who it applies to. Don't use 
 - **One user's facts** → `Timesheets/.context.md` (in the user's workspace, not the skill folder): clients, colleagues, signals, billing-convention *overrides*, machine specifics, CRM URLs / account GUIDs, pac profiles, prefix→client map. Read every run. Size-budgeted — see Step 11.
 - **Secrets** → `.env` (skill root, gitignored): Harvest creds. Share `.env.example`, never `.env`.
 
+When the same setting is available from more than one of those, a per-command flag wins, then `.env`, then the process environment, then the script's own default; blank counts as unset. `scripts/skill_config.py` carries the reasoning and is where every script resolves a setting — read it there rather than inferring the order from a script.
+
 ## When to invoke
 
 **Strong triggers** — invoke without further confirmation: "summarise yesterday" / "what did I do on <date>" / "fill in <day>'s timesheet" / "log time for <date>" / "review today's work" / "backfill the timesheets".
@@ -289,7 +291,8 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `scripts/aw_client.py` — shared ActivityWatch REST helpers behind `afk_blocks.py` and `activity_timeline.py`
 - `scripts/harvest_lookup.py` — project/task id lookup across ALL catalog pages by code, project name **or client name**, live-entry fallback for archived projects (a miss after the fallback = genuinely unknown project; a cache refresh won't help); `--task`, `--mcp-dir`, `--json`, `--no-live`, `--days`
 - `scripts/harvest_post.py` / `harvest_patch.py` / `harvest_list.py` — create / update / list time entries (`OK <id>` / `ERR …`)
-- `scripts/harvest_client.py` — shared `.env` + API helper
+- `scripts/skill_config.py` — the seam every script reads a setting through; its docstring carries the flag / `.env` / environment / default precedence and the reasoning behind it
+- `scripts/harvest_client.py` — shared Harvest API helper + the credentials contract
 - `scripts/refresh_catalogs.py` — refresh `.mcp/harvest_assignments*.json` + incident catalog; `wait_for_project(<code>)` for new synced projects
 - `scripts/screenshot_capture.py` + `scripts/setup_screenshot_pipeline.ps1` — per-monitor capture + one-time scheduled-task setup
 - `tests/` + `pytest.ini` — the script suite. Maintainers only; `references/self-development.md` explains what it does and does not measure.

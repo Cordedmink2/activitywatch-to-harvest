@@ -14,6 +14,7 @@ import pytest
 import afk_blocks as ab
 import aw_client
 import harvest_client
+import skill_config
 from support import day, run_cli
 
 
@@ -38,8 +39,11 @@ def test_an_unstubbed_harvest_call_cannot_reach_the_real_api():
 
 
 def test_the_real_credentials_file_is_never_read():
-    """`.env` at the skill root holds a live Harvest PAT. Tests must not see it."""
-    assert not harvest_client.ENV_PATH.exists()
+    """`.env` at the skill root holds a live Harvest PAT. Tests must not see it.
+
+    One repointed path is enough because `skill_config` is the only module that reads it.
+    """
+    assert not skill_config.ENV_PATH.exists()
     with pytest.raises(SystemExit):
         harvest_client.load_creds()
 

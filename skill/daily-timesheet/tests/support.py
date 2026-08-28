@@ -28,6 +28,16 @@ import json
 import sys
 import threading
 import urllib.parse
+
+# Every key the scripts resolve through `skill_config.setting()`. One list, because two
+# tests want it for opposite reasons and a key in one but not the other is a silent hole:
+# `conftest._hermetic` clears each from the process environment so a developer's own shell
+# can't leak into an assertion about defaults, and `test_config_seam` asserts that any
+# script naming one of them goes through the seam.
+SETTING_KEYS = (
+    "HARVEST_ACCOUNT_ID", "HARVEST_API_KEY", "TIMESHEET_WORKSPACE",
+    "TIMESHEET_SCREENSHOTS_DIR", "DATAVERSE_URL", "PAC_AUTH_PROFILE",
+)
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, NamedTuple
 

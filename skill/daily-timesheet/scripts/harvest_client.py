@@ -1,30 +1,26 @@
-"""Shared Harvest API and configuration helper for the daily-timesheet skill.
+"""Shared Harvest API helper for the daily-timesheet skill.
 
   load_creds() -> (account_id, api_key)
   request(method, path, body=None, query=None) -> dict (parsed JSON) or raises RuntimeError
-  config(key) -> str | None            — optional setting from `.env`, else OS env
-  find_workspace() -> Path | None      — the directory holding `.mcp/`
 
-Credentials resolution order:
-  1. `.env` file at the skill root (next to SKILL.md). Simple `KEY=VALUE` lines,
-     blank lines and `#` comments allowed.
-  2. Process environment variables.
+Credentials are the one setting this module owns, because the pair of keys and the
+message a first-run user gets are Harvest's business. *Where* a value comes from is not:
+that is `skill_config`, which holds the precedence rule for every setting in the skill.
+This module used to hold both, which meant the `.env`/OS-env walk existed twice — once in
+`config()` and once, subtly its own way, in `load_creds()`.
 
-If neither yields both HARVEST_ACCOUNT_ID and HARVEST_API_KEY, exits with a
-message pointing at `.env.example`.
+If either HARVEST_ACCOUNT_ID or HARVEST_API_KEY fails to resolve, exits with a message
+pointing at `.env.example`, through the shared error contract in `skill_config.fail_missing()`.
 
 No third-party deps — uses stdlib `urllib` like the sibling `aw_*.py` helpers.
 """
 import json
-import os
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path
 
-SKILL_ROOT = Path(__file__).resolve().parents[1]
-ENV_PATH = SKILL_ROOT / ".env"
+import skill_config
+
 API_BASE = "https://api.harvestapp.com/v2"
 USER_AGENT = "daily-timesheet-skill"
 
@@ -57,70 +53,22 @@ def parse_time_to_minutes(t: str) -> int:
     return h * 60 + m
 
 
-def _parse_env_file(path: Path) -> dict:
-    out = {}
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            continue
-        k, _, v = line.partition("=")
-        v = v.strip()
-        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-            v = v[1:-1]
-        out[k.strip()] = v
-    return out
-
-
-def config(key: str) -> str | None:
-    """Read an optional setting from the skill `.env`, falling back to OS env vars.
-
-    Returns None when the key is unset anywhere; callers decide whether that is fatal.
-    """
-    file_vals = _parse_env_file(ENV_PATH) if ENV_PATH.exists() else {}
-    return file_vals.get(key) or os.environ.get(key)
-
-
-def find_workspace() -> Path | None:
-    """Locate the workspace root holding the `.mcp/` catalogs, or None if it can't be found.
-
-    The writer (refresh_catalogs.py) and the readers (harvest_lookup.py) both resolve
-    the workspace through here, so a refresh cannot write catalogs into one directory
-    while a lookup reads another. Resolution order:
-
-    1. TIMESHEET_WORKSPACE, from the skill `.env` or an OS env var — explicit wins.
-    2. The current directory, if it already looks like a workspace (`.mcp/` or `Timesheets/`).
-    3. The directories the skill is installed under, if one looks like a workspace. Two
-       install shapes are checked: `<workspace>/skills/<name>` and Claude Code's own
-       `<workspace>/.claude/skills/<name>`, which sits one level deeper. Checking only the
-       first meant auto-detection could never succeed on a stock install, while
-       `.env.example` promised that it would.
-
-    Returning None instead of guessing is deliberate: deriving a path from the install
-    location and using it regardless is how refreshes used to report success while
-    writing catalogs nowhere the reader would look.
-    """
-    ws = config("TIMESHEET_WORKSPACE")
-    if ws:
-        return Path(ws).expanduser()
-    for cand in (Path.cwd(), *SKILL_ROOT.parents[1:3]):
-        if (cand / ".mcp").is_dir() or (cand / "Timesheets").is_dir():
-            return cand
-    return None
-
-
 def load_creds() -> tuple[str, str]:
+    """The Harvest account id and token, resolved through `skill_config.setting()`.
+
+    Cached for the process: `harvest_list` makes one call per page, and re-resolving per
+    request would both cost a file open apiece and make the credentials mutable mid-run,
+    so a half-paged listing could start authenticating as a different account.
+    """
     global _CREDS_CACHE
     if _CREDS_CACHE is not None:
         return _CREDS_CACHE
-    file_creds = _parse_env_file(ENV_PATH) if ENV_PATH.exists() else {}
-    acct = file_creds.get("HARVEST_ACCOUNT_ID") or os.environ.get("HARVEST_ACCOUNT_ID")
-    key = file_creds.get("HARVEST_API_KEY") or os.environ.get("HARVEST_API_KEY")
+    acct = skill_config.setting("HARVEST_ACCOUNT_ID")
+    key = skill_config.setting("HARVEST_API_KEY")
     if not acct or not key:
-        sys.exit(
-            "ERROR: Harvest credentials not found.\n"
-            f"  Copy {SKILL_ROOT / '.env.example'} -> {ENV_PATH}\n"
+        skill_config.fail_missing(
+            "Harvest credentials not found.\n"
+            f"  Copy {skill_config.SKILL_ROOT / '.env.example'} -> {skill_config.ENV_PATH}\n"
             "  and fill in HARVEST_ACCOUNT_ID and HARVEST_API_KEY.\n"
             "  (Or set them as OS environment variables.)"
         )

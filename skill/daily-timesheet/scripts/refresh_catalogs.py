@@ -4,8 +4,9 @@ caches used by the daily-timesheet skill.
 
 Usage: python refresh_catalogs.py [--harvest-only | --dataverse-only]
 
-Credentials come from the shared `harvest_client.load_creds()` helper: `.env` at
-the skill root, or OS env vars.
+Credentials come from the shared `harvest_client.load_creds()` helper, and the workspace
+and Dataverse settings from `skill_config` — the one seam every setting resolves through,
+whose docstring states the precedence between a flag, the skill `.env` and the OS env.
 
 Writes:
   - Work/.mcp/harvest_assignments.json          (page 1)
@@ -29,15 +30,16 @@ for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks re
     except Exception:
         pass
 
-from harvest_client import request as harvest_request, config, find_workspace
+from harvest_client import request as harvest_request
+from skill_config import setting, find_workspace, fail_missing
 
 # Writer and reader share find_workspace() so a refresh cannot write catalogs into one
 # directory while harvest_lookup.py reads another. Unresolved is fatal here: writing to a
 # guessed path would report success while the reader kept seeing stale data.
 WORKSPACE = find_workspace()
 if WORKSPACE is None:
-    sys.exit(
-        "ERROR: can't locate your timesheet workspace (the directory holding .mcp/ and "
+    fail_missing(
+        "can't locate your timesheet workspace (the directory holding .mcp/ and "
         "Timesheets/). Run this from that directory, or set TIMESHEET_WORKSPACE in the "
         "skill .env (or as an OS env var) to its absolute path."
     )
@@ -46,8 +48,8 @@ MCP_DIR = WORKSPACE / ".mcp"
 # Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_AUTH_PROFILE unset in `.env`
 # to skip it entirely — the Harvest refresh still runs. Set both to enable ticket-number
 # resolution from your Dataverse org via the `pac` CLI.
-DV_URL = config("DATAVERSE_URL")
-PAC_PROFILE = config("PAC_AUTH_PROFILE")
+DV_URL = setting("DATAVERSE_URL")
+PAC_PROFILE = setting("PAC_AUTH_PROFILE")
 
 INCIDENT_FETCHXML = """<fetch>
   <entity name="incident">

@@ -30,44 +30,33 @@ def test_order_monitors_single():
 def test_capture_dir_comes_from_the_command_line_first():
     """setup_screenshot_pipeline.ps1 -ScreenshotsDir passes the directory as argv[1];
     before that it was accepted, the folder created, and then ignored."""
-    assert sc.resolve_screenshots_dir([r"D:\Shots"], None) == r"D:\Shots"
+    assert sc.resolve_screenshots_dir([r"D:\Shots"]) == r"D:\Shots"
 
 
-def test_capture_dir_falls_back_to_the_configured_setting():
-    """TIMESHEET_SCREENSHOTS_DIR, resolved through the same .env-first helper as
-    every other setting rather than a private os.environ read."""
-    assert sc.resolve_screenshots_dir([], r"D:\FromEnv") == r"D:\FromEnv"
+def test_capture_dir_falls_back_to_the_configured_setting(env_file):
+    """TIMESHEET_SCREENSHOTS_DIR, resolved through `skill_config` like every other
+    setting rather than a private os.environ read that skips the `.env` layer."""
+    env_file.write_text("TIMESHEET_SCREENSHOTS_DIR=D:\\FromDotEnv\n", encoding="utf-8")
+    assert sc.resolve_screenshots_dir([]) == r"D:\FromDotEnv"
 
 
-def test_command_line_beats_the_configured_setting():
-    assert sc.resolve_screenshots_dir([r"D:\Shots"], r"D:\FromEnv") == r"D:\Shots"
+def test_command_line_beats_the_configured_setting(env_file):
+    env_file.write_text("TIMESHEET_SCREENSHOTS_DIR=D:\\FromDotEnv\n", encoding="utf-8")
+    assert sc.resolve_screenshots_dir([r"D:\Shots"]) == r"D:\Shots"
 
 
 def test_capture_dir_defaults_to_pictures_when_nothing_is_set():
-    assert sc.resolve_screenshots_dir([], None) == DEFAULT
+    assert sc.resolve_screenshots_dir([]) == DEFAULT
 
 
 def test_an_empty_argument_does_not_win():
     """Task Scheduler hands through an empty string when the argument is blank."""
-    assert sc.resolve_screenshots_dir([""], "  ") == DEFAULT
+    assert sc.resolve_screenshots_dir([""]) == DEFAULT
 
 
-def test_configured_setting_is_read_from_the_skill_env_file(tmp_path, monkeypatch):
-    """A user who puts TIMESHEET_SCREENSHOTS_DIR in .env - the only config mechanism
-    the skill documents - must not be silently ignored. Every other setting resolves
-    .env first, then OS env, through harvest_client.config()."""
-    import harvest_client
-    env = tmp_path / ".env"
-    env.write_text("TIMESHEET_SCREENSHOTS_DIR=D:\\FromDotEnv\n", encoding="utf-8")
-    monkeypatch.setattr(harvest_client, "ENV_PATH", env)
-    assert sc.configured_screenshots_dir() == r"D:\FromDotEnv"
-
-
-def test_configured_setting_falls_back_to_an_os_env_var(tmp_path, monkeypatch):
-    import harvest_client
-    monkeypatch.setattr(harvest_client, "ENV_PATH", tmp_path / "absent.env")
+def test_configured_setting_falls_back_to_an_os_env_var(env_file, monkeypatch):
     monkeypatch.setenv("TIMESHEET_SCREENSHOTS_DIR", r"D:\FromOsEnv")
-    assert sc.configured_screenshots_dir() == r"D:\FromOsEnv"
+    assert sc.resolve_screenshots_dir([]) == r"D:\FromOsEnv"
 
 
 def test_take_screenshots_writes_where_it_is_told():

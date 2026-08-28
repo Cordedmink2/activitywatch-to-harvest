@@ -22,8 +22,8 @@ import pytest
 import activity_timeline as tl
 import afk_blocks as ab
 import aw_client
-import harvest_client as hc
 import harvest_lookup as hl
+import skill_config
 from support import aw_server, day, run_cli
 
 
@@ -165,10 +165,10 @@ def test_workspace_is_found_when_the_skill_is_installed_under_dot_claude(tmp_pat
     (ws / "Timesheets").mkdir(parents=True)
     skill_root = ws / ".claude" / "skills" / "daily-timesheet"
     skill_root.mkdir(parents=True)
-    monkeypatch.setattr(hc, "SKILL_ROOT", skill_root)
-    monkeypatch.setattr(hc, "ENV_PATH", skill_root / ".env")
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", skill_root)
+    monkeypatch.setattr(skill_config, "ENV_PATH", skill_root / ".env")
     monkeypatch.chdir(tmp_path)          # cwd is not the workspace
-    assert hc.find_workspace() == ws
+    assert skill_config.find_workspace() == ws
 
 
 def test_workspace_detection_still_refuses_to_guess(tmp_path, monkeypatch):
@@ -176,10 +176,10 @@ def test_workspace_detection_still_refuses_to_guess(tmp_path, monkeypatch):
     with nothing workspace-shaped anywhere above the skill, the result stays None."""
     skill_root = tmp_path / "nowhere" / ".claude" / "skills" / "daily-timesheet"
     skill_root.mkdir(parents=True)
-    monkeypatch.setattr(hc, "SKILL_ROOT", skill_root)
-    monkeypatch.setattr(hc, "ENV_PATH", skill_root / ".env")
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", skill_root)
+    monkeypatch.setattr(skill_config, "ENV_PATH", skill_root / ".env")
     monkeypatch.chdir(tmp_path)
-    assert hc.find_workspace() is None
+    assert skill_config.find_workspace() is None
 
 
 # --------------------------------------------------------------------------------------

@@ -64,6 +64,7 @@ to have in front of you.
 | A skill defect goes upstream, not into `.context.md` | `references/reporting-issues.md` | Step 11 third bullet |
 | Screenshots never settle active/idle | Step 5, first bullet | `SKILL.md` folder mechanics, `classification-rules.md` §"Focused window ≠ active attention" |
 | Check the other monitors before trusting one | `classification-rules.md` §"Focused window ≠ active attention" | `SKILL.md` folder mechanics + Step 5 subagent brief, `classification-rules.md` long-agent-CLI and browser-row paragraphs, interleaved-days probe step |
+| Setting precedence: flag, then `.env`, then the process environment, then the script default; blank counts as unset | `scripts/skill_config.py` docstring | `SKILL.md` "What lives where", `references/setup.md` §"First-run: Harvest credentials", the `refresh_catalogs.py` and `screenshot_capture.py` module docstrings |
 
 The `--cover` pair has already drifted once and cost a re-run — `TESTING.md` has the
 entry. The fix at the time touched the checklist copy and missed the owner.

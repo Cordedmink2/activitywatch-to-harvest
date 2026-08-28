@@ -593,6 +593,38 @@ active attention", deliberately: §3 owns the mechanism, and this states the bro
 symptom that should send a reader there. If a later round needs bytes back, test whether the
 §3 pointer alone suffices before keeping the restatement.
 
+### Setting precedence, and blank-counts-as-unset — `scripts/skill_config.py`
+**Rung 3.** 2026-08-28, issue #5. Configuration reached the scripts from three sources
+with no stated rule about which won, and each script merged the subset it cared about its
+own way: `load_creds()` re-walked `.env`-then-OS-env alongside `config()`, which already
+did it; `screenshot_capture` layered `argv[0]` on top by hand; `harvest_lookup` layered
+`--mcp-dir` on top differently. `skill_config` is now the reader, and `test_config_seam.py`
+fails if a second one appears in `scripts/`.
+
+**Two decisions worth not re-litigating.**
+
+*`.env` still beats the process environment.* That is the order as it has always behaved.
+It is the wrong way round for a harness that injects settings as environment variables —
+a stale `.env` will outrank what the harness supplied — but flipping it changes which of a
+user's two configured values wins, and a prefactor whose whole claim is "nothing
+observable changes" is the wrong place to do it. The flip belongs with the ticket that
+introduces the injection, and the seam is what makes it a one-line change.
+
+*Blank now counts as unset at every layer, which is a deliberate widening, not a pure
+move.* `_parse_env_file` already stripped, so a blank in `.env` never reached a caller;
+a whitespace-only **environment variable** did. Preserving that exactly would have meant
+two different truth tests inside the one module that exists to hold one rule. The
+behaviour it changes: `HARVEST_API_KEY="   "` exported in a shell used to reach Harvest
+and 401, and now exits `ERROR: Harvest credentials not found.`; `DATAVERSE_URL="  "` used
+to attempt the Dataverse refresh and now skips it with the documented notice. Both new
+answers are the ones `.env.example` already promised ("leave blank if you don't need
+them"). The golden days are unaffected — neither AW script reads a setting.
+
+**What was not measured.** No agent was watched getting the old precedence wrong; the
+duplicate reader was found by reading, not by a failure. The suite is evidence only that
+the move changed no behaviour the tests cover, which for the AW scripts is the whole
+golden set and for the Harvest ones is the recorded request bodies.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was
@@ -710,8 +742,9 @@ leg at a time, and it is `publish.ps1` running it from the *other* leg that made
 dependency visible.
 
 Fixed by pinning `SKILL_ROOT` alongside the cwd. Every other site asserting on workspace
-resolution already did this (`test_harvest_client.py`'s `isolated` fixture,
-`test_review_findings.py`); the conftest `workspace` fixture needs no pin, because
+resolution already did this (the `isolated` fixture, since moved with the settings reader
+into `test_config_seam.py`; `test_review_findings.py`); the conftest `workspace` fixture
+needs no pin, because
 `find_workspace()` consults `Path.cwd()` first and that fixture chdirs into a tree that
 already contains `Timesheets/`. **A test whose precondition is "nothing resolves" has to
 neutralise every source the resolver reads, not just the obvious one.**

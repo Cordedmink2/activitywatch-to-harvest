@@ -26,7 +26,7 @@ import json
 import os
 import sys
 
-from harvest_client import find_workspace
+from skill_config import find_workspace, has_value
 
 for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigure
     try:
@@ -38,13 +38,16 @@ for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigu
 def find_catalog_dir(explicit):
     """Locate the `.mcp/` directory holding the catalogs.
 
-    Delegates to harvest_client.find_workspace(), the same resolver refresh_catalogs.py
-    writes through, so the reader and the writer cannot disagree about where catalogs
-    live. Falls back to the current directory when the workspace can't be resolved:
-    a missing catalog is not fatal here, since main() reports the path it looked in
-    and recovers via the live time-entries API.
+    `--mcp-dir` first, then the workspace — the flag-beats-configuration order
+    `skill_config` documents, down to its `has_value()` test, so a blank `--mcp-dir` is
+    an omitted flag rather than a directory named "". Resolution delegates to
+    `skill_config.find_workspace()`, the same resolver refresh_catalogs.py writes
+    through, so the reader and the writer cannot disagree about where catalogs live.
+    Falls back to the current directory when the workspace can't be resolved: a missing
+    catalog is not fatal here, since main() reports the path it looked in and recovers
+    via the live time-entries API.
     """
-    if explicit:
+    if has_value(explicit):
         return explicit
     ws = find_workspace()
     if ws is None:

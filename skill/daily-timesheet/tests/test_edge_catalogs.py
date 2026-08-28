@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-import harvest_client as hc
 import harvest_lookup as hl
+import skill_config
 from support import run_cli
 
 ASSIGNMENTS = ("GET", "/users/me/project_assignments")
@@ -365,8 +365,8 @@ def test_find_catalog_dir_falls_back_to_a_dot_mcp_under_the_current_directory(
     # public repo at `~/Admin/activitywatch-to-harvest/skill/`, because `~/Admin` is a real
     # workspace and the walk resolved to it. Caught by the release mirror, not by this suite.
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(hc, "SKILL_ROOT", tmp_path / "skills" / "daily-timesheet")
-    assert hc.find_workspace() is None, "the fallback branch is only reachable unresolved"
+    monkeypatch.setattr(skill_config, "SKILL_ROOT", tmp_path / "skills" / "daily-timesheet")
+    assert skill_config.find_workspace() is None, "the fallback branch is only reachable unresolved"
 
     got = hl.find_catalog_dir(None)
 

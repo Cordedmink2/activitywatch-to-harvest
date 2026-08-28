@@ -24,6 +24,7 @@ import harvest_client as hc
 import harvest_list as hlist
 import harvest_patch as hp
 import harvest_post as hpost
+import skill_config
 from support import run_cli
 
 POST_ARGS = ["48084036", "20753151", "2026-08-12", "09:00", "10:30", "Wrote the edge tests"]
@@ -219,7 +220,7 @@ def test_load_creds_caches_so_a_second_call_re_reads_nothing(tmp_path, monkeypat
     listing could start authenticating as a different account."""
     env = tmp_path / ".env"
     env.write_text("HARVEST_ACCOUNT_ID=first\nHARVEST_API_KEY=key-one\n", encoding="utf-8")
-    monkeypatch.setattr(hc, "ENV_PATH", env)
+    monkeypatch.setattr(skill_config, "ENV_PATH", env)
     monkeypatch.setattr(hc, "_CREDS_CACHE", None)
 
     assert hc.load_creds() == ("first", "key-one")

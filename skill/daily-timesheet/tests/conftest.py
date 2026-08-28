@@ -37,30 +37,31 @@ for p in (str(SCRIPTS), str(TESTS)):
 
 import aw_client                     # noqa: E402
 import harvest_client                # noqa: E402
-from support import (Day, aw_server, day, harvest_server,  # noqa: E402,F401
-                     run_cli, with_heartbeats)
+import skill_config                  # noqa: E402
+from support import (SETTING_KEYS, Day, aw_server, day,  # noqa: E402,F401
+                     harvest_server, run_cli, with_heartbeats)
 
 # Port 0 is not a port. A connection to it cannot be routed anywhere, by anything, which
 # is a stronger guarantee than "a port nothing happens to be listening on right now" —
 # and it fails in ~30ms where a closed loopback port costs 2s of SYN retries on Windows.
 DEAD = "http://127.0.0.1:0"
 
-# Everything the scripts read out of the environment. Left set, a developer's own shell
-# would leak into assertions about defaults.
-LEAKY_ENV = (
-    "HARVEST_ACCOUNT_ID", "HARVEST_API_KEY", "TIMESHEET_WORKSPACE",
-    "TIMESHEET_SCREENSHOTS_DIR", "DATAVERSE_URL", "PAC_AUTH_PROFILE",
-)
-
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch, tmp_path):
-    """No test reaches a real ActivityWatch, a real Harvest, or the real `.env`."""
+    """No test reaches a real ActivityWatch, a real Harvest, or the real `.env`.
+
+    One `setattr` blanks the credential file because `skill_config` is the only module
+    that opens it — a property `test_config_seam.py` asserts rather than assumes, since
+    a second reader appearing elsewhere in `scripts/` would leave this guard covering
+    half of what it claims to.
+    """
     monkeypatch.setattr(aw_client, "AW_BASE", f"{DEAD}/api/0")
     monkeypatch.setattr(harvest_client, "API_BASE", f"{DEAD}/v2")
-    monkeypatch.setattr(harvest_client, "ENV_PATH", tmp_path / "no-such-.env")
+    monkeypatch.setattr(skill_config, "ENV_PATH", tmp_path / "no-such-.env")
     monkeypatch.setattr(harvest_client, "_CREDS_CACHE", None)
-    for key in LEAKY_ENV:
+    # Left set, a developer's own shell would leak into assertions about defaults.
+    for key in SETTING_KEYS:
         monkeypatch.delenv(key, raising=False)
     yield
 
@@ -113,6 +114,23 @@ def live_harvest(monkeypatch):
 
 
 @pytest.fixture
+def env_file(tmp_path, monkeypatch):
+    """A writable stand-in for the skill `.env`, with the seam pointed at it.
+
+    Returns the path, so a test writes the settings it wants:
+
+        env_file.write_text("TIMESHEET_SCREENSHOTS_DIR=D:\\\\Shots\\n", encoding="utf-8")
+
+    The autouse hermetic fixture has already cleared `SETTING_KEYS` out of the process
+    environment, so a result depends only on what the test puts in this file.
+    """
+    env = tmp_path / ".env"
+    env.write_text("", encoding="utf-8")
+    monkeypatch.setattr(skill_config, "ENV_PATH", env)
+    return env
+
+
+@pytest.fixture
 def workspace(tmp_path, monkeypatch):
     """A throwaway workspace tree (`.mcp/` + `Timesheets/`) that `find_workspace()` resolves to."""
     ws = tmp_path / "workspace"
@@ -120,7 +138,7 @@ def workspace(tmp_path, monkeypatch):
     (ws / "Timesheets").mkdir()
     env = tmp_path / "workspace.env"
     env.write_text(f"TIMESHEET_WORKSPACE={ws}\n", encoding="utf-8")
-    monkeypatch.setattr(harvest_client, "ENV_PATH", env)
+    monkeypatch.setattr(skill_config, "ENV_PATH", env)
     return ws
 
 
