@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single offset that a transition day does not have. A run passing `--utc-offset` still reads
   `offset UTC+13`, which is what was typed.
 - **`--utc-offset 99` is refused with a message** instead of raising out of the zone constructor.
+- **The copied-in installer's `.env.example` lists `TIMESHEET_TIMEZONE`.** A plugin install is asked
+  for the key at setup, but a copied-in one only ever learns of a setting from this template — and it
+  still described the 0.4 surface. Someone who filled in the two Harvest keys and ran the skill hit
+  "refuses to date a day" on their first attempt, over a required setting the file never mentioned.
+  `TIMESHEET_ACTIVITY_URL` is listed alongside the other optional settings for the same reason.
 
 ## [0.5.0] - 2026-08-28
 
