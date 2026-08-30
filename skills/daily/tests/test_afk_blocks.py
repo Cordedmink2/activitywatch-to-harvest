@@ -9,12 +9,14 @@ hand-built event streams rather than whatever ActivityWatch happens to hold.
 import datetime as dt
 import os
 import sys
+from zoneinfo import ZoneInfo
 
 import pytest
 
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "scripts")
 sys.path.insert(0, SCRIPTS)
 import afk_blocks as ab
+from support import fixed
 
 DAY = dt.date(2026, 5, 28)
 
@@ -170,11 +172,50 @@ def test_uncovered_segments_is_empty_when_the_blocks_cover_everything():
 
 def test_parse_range_rejects_a_reversed_range():
     with pytest.raises(ValueError):
-        ab.parse_range("17:00-09:00", DAY, dt.timedelta(hours=12))
+        ab.parse_range("17:00-09:00", DAY, fixed(12))
+
+
+NZ_ZONE = ZoneInfo("Pacific/Auckland")
+FALL_BACK = dt.date(2026, 4, 5)      # clocks go back at 03:00: 02:00-03:00 happens twice
+SPRING_FORWARD = dt.date(2026, 9, 27)  # clocks go forward at 02:00: that hour never happens
+
+
+def test_parse_range_takes_the_first_pass_over_a_repeated_hour():
+    """02:30 happens twice on the fall-back day, so which one a `--window` names is a
+    convention rather than a fact. It is the first — the pre-change one, at UTC+13.
+
+    Pinned because three documents state it (`to_utc`'s docstring, `activitywatch.md`
+    §"Time zones", `TESTING.md`) and nothing else measures it: the transition scenario
+    deliberately avoids this hour, so a change to `fold` semantics would flip the answer
+    with the whole suite still green.
+    """
+    start, _ = ab.parse_range("02:30-04:00", FALL_BACK, NZ_ZONE)
+    assert start == dt.datetime(2026, 4, 4, 13, 30, tzinfo=dt.timezone.utc)
+
+
+def test_a_window_over_the_repeated_hour_is_two_hours_long():
+    """The consequence of the rule above, and the one that surprises: `02:00-03:00` on the
+    fall-back day is an hour on the clock and two hours in real time, because the clock
+    passes 02:00 twice. `active_ratio` divides by the elapsed figure, so a window written
+    across that hour is measured against 120 minutes and reads about half what an hour of
+    solid work would. Correct, and worth failing loudly if it ever silently became 60."""
+    start, end = ab.parse_range("02:00-03:00", FALL_BACK, NZ_ZONE)
+    assert (end - start) == dt.timedelta(hours=2)
+
+
+def test_parse_range_says_so_when_a_range_falls_in_the_hour_the_clocks_skip():
+    """`02:00-03:00` on a spring-forward day is ordered on the clock and empty in real
+    time — 02:00 never happened. It reaches the same `end must be after start` guard as a
+    reversed range, and that message would send a user hunting a typo they did not make.
+    """
+    with pytest.raises(ValueError) as exc:
+        ab.parse_range("02:00-03:00", SPRING_FORWARD, NZ_ZONE)
+    assert "skip" in str(exc.value)
+    assert "after start" not in str(exc.value)
 
 
 def test_parse_range_converts_local_times_to_utc():
-    start, end = ab.parse_range("09:00-17:00", DAY, dt.timedelta(hours=12))
+    start, end = ab.parse_range("09:00-17:00", DAY, fixed(12))
     assert hhmm(start) == "21:00"          # 09:00 NZST the previous UTC day
     assert start.date() == dt.date(2026, 5, 27)
     assert (end - start) == dt.timedelta(hours=8)

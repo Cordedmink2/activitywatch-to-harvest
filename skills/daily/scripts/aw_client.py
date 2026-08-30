@@ -38,26 +38,39 @@ def resolve_base() -> str:
 AW_BASE = resolve_base()
 
 
-def resolve_utc_offset(flag, local_date):
-    """The local zone's offset from UTC, in hours, for `local_date`.
+def resolve_zone(flag):
+    """The timezone this day's local clock is read in.
 
     `flag` is whatever `--utc-offset` supplied, or None; it wins, so a day spent in
-    another zone can still be reconstructed without reconfiguring anything. Otherwise the
-    configured `TIMESHEET_TIMEZONE` is read at that date, which is what makes a day from
-    the other side of a daylight-saving change come out right.
+    another zone can still be reconstructed without reconfiguring anything. It resolves to
+    a zone that is that offset all year, which is what passing a number has always meant.
+    Otherwise the configured `TIMESHEET_TIMEZONE` is loaded.
+
+    A zone rather than a number, because a day does not necessarily have *one* offset.
+    This used to answer with a single figure read at local noon, and on the day the clocks
+    change that is wrong at both ends of the day at once: the fetch window opens an hour
+    late or early, and every event on the far side of the transition renders an hour out.
+    Neither failure raises anything — the day simply reads short and starts in the wrong
+    place. Handing the zone itself to the arithmetic below lets each instant be converted
+    at the offset in force for *it*.
 
     There is deliberately no fallback. This used to be `default=12.0` in both scripts'
     argument parsers, so every user who was not in New Zealand got a day boundary up to
-    twelve hours out — and nothing failed: the events landed on the wrong date and the
-    only symptom was a day that looked oddly short. No offset is safe to guess, so an
+    twelve hours out — and, again, nothing failed. No offset is safe to guess, so an
     unconfigured run stops and says which value it needs.
-
-    The offset is read at local noon, not local midnight: midnight is where a transition
-    lands, and asking there is asking the ambiguous question. One offset for the whole day
-    is still an approximation across a transition — issue #8 owns that.
     """
     if flag is not None:
-        return flag
+        try:
+            return dt.timezone(dt.timedelta(hours=flag))
+        except (ValueError, OverflowError):
+            # Every other bad input to these scripts produces a line and a non-zero exit;
+            # one that escaped from here would be the single traceback, and a traceback
+            # tells a model reading this that the tool is broken rather than that the
+            # number is. Both exception types, because `argparse type=float` takes `inf`
+            # as readily as `99` and the timedelta constructor answers them differently.
+            skill_config.fail_missing(
+                f"--utc-offset {flag} is not an offset any zone has.\n"
+                "  It is hours from UTC, between -24 and 24, e.g. 13 or -5.5.")
     name = skill_config.setting("TIMESHEET_TIMEZONE")
     if not name:
         skill_config.fail_missing(
@@ -70,15 +83,26 @@ def resolve_utc_offset(flag, local_date):
             "  § 'When the configuration does not arrive'.\n"
             "  Or for this run only:  --utc-offset <hours>")
     try:
-        zone = ZoneInfo(name)
+        return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError) as exc:
         skill_config.fail_missing(
             f"Could not load the timezone '{name}' ({exc}).\n"
             "  Check it against the IANA list (e.g. Europe/London, Pacific/Auckland).\n"
             "  On Windows the zone database is a separate install:  pip install tzdata\n"
             "  Or bypass it for this run:  --utc-offset <hours>")
-    noon = dt.datetime.combine(local_date, dt.time(12, 0), tzinfo=zone)
-    return noon.utcoffset().total_seconds() / 3600
+
+
+def zone_label(zone):
+    """How a resolved zone names itself in a header a person reads.
+
+    A real zone is named, because on a transition day no single offset describes it and
+    printing one would be a claim the run is not making. A `--utc-offset` zone keeps the
+    wording it always had, since that is exactly what the user typed.
+    """
+    key = getattr(zone, "key", None)
+    if key:
+        return f"zone {key}"
+    return f"offset UTC{zone.utcoffset(None).total_seconds() / 3600:+g}"
 
 
 def get(path):
@@ -136,7 +160,20 @@ def parse_local_time(s):
     return dt.datetime.strptime(s, fmt).time()
 
 
-def parse_range(rng, local_date, offset):
+def to_utc(local_date, local_time, zone):
+    """A wall-clock time on a local date, as the UTC instant it names in `zone`.
+
+    The single place a local clock becomes an instant, so the transition-day answer is the
+    same for a day boundary, a `--window` and a `--cover` block. On the hour a fall-back
+    repeats, the wall clock is genuinely ambiguous and this takes the first pass over it;
+    on the hour a spring-forward skips, it takes the instant the clock would have reached.
+    Both are conventions rather than facts — but only inside that one hour, and both
+    scripts read the same one.
+    """
+    return dt.datetime.combine(local_date, local_time, tzinfo=zone).astimezone(dt.timezone.utc)
+
+
+def parse_range(rng, local_date, zone):
     """Parse a local 'HH:MM-HH:MM' (seconds optional) to an aware UTC (start, end) pair.
 
     Raises ValueError on a bad format or a reversed/empty range. Shared because both
@@ -146,17 +183,36 @@ def parse_range(rng, local_date, offset):
     "nothing happened then" in the other.
     """
     a, b = rng.split("-", 1)
-    local_start = dt.datetime.combine(local_date, parse_local_time(a))
-    local_end = dt.datetime.combine(local_date, parse_local_time(b))
-    ws = (local_start - offset).replace(tzinfo=dt.timezone.utc)
-    we = (local_end - offset).replace(tzinfo=dt.timezone.utc)
+    lo, hi = parse_local_time(a), parse_local_time(b)
+    ws, we = to_utc(local_date, lo, zone), to_utc(local_date, hi, zone)
     if we <= ws:
+        if hi > lo:
+            # Ordered on the clock and empty in real time: the range spans the hour a
+            # spring-forward skips, which no instant on this date corresponds to. Falling
+            # through to "end must be after start" would send the user hunting a typo they
+            # did not make.
+            raise ValueError(f"'{rng}' spans the hour the clocks skip on {local_date}, "
+                             f"so no time passed between those two readings")
         raise ValueError(f"end must be after start in range '{rng}'")
     return ws, we
 
 
-def utc_bounds(local_date, offset):
-    """The local day as the Z-suffixed UTC strings the AW events API wants."""
-    local_start = dt.datetime.combine(local_date, dt.time(0, 0))
-    return ((local_start - offset).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            (local_start + dt.timedelta(days=1) - offset).strftime("%Y-%m-%dT%H:%M:%SZ"))
+def utc_bounds(local_date, zone):
+    """The local day as the Z-suffixed UTC strings the AW events API wants.
+
+    Both ends are resolved in the zone independently, so the day the clocks change is
+    asked for at its true length — twenty-five hours in autumn, twenty-three in spring —
+    rather than at a flat twenty-four hung off whichever offset was read once.
+    """
+    start = to_utc(local_date, dt.time(0, 0), zone)
+    end = to_utc(local_date + dt.timedelta(days=1), dt.time(0, 0), zone)
+    return (start.strftime("%Y-%m-%dT%H:%M:%SZ"), end.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+
+def local_clock(moment, zone):
+    """An instant as the `HH:MM:SS` a clock in `zone` showed at it.
+
+    No date: a day that runs past midnight renders its end as `01:12:00`, which is the
+    established output shape and the one the goldens pin.
+    """
+    return moment.astimezone(zone).strftime("%H:%M:%S")

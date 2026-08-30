@@ -27,9 +27,10 @@ Usage:
   python scripts/activity_timeline.py 2026-06-19 --json
   python scripts/activity_timeline.py 2026-06-19 --utc-offset 13   # this run only
 
-The day's boundaries come from the configured TIMESHEET_TIMEZONE; --utc-offset
-overrides it for one run. There is no assumed zone — see
-aw_client.resolve_utc_offset.
+The day's boundaries come from the configured TIMESHEET_TIMEZONE, converted at
+each instant rather than once for the day, so the day the clocks change is read
+at its true length. --utc-offset overrides it for one run. There is no assumed
+zone — see aw_client.resolve_zone.
 """
 import argparse
 import datetime as dt
@@ -38,8 +39,8 @@ import re
 import sys
 
 from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
-                       parse_range, parse_ts, pick_bucket, resolve_utc_offset,
-                       utc_bounds)
+                       local_clock, parse_range, parse_ts, pick_bucket,
+                       resolve_zone, utc_bounds, zone_label)
 
 # Defaults for the two noise constants, each exposed as a flag in main(): what counts as
 # noise depends on how a person works, so they belong in the user's `context.md`
@@ -162,10 +163,9 @@ def main():
 
     # After the date parse: a typo in the date should be reported before a configuration
     # problem the user cannot act on until the date is right anyway.
-    utc_offset = resolve_utc_offset(args.utc_offset, local_date)
-    offset = dt.timedelta(hours=utc_offset)
+    zone = resolve_zone(args.utc_offset)
 
-    start_utc, end_utc = utc_bounds(local_date, offset)
+    start_utc, end_utc = utc_bounds(local_date, zone)
     try:
         buckets = get("/buckets/")
         win_bucket = pick_bucket(buckets, "aw-watcher-window")
@@ -185,7 +185,7 @@ def main():
     classes = load_classes()
 
     def to_local(d):
-        return (d + offset).strftime("%H:%M:%S")
+        return local_clock(d, zone)
 
     spans = build_window_spans(win_events, classes, args.noise_floor, args.gap_fold)
     rollup = category_rollup(win_events, classes, args.noise_floor)
@@ -194,7 +194,7 @@ def main():
     web_rows = None
     if args.window:
         try:
-            ws, we = parse_range(args.window, local_date, offset)
+            ws, we = parse_range(args.window, local_date, zone)
         except Exception as e:
             print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM "
                   f"(seconds optional): {e}", file=sys.stderr)
@@ -237,7 +237,7 @@ def main():
         print(json.dumps(result, indent=2))
         return 0
 
-    hdr = f"Window timeline for {args.date} (offset UTC{utc_offset:+g})"
+    hdr = f"Window timeline for {args.date} ({zone_label(zone)})"
     if args.window:
         hdr += f"  [zoom {args.window}]"
     print(hdr)

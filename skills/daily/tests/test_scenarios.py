@@ -13,6 +13,7 @@ A golden alone is not a test. Both layers, or neither.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -21,18 +22,29 @@ import pytest
 import activity_timeline as tl
 import afk_blocks as ab
 from scenarios import SCENARIOS, BY_NAME
-from support import run_cli, with_heartbeats
+from support import day, run_cli, with_heartbeats
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 
 pytestmark = pytest.mark.scenario
 
 
+def dating_args(d) -> list:
+    """How this day tells the scripts what its clock reads.
+
+    A fixed-offset day hands over `--utc-offset`; a `zone=` day hands over nothing, having
+    had its zone configured by `live_aw`. Passing the flag anyway would take the same
+    shortcut the scripts are being tested for not needing, and on a day whose offset
+    changes at 03:00 there is no number to pass.
+    """
+    return [] if d.zone_name else ["--utc-offset", str(d.offset)]
+
+
 def probe(scenario, live_aw) -> dict:
     """Run both scripts over the scenario the way the skill's Step 2 does."""
     d = scenario.build()
     live_aw(d)
-    date, offset = d.date_str(), ["--utc-offset", str(d.offset)]
+    date, offset = d.date_str(), dating_args(d)
 
     afk_args = [date, "--json", *offset]
     if scenario.cover:
@@ -190,14 +202,59 @@ def test_a_day_with_no_activity_reports_that_rather_than_failing(live_aw):
     assert "No not-afk activity found" in r.out
 
 
-def test_daylight_saving_offset_reproduces_the_local_clock(live_aw):
-    """At UTC+13 the same local times must come back unchanged; at UTC+12 they shift."""
+def test_the_configured_zone_alone_reproduces_a_summer_time_clock(live_aw):
+    """Nothing is passed on the command line: the zone `live_aw` configured is the whole
+    input, and on 2026-01-20 it is an hour off `Pacific/Auckland`'s winter offset. Passing
+    that winter offset by hand is what the user used to have to remember not to do, and
+    the second half shows what it would have cost them — every time an hour early."""
     d = BY_NAME["daylight-saving-day"].build()
     live_aw(d)
-    correct = run_cli(ab, [d.date_str(), "--json", "--utc-offset", "13"]).json()
+    correct = run_cli(ab, [d.date_str(), "--json"]).json()
     assert (correct["work_start"], correct["work_end"]) == ("08:30:00", "17:15:00")
     wrong = run_cli(ab, [d.date_str(), "--json", "--utc-offset", "12"]).json()
     assert wrong["work_start"] == "07:30:00", "the wrong offset must visibly shift the day"
+
+
+def test_a_day_whose_offset_changes_renders_both_halves_in_local_time(live_aw):
+    """The case no single offset can cover. `Pacific/Auckland` goes back an hour at 03:00
+    on 2026-04-05, so the 00:40 start is UTC+13 and the 09:15 one is UTC+12.
+
+    Reading one offset for the whole day fails twice over, and this is what each failure
+    looks like: at the winter offset the early session renders as 23:40 the night before
+    *and* falls outside the fetch window, so a day that started at twenty to one in the
+    morning reports starting at quarter past nine.
+    """
+    got = probe(BY_NAME["daylight-saving-transition-day"], live_aw)
+    afk = got["afk_json"]
+    assert (afk["work_start"], afk["work_end"]) == ("00:40:00", "17:00:00")
+    starts = [s["start"] for s in afk["active_spans"]]
+    assert starts == ["00:40:00", "09:15:00", "13:20:00"]
+
+
+def test_the_hour_the_clocks_give_back_is_counted_as_elapsed_time(live_aw):
+    """01:45 to 09:15 is seven and a half hours on the wall and eight and a half in real
+    time, because 02:00-03:00 happens twice that morning. The break is reported at the
+    elapsed length — the honest one, and the one the AFK watcher actually recorded. Pinned
+    because 510 minutes against those two clock times reads like an arithmetic bug."""
+    got = probe(BY_NAME["daylight-saving-transition-day"], live_aw)
+    overnight = [b for b in got["afk_json"]["breaks"] if b["start"] == "01:45:00"]
+    assert overnight and overnight[0]["end"] == "09:15:00"
+    assert overnight[0]["min"] == 510.0
+
+
+def test_a_user_outside_new_zealand_gets_their_own_zones_day_boundaries(live_aw):
+    """The criterion the whole timezone change exists for. Nothing about this run is New
+    Zealand's: the day is written in `Europe/London`, the zone is the configured one, and
+    the local clock comes back unshifted.
+
+    Honest about its strength: this passed before the transition fix too, because a day
+    with one offset all the way through is one a single offset describes. What it guards
+    is the built-in `default=12.0` two releases back, which read this day as starting at
+    20:00. The guards for the fix itself are the two transition tests above."""
+    d = day(dt.date(2026, 5, 28), zone="Europe/London").active("09:00", "17:00")
+    live_aw(d)
+    result = run_cli(ab, [d.date_str(), "--json"]).json()
+    assert (result["work_start"], result["work_end"]) == ("09:00:00", "17:00:00")
 
 
 # --------------------------------------------------------------------------------------
@@ -220,6 +277,6 @@ def test_heartbeat_duplicates_change_nothing(name, live_aw, monkeypatch):
 
     monkeypatch.setattr(d, "buckets", noisy)
     live_aw(d)
-    date, offset = d.date_str(), ["--utc-offset", str(d.offset)]
+    date, offset = d.date_str(), dating_args(d)
     args = [date, "--json", *offset] + (["--cover", scenario.cover] if scenario.cover else [])
     assert run_cli(ab, args).json() == clean["afk_json"]

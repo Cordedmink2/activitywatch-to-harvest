@@ -730,6 +730,46 @@ seam puts `.env` above the process environment. The precedence itself was not ch
 reordering which of a user's two configured values wins is not something to do inside a
 ticket about declaring the surface.
 
+### A day was read at one offset, so the day the clocks change came out wrong
+**Rung 1.** 2026-08-31. Issue #8.
+
+The zone arrived as a real zone in the entry above, but was immediately reduced to a single
+number: `resolve_utc_offset` read the offset at local noon and both scripts applied it to
+every instant in the day. Local noon is the right hour to ask about — midnight is where a
+transition lands, and asking there is asking the ambiguous question — but the answer is
+only good for a day that has one offset, and the transition day does not.
+
+**What it cost, on `2026-04-05` in `Pacific/Auckland`.** That local day is twenty-five hours
+long: it opens at UTC+13 and closes at UTC+12. Read at the noon offset it was asked for as
+`[12:00Z, 12:00Z]` — an hour late at the start — so ActivityWatch was never asked for the
+first hour of work, and what did come back was rendered an hour early. A session that began
+at 00:40 reported beginning at 23:40 the previous evening. In spring the error runs the
+other way: the twenty-three-hour day is asked for an hour early and pulls in an hour that
+belonged to the day before. Nothing raises in either case; the day reads short and starts
+in the wrong place, which is the same silent shape as the twelve-hour default it replaced.
+
+**The fix is a type, not a calculation.** `resolve_zone()` hands the zone itself to the
+arithmetic and every conversion goes through `to_utc()` / `local_clock()`, so each instant
+is converted at the offset in force for *it*. `--utc-offset` resolves to a fixed-offset
+zone, which is what passing a number has always meant, so that path is unchanged by
+construction — and the six goldens that do not touch a transition regenerated
+byte-identical, which is what says so.
+
+**Two consequences, both pinned rather than papered over.** A span crossing the change is
+reported at its *elapsed* length: 01:45–09:15 that morning is 510 minutes, an hour more
+than the two clock times suggest, because the hour really passed and the AFK watcher really
+recorded it. And the hour a fall-back repeats is genuinely ambiguous on the clock, so a
+`--window` naming a time inside it gets the first pass over that hour — a convention, held
+in one place (`to_utc`) so both scripts hold the same one.
+
+**Cost, accepted.** Headers name the zone (`zone Pacific/Auckland`) where they used to print
+an offset, because on a transition day there is no single offset to print and printing one
+would be a claim the run is not making. A `--utc-offset` run still reads `offset UTC+13`.
+
+**What was not measured.** No real ActivityWatch instance was read across a real transition
+— the transition day is a synthetic fixture, like every other scenario here, and what it
+proves is that the arithmetic is zone-correct, not that AW's own event stream is.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was
@@ -1084,6 +1124,25 @@ Full suite now **267 passed / 5 skipped**.
 helper is reachable from the product. Where a fix is one call site, test the call site.
 
 ## Open gaps
+
+### A local clock with no date cannot tell the repeated hour apart — known, not fixed
+Raised by the review on issue #8, 2026-08-31. `local_clock()` renders `HH:MM:SS` with no
+date, so on a fall-back day `13:30Z` and `14:30Z` both print `02:30:00`. A user working
+through that hour gets two `active_spans`, or two breaks, wearing the same clock string,
+and `references/output-format.md` has the model write timesheet blocks from those strings.
+`activity_timeline.py` sorts its web rows by that string, so those rows can interleave
+wrongly inside the hour.
+
+**Not fixed here, deliberately.** The dateless clock is the established output shape — it
+is what makes an overnight day end at `01:12:00`, it is pinned by every golden, and
+`output-format.md` specifies it. Widening it is a change to what the skill emits, not to
+how it converts, and it belongs to whoever owns the output format rather than to a ticket
+about deriving the offset. Note the same ambiguity already existed for overnight days,
+where `work_end < work_start` is pinned as a trap; this adds one more hour a year to it.
+
+**What would settle it.** A fixture with two spans an hour apart across the fall-back, and
+a decision about whether the second gets a marker. Until then: one hour a year, on a day
+whose header already names the zone.
 
 ### Does a piece split out of a thin block re-validate at its own ratio? — untested
 

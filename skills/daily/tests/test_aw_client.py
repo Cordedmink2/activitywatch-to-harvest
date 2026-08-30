@@ -18,6 +18,7 @@ sys.path.insert(0, SCRIPTS)
 import aw_client as aw
 import activity_timeline as tl
 import afk_blocks as ab
+from support import fixed
 
 
 def ev(ts, duration, **data):
@@ -109,7 +110,7 @@ def test_fetch_events_asks_the_bucket_for_the_requested_range(monkeypatch):
 
 def test_utc_bounds_spans_local_midnight_to_local_midnight():
     """NZST is UTC+12, so a local day starts at 12:00Z the day before."""
-    start, end = aw.utc_bounds(dt.date(2026, 5, 28), dt.timedelta(hours=12))
+    start, end = aw.utc_bounds(dt.date(2026, 5, 28), fixed(12))
     assert (start, end) == ("2026-05-27T12:00:00Z", "2026-05-28T12:00:00Z")
 
 

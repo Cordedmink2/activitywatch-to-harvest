@@ -38,7 +38,7 @@
       "uncovered": []
     }
   },
-  "afk_text": "AFK analysis for 2026-01-20  (offset UTC+13, break>=1050s)\n  bucket:      aw-watcher-afk_TESTHOST\n  work start:  08:30:00\n  WORK END:    17:15:00   <- end of day; do not bill past this\n  active time: 480.0 min total\n  window tail: last window event ends 17:15:00 (+0 min vs work end)\n  breaks (>= 17 min):\n     12:00:00 - 12:45:00  (45.0 min)\n  active spans (short afk folded in):\n     08:30:00 - 12:00:00  (210.0 min)\n     12:45:00 - 17:15:00  (270.0 min)\n  coverage of proposed blocks vs AFK active_spans:\n     blocks cover 480.0 of 480.0 active min\n     (all active spans covered)\n",
+  "afk_text": "AFK analysis for 2026-01-20  (zone Pacific/Auckland, break>=1050s)\n  bucket:      aw-watcher-afk_TESTHOST\n  work start:  08:30:00\n  WORK END:    17:15:00   <- end of day; do not bill past this\n  active time: 480.0 min total\n  window tail: last window event ends 17:15:00 (+0 min vs work end)\n  breaks (>= 17 min):\n     12:00:00 - 12:45:00  (45.0 min)\n  active spans (short afk folded in):\n     08:30:00 - 12:00:00  (210.0 min)\n     12:45:00 - 17:15:00  (270.0 min)\n  coverage of proposed blocks vs AFK active_spans:\n     blocks cover 480.0 of 480.0 active min\n     (all active spans covered)\n",
   "window_reports": {
     "08:30-12:00": {
       "window": "08:30-12:00",
@@ -74,5 +74,5 @@
     },
     "web": null
   },
-  "timeline_text": "Window timeline for 2026-01-20 (offset UTC+13)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  08:30:00-17:15:00  525.0m  ACME            Code.exe | CasePlugins - ACME\n  --- day totals by category (min) ---\n     ACME             525.0\n"
+  "timeline_text": "Window timeline for 2026-01-20 (zone Pacific/Auckland)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  08:30:00-17:15:00  525.0m  ACME            Code.exe | CasePlugins - ACME\n  --- day totals by category (min) ---\n     ACME             525.0\n"
 }

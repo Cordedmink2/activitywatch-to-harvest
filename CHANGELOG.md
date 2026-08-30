@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The day the clocks change is read at its real length.** The configured `TIMESHEET_TIMEZONE` was
+  reduced to one offset per day, read at local noon, and applied to every instant in it. On a
+  transition day that is wrong at both ends at once: `2026-04-05` in `Pacific/Auckland` is
+  twenty-five hours long, so ActivityWatch was asked for the day an hour late and never handed back
+  the first hour of work, while everything before the change rendered an hour early — a session that
+  started at 00:40 reported starting at 23:40 the night before. Neither failure raised anything; the
+  day just read short. Each instant is now converted at the offset in force for it, so a
+  twenty-five-hour autumn day and a twenty-three-hour spring one are both bounded correctly. A span
+  crossing the change is reported at its elapsed length, which is an hour longer than its two clock
+  times look.
+- Headers name the zone (`zone Pacific/Auckland`) when one is configured, rather than printing a
+  single offset that a transition day does not have. A run passing `--utc-offset` still reads
+  `offset UTC+13`, which is what was typed.
+- **`--utc-offset 99` is refused with a message** instead of raising out of the zone constructor.
+
 ## [0.5.0] - 2026-08-28
 
 ### Added

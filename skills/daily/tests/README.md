@@ -66,6 +66,26 @@ no second date. `.locked()` and `.thin()` exist because those two shapes — a l
 break detector cannot see, and real work whose ratio reads idle — are what the skill gets
 wrong, and they should cost one line to write.
 
+### Dating a day: `offset=` or `zone=`, never both
+
+A day is written at a fixed `offset` (default UTC+12) unless you pass `zone=` an IANA name:
+
+```python
+d = day(dt.date(2026, 4, 5), zone="Pacific/Auckland")   # the day the clocks go back
+```
+
+Use `zone=` when the day is *about* the zone. A day containing a daylight-saving change
+cannot be written at one offset because it does not have one, and it is twenty-five hours
+long (twenty-three in spring). The clock strings still mean the wall clock either way.
+
+Two things follow, and they are the reason this section exists:
+
+- `live_aw(d)` configures `TIMESHEET_TIMEZONE` for a `zone=` day, so the scripts resolve
+  the real thing.
+- Such a day must therefore pass **no** `--utc-offset`. `test_scenarios.dating_args(d)`
+  is what decides that; a scenario that hands the flag over anyway takes the shortcut the
+  scripts are being tested for not needing.
+
 ## Adding a scenario
 
 Define it in `scenarios.py`, run `pytest --regen-golden`, then **read the generated

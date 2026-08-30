@@ -23,6 +23,11 @@ from support import Day, day
 ACME = ("ACME", r"ACME|example-uat|example-dev|sharepoint-access-sync")
 BETA = ("BETA", r"BETA|Field Services")
 
+# The one zone in these fixtures, named rather than repeated: the daylight-saving days are
+# about a zone's transitions, and a scenario that quietly used a different one would prove
+# nothing about the dates the others were chosen for.
+NZ = "Pacific/Auckland"
+
 
 @dataclass
 class Scenario:
@@ -172,12 +177,15 @@ def _idle_day() -> Day:
 
 
 def _daylight_saving_day() -> Day:
-    """The same clock times during NZ daylight saving, read at UTC+13.
+    """The same clock times during summer time, when the zone is an hour off its winter
+    offset (`Pacific/Auckland` is UTC+13 on 2026-01-20, UTC+12 in July).
 
-    Every span is written in local time, so a correct offset reproduces the local
-    rendering exactly; an offset bug shifts the whole day by an hour.
+    Written against the zone, not a number: the run passes no `--utc-offset` at all, so
+    what this pins is that the *configured* zone alone dates the day correctly. Every span
+    is written in local time, so a correct resolution reproduces the local rendering
+    exactly; resolving to the winter offset would shift the whole day by an hour.
     """
-    d = day(dt.date(2026, 1, 20), offset=13.0)
+    d = day(dt.date(2026, 1, 20), zone=NZ)
     d.classify(*ACME)
     d.afk("00:00", "08:30")
     d.active("08:30", "12:00")
@@ -185,6 +193,41 @@ def _daylight_saving_day() -> Day:
     d.active("12:45", "17:15")
     d.afk("17:15", "24:00")
     d.window("08:30", "17:15", "Code.exe", "CasePlugins - ACME")
+    return d
+
+
+def _daylight_saving_transition_day() -> Day:
+    """The day the clocks actually change, which no single offset can describe.
+
+    `Pacific/Auckland` goes back an hour at 03:00 on 2026-04-05, so that local day is
+    twenty-five hours long: 00:40 that morning is UTC+13 and 09:15 is UTC+12. The day
+    therefore runs from 11:00Z on the 4th to 12:00Z on the 5th, and an early session
+    before the change has to render at the offset in force *then*.
+
+    Reading one offset for the whole day — at local noon, which is the winter one — gets
+    both ends wrong at once: the fetch window starts an hour late, so the first hour of
+    work is never asked for, and what does come back renders an hour early, putting a
+    00:40 start at 23:40 the previous evening. Neither failure raises anything; the day
+    just reads short and starts in the wrong place.
+
+    The spans deliberately avoid 02:00-03:00, the hour that happens twice. A wall clock
+    is genuinely ambiguous there and the fixture should not depend on which of the two
+    passes a resolver picks.
+    """
+    d = day(dt.date(2026, 4, 5), zone=NZ)
+    d.classify(*ACME)
+    d.afk("00:00", "00:40")
+    d.active("00:40", "01:45")            # before the change: UTC+13
+    d.afk("01:45", "09:15")               # spans it
+    d.active("09:15", "12:30")            # after the change: UTC+12
+    d.afk("12:30", "13:20")
+    d.active("13:20", "17:00")
+    d.afk("17:00", "24:00")
+    d.window("00:40", "01:45", "Code.exe", "release-cutover - ACME")
+    d.window("09:15", "17:00", "Code.exe", "CasePlugins - ACME")
+    # A web row in the pre-change session, so the zoom's web-watcher path renders a time
+    # on the far side of the transition rather than only the span list.
+    d.web("00:40", "01:45", "ACME release runbook", "https://acme.example/runbook")
     return d
 
 
@@ -233,6 +276,17 @@ SCENARIOS: tuple[Scenario, ...] = (
         build=_daylight_saving_day,
         cover="08:30-12:00,12:45-17:15",
         windows=("08:30-12:00",),
+    ),
+    Scenario(
+        name="daylight-saving-transition-day",
+        doc=_daylight_saving_transition_day.__doc__,
+        build=_daylight_saving_transition_day,
+        cover="00:40-01:45,09:15-12:30,13:20-17:00",
+        windows=("00:40-01:45", "09:15-12:30"),
+        # The zoom is the timeline's own `parse_range` + web-watcher path, and it is aimed
+        # at the pre-change session deliberately: that is the half a single offset put an
+        # hour out, so it is the half worth rendering twice.
+        zoom="00:40-01:45",
     ),
 )
 

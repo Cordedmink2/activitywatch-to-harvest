@@ -84,6 +84,11 @@ def live_aw(monkeypatch):
 
     Extra keyword arguments go through to `support.aw_server` (`settings_status`,
     `last_updated`, ...). Returns the `FakeServer` so a test can inspect `.requests`.
+
+    A day built with `zone=` also configures that zone, because pointing the scripts at a
+    day means pointing them at *when* it happened as much as at where its events are. A
+    zone day exists to exercise the real resolution, so handing it back a `--utc-offset`
+    would leave the thing under test unrun.
     """
     started = []
 
@@ -92,6 +97,8 @@ def live_aw(monkeypatch):
         srv.__enter__()
         started.append(srv)
         monkeypatch.setattr(aw_client, "AW_BASE", f"{srv.base}/api/0")
+        if d.zone_name:
+            monkeypatch.setenv("TIMESHEET_TIMEZONE", d.zone_name)
         return srv
 
     yield _start

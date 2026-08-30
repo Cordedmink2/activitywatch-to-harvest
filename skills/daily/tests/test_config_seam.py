@@ -222,7 +222,7 @@ def seam_readers() -> set[str]:
 
     Naming a setting is allowed at one remove: `afk_blocks` documents
     `TIMESHEET_TIMEZONE` in its `--utc-offset` help and never resolves it, because
-    `aw_client.resolve_utc_offset` does — through `skill_config`, like everything else.
+    `aw_client.resolve_zone` does — through `skill_config`, like everything else.
     Requiring the literal import in *every* script that mentions a key would push the two
     scripts back to resolving the zone apiece, which is the duplication `aw_client` exists
     to prevent.

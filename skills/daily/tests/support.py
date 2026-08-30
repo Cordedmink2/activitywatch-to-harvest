@@ -28,6 +28,7 @@ import json
 import sys
 import threading
 import urllib.parse
+from zoneinfo import ZoneInfo
 
 # Every key the scripts resolve through `skill_config.setting()`. One list, because two
 # tests want it for opposite reasons and a key in one but not the other is a silent hole:
@@ -83,6 +84,11 @@ def local_midnight_utc(date: dt.date, offset: float) -> dt.datetime:
             - dt.timedelta(hours=offset))
 
 
+def fixed(offset: float) -> dt.tzinfo:
+    """A zone that is the same offset all year — what `--utc-offset` means."""
+    return dt.timezone(dt.timedelta(hours=offset))
+
+
 def iso_z(moment: dt.datetime) -> str:
     """AW's own wire format: UTC with a `Z` suffix and no sub-second part."""
     return moment.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -94,12 +100,20 @@ class Day:
     Every `add_*` returns self, so a day reads top-to-bottom in the order it happened:
 
         day().afk("07:00", "08:15").active("08:15", "10:57").afk("10:57", "11:45")
+
+    Written at a fixed `offset` by default. Pass `zone=` an IANA name instead when the day
+    is *about* the zone — a day containing a daylight-saving change cannot be written at
+    one offset, because it does not have one. `live_aw` configures a zone day's
+    `TIMESHEET_TIMEZONE` for the scripts, so such a day needs no `--utc-offset` and the
+    resolution under test is the real one.
     """
 
     def __init__(self, date: dt.date = DEFAULT_DATE, offset: float = DEFAULT_OFFSET,
-                 host: str = DEFAULT_HOST):
+                 host: str = DEFAULT_HOST, zone: str | None = None):
         self.date = date
         self.offset = offset
+        self.zone_name = zone
+        self.tz = ZoneInfo(zone) if zone else fixed(offset)
         self.host = host
         self._afk: list[tuple[str, str, str]] = []
         self._window: list[tuple[str, str, str, str]] = []
@@ -109,8 +123,16 @@ class Day:
     # -- absolute time helpers ---------------------------------------------------------
 
     def at(self, local: str) -> dt.datetime:
-        """The UTC instant of a local `HH:MM` on this day — for asserting against spans."""
-        return local_midnight_utc(self.date, self.offset) + parse_local(local)
+        """The UTC instant of a local `HH:MM` on this day — for asserting against spans.
+
+        The wall clock is read first and localised second, so `'09:15'` is a quarter past
+        nine *whatever the offset was by then*. Adding the delta to a localised midnight
+        instead would be absolute-time arithmetic, and on a 25-hour day every time after
+        the change would land an hour early — the DSL would then reproduce exactly the
+        bug the day was written to catch.
+        """
+        naive = dt.datetime.combine(self.date, dt.time(0, 0)) + parse_local(local)
+        return naive.replace(tzinfo=self.tz).astimezone(dt.timezone.utc)
 
     # -- building ----------------------------------------------------------------------
 
@@ -217,8 +239,8 @@ class Day:
 
 
 def day(date: dt.date = DEFAULT_DATE, offset: float = DEFAULT_OFFSET,
-        host: str = DEFAULT_HOST) -> Day:
-    return Day(date, offset, host)
+        host: str = DEFAULT_HOST, zone: str | None = None) -> Day:
+    return Day(date, offset, host, zone)
 
 
 def with_heartbeats(events: list[dict], steps: int = 3) -> list[dict]:

@@ -27,10 +27,10 @@ Usage:
   python scripts/afk_blocks.py 2026-05-28 --json
   python scripts/afk_blocks.py 2026-05-28 --utc-offset 13   # this run only
 
-The day's boundaries come from the configured TIMESHEET_TIMEZONE, read at the
-date being analysed, so a daylight-saving change needs nothing from the user.
---utc-offset overrides it for one run. There is no assumed zone: see
-aw_client.resolve_utc_offset for why.
+The day's boundaries come from the configured TIMESHEET_TIMEZONE, converted at
+each instant rather than once for the day, so the day the clocks change is read
+at its true length and needs nothing from the user. --utc-offset overrides it
+for one run. There is no assumed zone: see aw_client.resolve_zone for why.
 
 The judgement constants below (--solid, --blip-gap, --min-uncovered, the two
 bands) are defaults, not policy. They are a person's working style, so they
@@ -43,8 +43,8 @@ import json
 import sys
 
 from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
-                       parse_local_time, parse_range, parse_ts, pick_bucket,
-                       resolve_utc_offset, utc_bounds)
+                       local_clock, parse_local_time, parse_range, parse_ts,
+                       pick_bucket, resolve_zone, utc_bounds, zone_label)
 
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
 
@@ -248,10 +248,9 @@ def main():
 
     # After the date parse, because resolving a zone for an unparseable date would report
     # the configuration problem in front of the typo that is actually in the way.
-    utc_offset = resolve_utc_offset(args.utc_offset, local_date)
-    offset = dt.timedelta(hours=utc_offset)
+    zone = resolve_zone(args.utc_offset)
 
-    start_utc, end_utc = utc_bounds(local_date, offset)
+    start_utc, end_utc = utc_bounds(local_date, zone)
 
     try:
         afk_bucket, win_bucket = discover_buckets()
@@ -265,7 +264,7 @@ def main():
     afk_events = dedupe_heartbeats(fetch_events(afk_bucket, start_utc, end_utc))
 
     def to_local(d):
-        return (d + offset).strftime("%H:%M:%S")
+        return local_clock(d, zone)
 
     spans = insert_data_gaps(to_spans(afk_events), args.afk_threshold)
     bounds = work_bounds(spans, args.solid, args.blip_gap)
@@ -307,7 +306,7 @@ def main():
     window_report = None
     if args.window:
         try:
-            ws, we = parse_range(args.window, local_date, offset)
+            ws, we = parse_range(args.window, local_date, zone)
         except Exception as e:
             print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM (seconds optional): {e}",
                   file=sys.stderr)
@@ -337,7 +336,7 @@ def main():
                 part = part.strip()
                 if not part:
                     continue
-                prop.append(parse_range(part, local_date, offset))
+                prop.append(parse_range(part, local_date, zone))
         except Exception as e:
             print(f"ERR bad --cover '{args.cover}', expected HH:MM-HH:MM,... (seconds optional): {e}",
                   file=sys.stderr)
@@ -387,7 +386,7 @@ def main():
     # --cover wants the whole skeleton; a bare --window does not.
     focused = bool(args.window) and not args.cover
 
-    print(f"AFK analysis for {args.date}  (offset UTC{utc_offset:+g}, break>={args.afk_threshold}s)")
+    print(f"AFK analysis for {args.date}  ({zone_label(zone)}, break>={args.afk_threshold}s)")
     print(f"  bucket:      {afk_bucket}")
     print(f"  work start:  {result['work_start']}")
     print(f"  WORK END:    {result['work_end']}   <- end of day; do not bill past this")
