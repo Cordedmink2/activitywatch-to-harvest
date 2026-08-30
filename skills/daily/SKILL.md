@@ -215,7 +215,7 @@ Then show:
 >
 > Proceed? (yes / no / edit block <n>)"
 
-**Do not post without an explicit "yes" or equivalent.** Edits loop back to Step 6.
+**An explicit "yes" or equivalent is what earns `--confirm` in Step 9** — without that flag the posting scripts write nothing and print what they would have posted instead, so anything short of a yes simply leaves it off. Edits loop back to Step 6.
 
 ### Step 9 — Post to Harvest
 
@@ -225,13 +225,14 @@ For each confirmed block, serially (so the user can interrupt):
 python scripts/harvest_post.py <project_id> <task_id> <YYYY-MM-DD> <HH:MM> <HH:MM> '<notes>'
 ```
 
+- **Append ` --confirm` to that command once Step 8 has the user's yes.** The template leaves it off on purpose: without the flag the script prints `WOULD POST <body>` and exits 0 having created nothing, so a command copied straight from here bills nothing until someone adds it deliberately. A run that comes back `WOULD POST` has *not* billed the block — re-run it with the flag, and never record it as posted.
 - Times: 24h (`16:05`) or 12h (`4:05pm`) both accepted.
 - **Single-quote the notes** — money amounts (`$5k`), backticks, and shell-shaped substrings get mangled otherwise.
 - Success prints `OK <entry_id>` — capture it for Step 10. Failure prints `ERR <status> <body>` and exits non-zero — stop and surface, don't retry silently.
 - The script always sends `started_time`+`ended_time`, never bare `hours`: in a start/end-time Harvest account, bare `hours` starts a running *timer*. Passing times works in either account mode.
 - After each post log: `✓ Posted: <hours> hrs · <project.code> · <task>`.
 
-Fix a wrong entry with `python scripts/harvest_patch.py <entry_id> [--start HH:MM] [--end HH:MM] [--notes "..."] [--hours N] [--project-id N] [--task-id N] [--date YYYY-MM-DD]` (≥1 flag; same OK/ERR convention).
+Fix a wrong entry with `python scripts/harvest_patch.py <entry_id> [--start HH:MM] [--end HH:MM] [--notes "..."] [--hours N] [--project-id N] [--task-id N] [--date YYYY-MM-DD] [--confirm]` (≥1 field flag; same OK/ERR convention, same gate — it previews as `WOULD PATCH <entry_id> <body>` until `--confirm` is added). A patch overwrites a line the user already approved, so it needs its own yes; Step 8's covers the entries it listed, not a later correction to one.
 
 **Block belongs to brand-new client work with no Harvest project yet** → follow `references/new-client-work.md` (create the backend case, post other blocks now, bill the deferred one when the synced project appears).
 
@@ -267,7 +268,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 
 ## Non-negotiables
 
-- **No Harvest write without explicit confirmation.**
+- **No Harvest write without explicit confirmation.** `harvest_post.py` and `harvest_patch.py` write only when passed `--confirm`. Never type that flag on a yes you don't have — a posted entry is not recoverable from your side.
 - **Honor `.context.md` exclusions** — personal browsing, AFK breaks, personal home admin are NEVER billable.
 - **Don't fabricate confidence.** A block that could be 2–3 clients gets surfaced, not arbitrated.
 - **Harvest notes are client-readable.** They go out on invoices: describe *what part of the client's project* was worked on, never the internal mechanism, file names, internal app names, or chat partners. If a term wouldn't appear in the SOW or on the client's own board, it doesn't go in the note. Tickets (`ACM2232S`) and recurring meeting names are fine. The markdown timesheet stays internal and can be granular. Style defaults: the rubric's "Writing the Harvest note" section; the user's own examples in `.context.md` "How I bill".
@@ -292,7 +293,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `scripts/activity_timeline.py` — categorized window timeline + rollup; `--window HH:MM-HH:MM` zoom folds in web watchers; flags `uncategorized`/`!MULTI`; `--utc-offset`, `--json`, `--noise-floor`, `--gap-fold`
 - `scripts/aw_client.py` — shared ActivityWatch REST helpers behind `afk_blocks.py` and `activity_timeline.py`, plus the server address (`TIMESHEET_ACTIVITY_URL`) and the timezone both need — including the local-clock conversions, which apply the zone at each instant rather than once for the day
 - `scripts/harvest_lookup.py` — project/task id lookup across ALL catalog pages by code, project name **or client name**, live-entry fallback for archived projects (a miss after the fallback = genuinely unknown project; a cache refresh won't help); `--task`, `--mcp-dir`, `--json`, `--no-live`, `--days`
-- `scripts/harvest_post.py` / `harvest_patch.py` / `harvest_list.py` — create / update / list time entries (`OK <id>` / `ERR …`)
+- `scripts/harvest_post.py` / `harvest_patch.py` / `harvest_list.py` — create / update / list time entries (`OK <id>` / `ERR …`). The two that write take `--confirm` and do nothing without it, printing `WOULD POST` / `WOULD PATCH` and the body instead
 - `scripts/skill_config.py` — the seam every script reads a setting through; its docstring carries the flag / `.env` / environment / default precedence and the reasoning behind it
 - `scripts/harvest_client.py` — shared Harvest API helper + the credentials contract
 - `scripts/refresh_catalogs.py` — refresh `.mcp/harvest_assignments*.json` + incident catalog; `wait_for_project(<code>)` for new synced projects

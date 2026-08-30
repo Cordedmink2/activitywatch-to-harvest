@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The confirmation gate is part of the invocation.** `harvest_post.py` and `harvest_patch.py` now
+  write only when passed `--confirm`; without it they print the exact body they would have sent and
+  exit 0, having created or changed nothing. The gate was previously an instruction only, backed by
+  the `disable-model-invocation` frontmatter field — which Claude Code honours and several other
+  Agent Skills harnesses silently drop. Where the field is ignored, the flag is what stops a model
+  that was never asked to bill from writing to a client-facing timesheet. A run that forgets the flag
+  gets a preview, which is a useful answer rather than an error, and the previewed body is the
+  request body itself so it cannot drift from what a confirmed run sends. The existing guards still
+  run first: a reversed range is an error, not a preview.
+
 ### Fixed
 - **The day the clocks change is read at its real length.** The configured `TIMESHEET_TIMEZONE` was
   reduced to one offset per day, read at local noon, and applied to every instant in it. On a

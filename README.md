@@ -362,7 +362,10 @@ uncertain, and asks before posting anything to Harvest.
   sensitive, so Claude Code holds it in your OS keychain — it is never written into the plugin
   folder or into `settings.json`. On a copied-in install it lives in a `.env`, which is git-ignored
   at both the repo and skill level: don't commit it, and don't share the skill folder with it inside.
-- The skill **never writes to Harvest without explicit confirmation.**
+- The skill **never writes to Harvest without explicit confirmation**, and that is enforced rather
+  than only promised: the two scripts that create or amend a time entry write nothing unless passed
+  `--confirm`, and print what they would have sent instead. So an agent that reached them without
+  being asked to bill still bills nothing.
 - Screenshots stay **local** on your machine (`~/Pictures/WorkScreenshots/`); nothing is uploaded.
 - Your client list, colleagues, and billing conventions live in `Timesheets/.context.md`, which is
   git-ignored — keep it that way.

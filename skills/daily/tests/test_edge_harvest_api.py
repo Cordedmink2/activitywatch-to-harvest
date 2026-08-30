@@ -8,6 +8,11 @@ that says `hours` instead of `started_time` still prints `OK 12345`.
 No `subprocess` anywhere. `run_cli` runs `main()` in-process so conftest's hermeticity
 fixture still holds; a subprocess would read the real `.env` and post real time entries
 to a client's timesheet.
+
+Every invocation here carries `--confirm`, including the ones asserting a refusal. The
+confirmation gate would block all of them on its own, so a guard test run without the flag
+would pass whether or not the guard it names still exists. The gate's own contract is in
+`test_cli_contracts.py`.
 """
 from __future__ import annotations
 
@@ -27,8 +32,10 @@ import harvest_post as hpost
 import skill_config
 from support import run_cli
 
-POST_ARGS = ["48084036", "20753151", "2026-08-12", "09:00", "10:30", "Wrote the edge tests"]
+POST_ARGS = ["48084036", "20753151", "2026-08-12", "09:00", "10:30", "Wrote the edge tests",
+             "--confirm"]
 ENTRY_ID = "2988748904"
+CONFIRM = "--confirm"
 
 
 # ======================================================================================
@@ -68,7 +75,8 @@ def test_post_passes_12_hour_times_through_verbatim(live_harvest):
     typed. Normalising to 24h here would be a second, silent parser between the user and
     Harvest — and the one place the two disagree is exactly where a wrong entry lands."""
     srv = live_harvest({("POST", "/time_entries"): (201, {"id": 3002})})
-    r = run_cli(hpost, ["48084036", "20753151", "2026-08-12", "8:15am", "12:21pm", "n"])
+    r = run_cli(hpost, ["48084036", "20753151", "2026-08-12", "8:15am", "12:21pm", "n",
+                        CONFIRM])
     assert r.code == 0
 
     body = srv.sent("POST", "/time_entries")[0]["body"]
@@ -92,7 +100,8 @@ def test_post_sends_notes_through_the_json_body_byte_for_byte(live_harvest):
     lands on the invoice line a client reads — and nobody re-reads notes after posting."""
     notes = "Reviewed $5k variation with Renée — naïve estimate\nfollow-up: $12.5k cap"
     srv = live_harvest({("POST", "/time_entries"): (201, {"id": 3004})})
-    r = run_cli(hpost, ["48084036", "20753151", "2026-08-12", "09:00", "10:30", notes])
+    r = run_cli(hpost, ["48084036", "20753151", "2026-08-12", "09:00", "10:30", notes,
+                        CONFIRM])
     assert r.code == 0
     assert srv.sent("POST", "/time_entries")[0]["body"]["notes"] == notes
 
@@ -241,7 +250,7 @@ def test_patch_sends_only_the_fields_whose_flags_were_passed(live_harvest):
     a defaulted `hours`, an echoed `spent_date` — overwrites a field on the server that
     the user never asked to touch, and there is no undo on a submitted timesheet."""
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
-    r = run_cli(hp, [ENTRY_ID, "--notes", "Reworded for the client"])
+    r = run_cli(hp, [ENTRY_ID, "--notes", "Reworded for the client", CONFIRM])
     assert r.code == 0
     assert r.lines == [f"OK {ENTRY_ID}"]
 
@@ -250,7 +259,7 @@ def test_patch_sends_only_the_fields_whose_flags_were_passed(live_harvest):
 
 def test_patch_sends_both_times_and_nothing_else_when_shifting_a_block(live_harvest):
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
-    r = run_cli(hp, [ENTRY_ID, "--start", "09:15", "--end", "10:45"])
+    r = run_cli(hp, [ENTRY_ID, "--start", "09:15", "--end", "10:45", CONFIRM])
     assert r.code == 0
 
     body = srv.sent("PATCH", "/time_entries")[0]["body"]
@@ -264,7 +273,7 @@ def test_patch_accepts_hours_on_its_own(live_harvest):
     future "let's just block the footgun" edit is a conscious decision, not a surprise
     for whoever is on a duration-mode account."""
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
-    r = run_cli(hp, [ENTRY_ID, "--hours", "1.5"])
+    r = run_cli(hp, [ENTRY_ID, "--hours", "1.5", CONFIRM])
     assert r.code == 0
 
     assert srv.sent("PATCH", "/time_entries")[0]["body"] == {"hours": 1.5}
@@ -281,7 +290,7 @@ def test_patch_refuses_the_same_flag_given_twice(live_harvest):
     below is that nothing reached the wire, not merely that the exit code was non-zero.
     """
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
-    r = run_cli(hp, [ENTRY_ID, "--notes", "first draft", "--notes", "second draft"])
+    r = run_cli(hp, [ENTRY_ID, "--notes", "first draft", "--notes", "second draft", CONFIRM])
 
     assert r.code != 0
     assert srv.sent("PATCH", "/time_entries") == [], "nothing may be written on ambiguous input"
@@ -291,7 +300,7 @@ def test_patch_rejects_an_unknown_flag_by_name(live_harvest):
     """A typo like `--note` would otherwise be swallowed or, worse, parsed as an entry id.
     Naming the offending flag is what makes the message actionable."""
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
-    r = run_cli(hp, [ENTRY_ID, "--note", "typo"])
+    r = run_cli(hp, [ENTRY_ID, "--note", "typo", CONFIRM])
 
     assert r.code != 0
     assert "Unknown flag: --note" in r.err
@@ -301,9 +310,13 @@ def test_patch_rejects_an_unknown_flag_by_name(live_harvest):
 
 def test_patch_rejects_a_flag_with_no_value(live_harvest):
     """A shell that ate an empty quoted argument leaves a trailing bare flag. Reading past
-    the end of argv is an IndexError traceback; the contract is a named error."""
+    the end of argv is an IndexError traceback; the contract is a named error.
+
+    `--confirm` goes first here, because `--notes` has to stay the *last* argument for
+    there to be nothing after it to read — put the gate after it and `--notes` swallows
+    the flag as its value, which is a different test entirely."""
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
-    r = run_cli(hp, [ENTRY_ID, "--notes"])
+    r = run_cli(hp, [ENTRY_ID, CONFIRM, "--notes"])
 
     assert r.code != 0
     assert "Missing value for --notes" in r.err
@@ -314,7 +327,7 @@ def test_patch_rejects_an_entry_id_with_no_flags_at_all(live_harvest):
     """An empty PATCH body is a no-op that Harvest answers 200 to. Exiting 0 on it tells
     the caller the edit landed when nothing was even attempted."""
     srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
-    r = run_cli(hp, [ENTRY_ID])
+    r = run_cli(hp, [ENTRY_ID, CONFIRM])
 
     assert r.code != 0
     assert "at least one field" in r.err
@@ -329,7 +342,7 @@ def test_patch_passes_a_non_numeric_entry_id_straight_through_to_the_url(live_ha
     A client-side numeric check would add a second failure mode without removing this one.
     """
     srv = live_harvest({("PATCH", "/time_entries/not-an-id"): (404, {"message": "Not Found"})})
-    r = run_cli(hp, ["not-an-id", "--notes", "x"])
+    r = run_cli(hp, ["not-an-id", "--notes", "x", CONFIRM])
 
     assert srv.sent("PATCH", "/time_entries")[0]["path"] == "/v2/time_entries/not-an-id"
     assert r.code == 1

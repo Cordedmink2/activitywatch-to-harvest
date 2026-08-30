@@ -848,6 +848,66 @@ transition, and no real Harvest entry posted on such a day — the `harvest_post
 consequence above is read off its argument handling, not observed. The split procedure in
 `output-format.md` is arithmetic that has been checked twice, not a booking anyone has made.
 
+### The confirmation gate is in the invocation, not only the prose
+**Rung 3.** 2026-08-31, issue #9. `harvest_post.py` and `harvest_patch.py` write only when
+passed `--confirm`. Without it they print the body they would have sent and exit 0.
+
+**Why the gate is duplicated at all.** `SKILL.md`'s frontmatter carries
+`disable-model-invocation: true`, which is what stops a model opening a billing run
+unprompted. Claude Code honours it; several other Agent Skills harnesses drop it, and the
+generated export for those harnesses is issue #11. Where the field is ignored, nothing but
+the flag stands between a model that wandered into `scripts/` and a time entry on a
+client-facing timesheet. So this is deliberate duplication of the kind
+`changing-agent-instructions` calls load-bearing: the prose in Step 8 owns *when* the user
+is asked, the flag owns *what happens if nobody was*.
+
+**Five decisions worth not re-litigating.**
+
+*A missing flag is a success, not an error.* Exit 1 would be the wrong answer twice over —
+it tells a model reading stdout that the tool is broken, which is the whole reason the
+`ERR` contract exists, and it throws away a preview that answers "what would this post?"
+better than any error could.
+
+*The preview prints the request body itself, not a rendering of it.* A preview that
+describes the entry in its own words is a second description that can drift from the
+first, and the user is then approving the paraphrase. `test_cli_contracts.py` runs the same
+arguments twice — once bare, once with the flag — and asserts the previewed JSON equals the
+body the confirmed run put on the wire, so the two cannot come apart.
+
+*The existing guards run before the gate.* A reversed range is an `ERR` whether or not the
+flag was passed. Previewing an unpostable command would invite a re-run with the flag, and
+the guard would then fire on the second attempt with the user having read a preview of an
+entry that was never postable.
+
+*`--confirm` is not a field in `harvest_patch`.* Counted as one it would make
+`harvest_patch.py <id> --confirm` an empty PATCH, which Harvest answers 200 to — the caller
+told an edit landed when none was described. It is also exempt from the repeated-flag
+guard: that guard exists because a repeated *value* flag silently last-wins.
+
+*The documented command does not hand the flag over ready-typed.* Found by the review
+subagent on the first draft, which put `--confirm` inline in Step 9's copy-paste template.
+That makes writing the default action of the template, so a model that skipped Step 8 —
+the case the flag exists to catch — posts anyway by pasting what the doc gave it. Step 9
+now shows the command bare and the bullet under it says to append the flag once the yes is
+in hand, which costs the correct path nothing: a model following the bullet still posts in
+one invocation. `test_references.py` pins it, and distinguishes a bare `--confirm` on a
+command from a `[--confirm]` in a list of a script's optional flags.
+
+**One property found while writing the tests, and kept.** `harvest_patch.py <id> --notes
+--confirm` sets the notes to the literal string `--confirm` and does **not** confirm, so it
+previews. A value flag consuming whatever follows it is pre-existing behaviour, and this
+gate fails closed under it.
+
+**Consequence for the older suite.** Every invocation in `test_edge_harvest_api.py` now
+carries the flag, refusals included. Without it the gate would block those runs on its own
+and each guard test would pass whether or not the guard it names still existed.
+
+**What was not measured.** No agent has been watched reaching these scripts unprompted on
+a harness that drops the frontmatter field — that is the failure the flag is for, and it is
+reasoned, not observed. Nothing has been posted to a real Harvest account through the flag
+either. The evidence is the argument handling and the recorded request bodies, as
+everywhere else in this file.
+
 ## Script defects
 
 Found while building the scenario/contract suite, 2026-08-14. All **rung 1** — each was

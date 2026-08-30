@@ -17,15 +17,25 @@ Usage:
   python harvest_patch.py ENTRY_ID [--start HH:MM] [--end HH:MM]
                                    [--notes '...'] [--hours N]
                                    [--project-id N] [--task-id N]
-                                   [--date YYYY-MM-DD]
+                                   [--date YYYY-MM-DD] [--confirm]
 
-At least one flag must be provided.
+At least one field flag must be provided.
+
+**`--confirm` is the confirmation gate**, and is not a field: without it nothing
+is written, and the script prints the entry id and the exact body it would have
+sent, then exits 0. The gate matters more here than on a create — a patch
+overwrites a line that has already been reviewed and may already have been
+invoiced, and Harvest has no undo. See `harvest_post.py` for why the gate lives
+in the invocation rather than only in SKILL.md's prose.
+
 Use SINGLE quotes around --notes values to avoid shell $variable interpolation
 mangling money references and other dollar-prefixed substrings.
 
 Success: prints `OK <entry_id>` and exits 0.
+Preview: prints `WOULD PATCH <entry_id> <body>` and exits 0 — nothing changed.
 Failure: prints `ERR <status> <body[:200]>` to stderr and exits 1.
 """
+import json
 import os
 import sys
 
@@ -48,21 +58,32 @@ FLAGS = {
     "--date": ("spent_date", str),
 }
 
+CONFIRM_FLAG = "--confirm"
+
 USAGE = (
     "Usage: harvest_patch.py ENTRY_ID "
     "[--start HH:MM] [--end HH:MM] [--notes '...'] "
-    "[--hours N] [--project-id N] [--task-id N] [--date YYYY-MM-DD]"
+    f"[--hours N] [--project-id N] [--task-id N] [--date YYYY-MM-DD] [{CONFIRM_FLAG}]\n"
+    f"Without {CONFIRM_FLAG} the change is previewed, not applied."
 )
 
 
-def parse_args(argv: list[str]) -> tuple[str, dict]:
+def parse_args(argv: list[str]) -> tuple[str, dict, bool]:
     if len(argv) < 2:
         sys.exit(USAGE)
     entry_id = argv[1]
     body: dict = {}
+    confirmed = False
     i = 2
     while i < len(argv):
         flag = argv[i]
+        if flag == CONFIRM_FLAG:
+            # Deliberately not subject to the repeated-flag guard below. That guard exists
+            # because a repeated *value* flag silently last-wins; a boolean repeated says
+            # the same thing twice.
+            confirmed = True
+            i += 1
+            continue
         if flag not in FLAGS:
             sys.exit(f"Unknown flag: {flag}\n{USAGE}")
         if i + 1 >= len(argv):
@@ -82,11 +103,11 @@ def parse_args(argv: list[str]) -> tuple[str, dict]:
         i += 2
     if not body:
         sys.exit("Provide at least one field to update.")
-    return entry_id, body
+    return entry_id, body, confirmed
 
 
 def main() -> None:
-    entry_id, body = parse_args(sys.argv)
+    entry_id, body, confirmed = parse_args(sys.argv)
 
     if "started_time" in body and "ended_time" in body:
         try:
@@ -102,6 +123,12 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    if not confirmed:
+        # The body itself, so what is previewed and what would be sent cannot drift apart.
+        print(f"WOULD PATCH {entry_id} {json.dumps(body, ensure_ascii=False)}")
+        print(f"Nothing was changed. Re-run with {CONFIRM_FLAG} to apply it.")
+        return
 
     try:
         resp = request("PATCH", f"/time_entries/{entry_id}", body=body)
