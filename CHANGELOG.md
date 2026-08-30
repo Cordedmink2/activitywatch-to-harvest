@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   twenty-five-hour autumn day and a twenty-three-hour spring one are both bounded correctly. A span
   crossing the change is reported at its elapsed length, which is an hour longer than its two clock
   times look.
+- **The hour the clocks go back no longer prints two instants as one time.** On a fall-back day the
+  local clock repeats an hour, and both passes rendered `02:30:00`: an hour-long break across the
+  change came out as `02:30:00-02:30:00`, two active spans an hour apart abutted, and the timeline's
+  web rows — sorted on the rendered string — put that hour's browsing in the wrong order. The second
+  pass is now suffixed `*` (`02:30:00*`), and `--window` / `--cover` read the suffix back, so a block
+  lifted out of one script's output names the same instant when handed to another. Unmarked still
+  means the first pass, and no other time on any other day changed. Web rows sort on the instant.
+  A marker on a time the clock reads only once (`09:00*`, or `03:00*` that same morning) is refused
+  by name rather than quietly ignored. Before it reaches Harvest the marker must be stripped, and an
+  entry must not span the change — `references/output-format.md` §Conventions has the split, which is
+  not where it looks: the transition instant is `02:00*`, and `03:00` is an hour after it.
 - Headers name the zone (`zone Pacific/Auckland`) when one is configured, rather than printing a
   single offset that a transition day does not have. A run passing `--utc-offset` still reads
   `offset UTC+13`, which is what was typed.

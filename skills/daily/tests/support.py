@@ -43,6 +43,12 @@ SETTING_KEYS = (
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, NamedTuple
 
+# The one spelling of the repeated-hour marker, taken from the script that renders it.
+# `conftest` puts `scripts/` on `sys.path` before importing this module, which is the only
+# way it is ever imported. Spelling the character again here would let a fixture and the
+# output it is compared against disagree without anything failing.
+from aw_client import SECOND_PASS_MARK
+
 # --------------------------------------------------------------------------------------
 # Local-time DSL
 # --------------------------------------------------------------------------------------
@@ -56,13 +62,44 @@ DEFAULT_OFFSET = 12.0
 DEFAULT_HOST = "TESTHOST"
 
 
+def second_pass(s: str) -> bool:
+    """Whether a DSL time carries the marker naming the second pass over a repeated hour.
+
+    Imported from the script rather than spelled again here, so a fixture is written in
+    the notation its golden comes back in *by construction* — a second copy of the
+    character would let the DSL and the output drift into disagreeing silently.
+    """
+    return s.strip().endswith(SECOND_PASS_MARK)
+
+
+def _reject_second_pass(builder: str, *times: str) -> None:
+    """`thin()` and `locked()` slice a range into pieces with `_fmt()`, which writes a
+    bare `HH:MM:SS` and so cannot carry the marker. Accepting one would silently place
+    every generated piece in the *first* pass — a fixture that looks like it straddles the
+    change and does not. Refuse it instead; write the pieces out with `active`/`afk`.
+    """
+    for t in times:
+        if second_pass(t):
+            raise ValueError(
+                f"{builder}() cannot write the second pass ('{t}'): it slices the range "
+                f"into generated pieces that lose the marker. Write them as explicit "
+                f"active()/afk() calls.")
+
+
 def parse_local(s: str) -> dt.timedelta:
     """`'HH:MM'` / `'HH:MM:SS'` as an offset from local midnight.
 
     Hours are not capped at 23: `'25:30'` means 01:30 the next morning, which is how
     an overnight session is written without juggling two dates. A leading `-` reaches
     back into the previous evening (`'-00:45'` = 23:15 yesterday).
+
+    A trailing marker is stripped here and read by `second_pass()`: it says *which* of two
+    identical wall clocks is meant, which is a question about the zone rather than about
+    the distance from midnight this returns.
     """
+    s = s.strip()
+    if s.endswith(SECOND_PASS_MARK):
+        s = s[:-len(SECOND_PASS_MARK)].strip()
     neg = s.startswith("-")
     parts = [int(p) for p in s.lstrip("-").split(":")]
     while len(parts) < 3:
@@ -130,9 +167,13 @@ class Day:
         instead would be absolute-time arithmetic, and on a 25-hour day every time after
         the change would land an hour early — the DSL would then reproduce exactly the
         bug the day was written to catch.
+
+        A trailing `*` asks for the second pass over the hour a fall-back repeats, so a
+        day can put events on both sides of a change that leaves the clock unmoved.
         """
         naive = dt.datetime.combine(self.date, dt.time(0, 0)) + parse_local(local)
-        return naive.replace(tzinfo=self.tz).astimezone(dt.timezone.utc)
+        return (naive.replace(tzinfo=self.tz, fold=int(second_pass(local)))
+                .astimezone(dt.timezone.utc))
 
     # -- building ----------------------------------------------------------------------
 
@@ -154,6 +195,7 @@ class Day:
         That combination is the skill's hardest judgement call, so scenarios need to be
         able to write it in one line.
         """
+        _reject_second_pass("thin", start, end)
         t, stop = parse_local(start), parse_local(end)
         step_a, step_i = dt.timedelta(minutes=active_min), dt.timedelta(minutes=idle_min)
         while t < stop:
@@ -175,6 +217,7 @@ class Day:
         `afk_blocks` reports `breaks: (none)` for a stretch that was plainly a break, and
         it surfaces only as a sub-0.4 `active_ratio` window.
         """
+        _reject_second_pass("locked", start, end)
         t, stop = parse_local(start), parse_local(end)
         step = dt.timedelta(minutes=chunk_min)
         while t < stop:

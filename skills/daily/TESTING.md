@@ -760,7 +760,8 @@ reported at its *elapsed* length: 01:45–09:15 that morning is 510 minutes, an 
 than the two clock times suggest, because the hour really passed and the AFK watcher really
 recorded it. And the hour a fall-back repeats is genuinely ambiguous on the clock, so a
 `--window` naming a time inside it gets the first pass over that hour — a convention, held
-in one place (`to_utc`) so both scripts hold the same one.
+in one place (`to_utc`) so both scripts hold the same one. That second consequence was the
+review's finding and became issue #17; the entry below settles it.
 
 **Cost, accepted.** Headers name the zone (`zone Pacific/Auckland`) where they used to print
 an offset, because on a transition day there is no single offset to print and printing one
@@ -769,6 +770,83 @@ would be a claim the run is not making. A `--utc-offset` run still reads `offset
 **What was not measured.** No real ActivityWatch instance was read across a real transition
 — the transition day is a synthetic fixture, like every other scenario here, and what it
 proves is that the arithmetic is zone-correct, not that AW's own event stream is.
+
+### Two instants an hour apart printed the same clock time
+**Rung 2.** 2026-08-31. Issue #17, raised by the review on #8 and carried here from
+`## Open gaps`.
+
+Rung 2 rather than 1 deliberately: no run was ever watched failing on a real fall-back day.
+The reversal was reproduced in a test before it was fixed — a genuine assertion diff, not an
+`AttributeError` — but that test was written from the review's reasoning, and every rung-1
+entry in this file is a production observation. The grade is the weaker claim.
+
+`local_clock()` rendered `HH:MM:SS` with no date, so on `2026-04-05` in `Pacific/Auckland`
+the instants `13:30Z` and `14:30Z` — an hour apart, one either side of the change — both
+printed `02:30:00`. The dateless clock is the established output shape and the reason an
+overnight day ends at `01:12:00`, so #8 left it alone deliberately; but #8 is what made the
+fall-back hour a supported case, and one string for two instants is not a rendering nicety
+once someone bills from it.
+
+**Three things it cost, all in one hour.** A break across the change rendered
+`02:30:00-02:30:00` — sixty minutes shown as a zero-length string, and a range
+`parse_range` would then refuse to read back as reversed. Two active spans an hour apart
+abutted on the clock. And `activity_timeline.py` sorted its web rows *by the rendered
+string*, so a tab opened at 02:40 on the first pass sorted after one opened at 02:10 on the
+second, telling the model the day ran the other way round.
+
+**Settled by marking the second pass, not by widening the clock.** `local_clock()` suffixes
+it `*`; every other time on every other day is byte-identical, which is why the six goldens
+that touch no transition regenerated unchanged. The marker is exact rather than decorative:
+`parse_local_time()` reads it back into the returned time's `fold`, which `to_utc()` already
+honoured, so a time lifted out of one script's output names the same instant when handed to
+another's `--window` or `--cover`. Unmarked still means the first pass, so nothing written
+before this changed meaning. The web-row sort moved to the instant.
+
+**The scenario is the round-trip test.** `fall-back-repeated-hour-day` works either side of
+the hour with an hour-long break inside it, and its `cover` and `windows` probes are written
+in the notation the golden comes back in — `02:30*-04:15` covers 165.0 of 165.0 active
+minutes, and `02:30-02:30*` is a 60-minute window at ratio 0.0 that was previously
+unwritable, because both ends resolved to one instant.
+
+**The DSL had to learn it first.** `Day.at()` localised with `fold=0`, so no fixture could
+place an event in the second pass at all — the gap could not have been closed without also
+closing it in the harness, which is why the marker is `support.second_pass()` as well.
+`thin()` and `locked()` slice a range with `_fmt()`, which cannot carry the marker, so they
+raise on one rather than silently generating every piece in the first pass.
+
+**Cost, accepted.** The output shape is one character wider for one hour a year. Anything
+parsing `HH:MM:SS` off these scripts has to tolerate it — `harvest_post.py` does not, and
+`references/output-format.md` now says to strip it there, along with the older trap it
+sharpens: an entry spanning the change bills 2.75 hrs against 3.75 hrs really worked,
+because Harvest derives the duration from the two clock times.
+
+**A marker is refused where the clock reads once.** `09:00*`, and `03:00*` on that same
+morning, raise rather than resolving quietly to the unmarked time — `zoneinfo` drops `fold`
+on an unambiguous reading, so without the check the marker would mean something only
+sometimes, with nothing in the output to say which case a reader was looking at. `03:00` is
+the trap worth naming: it reads like the transition and is an hour after it. The instant the
+clocks go back is `02:00*`, and no other clock string names it.
+
+**Three things the review caught that a green suite did not.** All three were in the first
+version of this change, and none would have failed a test:
+
+1. **The `output-format.md` split example lost the hour it existed to save.** It told the
+   model to split a straddling Harvest entry into `01:30–02:30` and `02:30*–04:15` — the
+   fixture's own two blocks, where 2.75 hrs is the right answer *because there is a break
+   between them*. For work run straight through, those two pieces omit 13:30Z–14:30Z and
+   bill 2.75 against 3.75: the exact loss the bullet was written to prevent. The split has
+   to be at the transition, and the two notations differ there — the scripts print
+   `01:30 – 02:00*`, while Harvest must be posted `01:30`–`03:00` and `02:00`–`04:15`,
+   because the transition instant reads 03:00 as you reach it and 02:00 once it has passed.
+2. **The scenario shipped a golden with no named assertions**, against this file's own
+   "a golden alone is not a test". Five now state the intent the golden only records.
+3. **Two probes marked `03:00*`, which is a no-op** — and the `to_utc` refusal above exists
+   because they were written that way without anything objecting.
+
+**What was not measured.** Still no real ActivityWatch instance read across a real
+transition, and no real Harvest entry posted on such a day — the `harvest_post.py`
+consequence above is read off its argument handling, not observed. The split procedure in
+`output-format.md` is arithmetic that has been checked twice, not a booking anyone has made.
 
 ## Script defects
 
@@ -1124,25 +1202,6 @@ Full suite now **267 passed / 5 skipped**.
 helper is reachable from the product. Where a fix is one call site, test the call site.
 
 ## Open gaps
-
-### A local clock with no date cannot tell the repeated hour apart — known, not fixed
-Raised by the review on issue #8, 2026-08-31. `local_clock()` renders `HH:MM:SS` with no
-date, so on a fall-back day `13:30Z` and `14:30Z` both print `02:30:00`. A user working
-through that hour gets two `active_spans`, or two breaks, wearing the same clock string,
-and `references/output-format.md` has the model write timesheet blocks from those strings.
-`activity_timeline.py` sorts its web rows by that string, so those rows can interleave
-wrongly inside the hour.
-
-**Not fixed here, deliberately.** The dateless clock is the established output shape — it
-is what makes an overnight day end at `01:12:00`, it is pinned by every golden, and
-`output-format.md` specifies it. Widening it is a change to what the skill emits, not to
-how it converts, and it belongs to whoever owns the output format rather than to a ticket
-about deriving the offset. Note the same ambiguity already existed for overnight days,
-where `work_end < work_start` is pinned as a trap; this adds one more hour a year to it.
-
-**What would settle it.** A fixture with two spans an hour apart across the fall-back, and
-a decision about whether the second gets a marker. Until then: one hour a year, on a day
-whose header already names the zone.
 
 ### Does a piece split out of a thin block re-validate at its own ratio? — untested
 

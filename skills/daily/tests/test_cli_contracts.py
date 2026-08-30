@@ -242,3 +242,27 @@ def test_a_hole_in_the_afk_record_reaches_the_cli_as_a_labelled_break(live_aw):
         ("11:00:00", "12:00:00", "gap")]
     assert [(s["start"], s["end"]) for s in payload["active_spans"]] == [
         ("08:30:00", "11:00:00"), ("12:00:00", "15:00:00")]
+
+
+def test_web_rows_inside_the_repeated_hour_are_ordered_by_instant_not_by_clock(live_aw):
+    """`Pacific/Auckland` goes back at 03:00 on 2026-04-05, so 02:00-03:00 runs twice.
+
+    The runbook tab is opened at 02:40 on the first pass and the ticket at 02:10 on the
+    second — half an hour later on the clock, thirty minutes *earlier* by the reading. A
+    sort on the rendered string puts the ticket first and tells the model the day went the
+    other way round; only a sort on the instant gets it right. The zoom ends at `02:30*`,
+    a genuinely ambiguous reading, so the CLI's own `--window` parse is on the hook too.
+    """
+    d = day(dt.date(2026, 4, 5), zone="Pacific/Auckland")
+    d.active("01:30", "03:30*")
+    d.window("01:30", "03:30*", "msedge.exe", "ACME")
+    d.web("02:40", "02:50", "ACME release runbook", "https://acme.example/runbook")
+    d.web("02:10*", "02:20*", "ACME ticket 4471", "https://acme.example/tickets/4471")
+    live_aw(d)
+
+    r = run_cli(tl, [d.date_str(), "--window", "02:00-02:30*", "--json"])
+    assert r.code == 0
+    assert [(w["time"], w["title"]) for w in r.json()["web"]] == [
+        ("02:40:00", "ACME release runbook"),
+        ("02:10:00*", "ACME ticket 4471"),
+    ]

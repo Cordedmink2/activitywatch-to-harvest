@@ -7,6 +7,7 @@ that the fakes it hands out really do drive the scripts end to end.
 """
 from __future__ import annotations
 
+import datetime as dt
 import urllib.error
 
 import pytest
@@ -84,6 +85,25 @@ def test_a_day_renders_local_times_as_utc_events():
 def test_hours_past_twenty_four_reach_into_the_next_morning():
     d = day().active("22:00", "25:30")
     assert d.afk_events()[0]["duration"] == 3.5 * 3600
+
+
+def test_a_marked_time_writes_the_second_pass_over_the_repeated_hour():
+    """Without the marker `at()` localises with `fold=0`, so both ends of this event would
+    be 13:30Z and the hour would render as an instantaneous one."""
+    d = day(dt.date(2026, 4, 5), zone="Pacific/Auckland").afk("02:30", "02:30*")
+    ev = d.afk_events()[0]
+    assert ev["timestamp"] == "2026-04-04T13:30:00Z"
+    assert ev["duration"] == 3600
+
+
+@pytest.mark.parametrize("builder", ["thin", "locked"])
+def test_the_slicing_builders_refuse_a_marked_time(builder):
+    """They generate their pieces with `_fmt()`, which writes a bare `HH:MM:SS`. Accepting
+    a marker would put every piece in the *first* pass — a fixture that reads as though it
+    straddles the change and does not, which is worse than not being able to write it."""
+    d = day(dt.date(2026, 4, 5), zone="Pacific/Auckland")
+    with pytest.raises(ValueError, match="cannot write the second pass"):
+        getattr(d, builder)("02:00*", "03:00")
 
 
 # --------------------------------------------------------------------------------------

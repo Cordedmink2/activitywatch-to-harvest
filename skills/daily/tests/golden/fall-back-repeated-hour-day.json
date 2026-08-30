@@ -1,0 +1,147 @@
+{
+  "afk_json": {
+    "date": "2026-04-05",
+    "afk_bucket": "aw-watcher-afk_TESTHOST",
+    "work_start": "01:30:00",
+    "work_end": "04:15:00",
+    "work_end_blip": null,
+    "total_active_min": 165.0,
+    "breaks": [
+      {
+        "start": "02:30:00",
+        "end": "02:30:00*",
+        "min": 60.0,
+        "kind": "afk"
+      }
+    ],
+    "active_spans": [
+      {
+        "start": "01:30:00",
+        "end": "02:30:00",
+        "min": 60.0
+      },
+      {
+        "start": "02:30:00*",
+        "end": "04:15:00",
+        "min": 105.0
+      }
+    ],
+    "window_watcher_tail": {
+      "end": "04:15:00",
+      "gap_past_work_end_min": 0.0
+    },
+    "window_report": null,
+    "coverage_report": {
+      "proposed_blocks": "01:30-02:30,02:30*-04:15",
+      "covered_active_min": 165.0,
+      "total_active_min": 165.0,
+      "uncovered": []
+    }
+  },
+  "afk_text": "AFK analysis for 2026-04-05  (zone Pacific/Auckland, break>=1050s)\n  bucket:      aw-watcher-afk_TESTHOST\n  work start:  01:30:00\n  WORK END:    04:15:00   <- end of day; do not bill past this\n  active time: 165.0 min total\n  window tail: last window event ends 04:15:00 (+0 min vs work end)\n  breaks (>= 17 min):\n     02:30:00 - 02:30:00*  (60.0 min)\n  active spans (short afk folded in):\n     01:30:00 - 02:30:00  (60.0 min)\n     02:30:00* - 04:15:00  (105.0 min)\n  coverage of proposed blocks vs AFK active_spans:\n     blocks cover 165.0 of 165.0 active min\n     (all active spans covered)\n",
+  "window_reports": {
+    "01:30-02:30": {
+      "window": "01:30-02:30",
+      "active_ratio": 1.0,
+      "active_min": 60.0,
+      "window_min": 60.0,
+      "verdict": "active (>=0.7)"
+    },
+    "02:30-02:30*": {
+      "window": "02:30-02:30*",
+      "active_ratio": 0.0,
+      "active_min": 0.0,
+      "window_min": 60.0,
+      "verdict": "mostly idle (<0.4)"
+    },
+    "02:30*-04:15": {
+      "window": "02:30*-04:15",
+      "active_ratio": 1.0,
+      "active_min": 105.0,
+      "window_min": 105.0,
+      "verdict": "active (>=0.7)"
+    }
+  },
+  "timeline_json": {
+    "date": "2026-04-05",
+    "window_bucket": "aw-watcher-window_TESTHOST",
+    "spans": [
+      {
+        "start": "01:30:00",
+        "end": "02:30:00",
+        "min": 60.0,
+        "category": "ACME",
+        "multi": false,
+        "categories": [
+          "ACME"
+        ],
+        "top_titles": [
+          [
+            "Code.exe | release-cutover - ACME",
+            3600.0
+          ]
+        ]
+      },
+      {
+        "start": "02:30:00*",
+        "end": "04:15:00",
+        "min": 105.0,
+        "category": "ACME",
+        "multi": false,
+        "categories": [
+          "ACME"
+        ],
+        "top_titles": [
+          [
+            "Code.exe | release-cutover - ACME",
+            6300.0
+          ]
+        ]
+      }
+    ],
+    "rollup_min_by_category": {
+      "ACME": 165.0
+    },
+    "web": null
+  },
+  "timeline_text": "Window timeline for 2026-04-05 (zone Pacific/Auckland)\n  window bucket: aw-watcher-window_TESTHOST   classes loaded: 1\n  01:30:00-02:30:00   60.0m  ACME            Code.exe | release-cutover - ACME\n  02:30:00*-04:15:00  105.0m  ACME            Code.exe | release-cutover - ACME\n  --- day totals by category (min) ---\n     ACME             165.0\n",
+  "zoom_json": {
+    "date": "2026-04-05",
+    "window_bucket": "aw-watcher-window_TESTHOST",
+    "spans": [
+      {
+        "start": "01:30:00",
+        "end": "02:30:00",
+        "min": 60.0,
+        "category": "ACME",
+        "multi": false,
+        "categories": [
+          "ACME"
+        ],
+        "top_titles": [
+          [
+            "Code.exe | release-cutover - ACME",
+            3600.0
+          ]
+        ]
+      }
+    ],
+    "rollup_min_by_category": {
+      "ACME": 165.0
+    },
+    "web": [
+      {
+        "time": "02:35:00",
+        "secs": 600,
+        "title": "ACME release runbook",
+        "url": "https://acme.example/runbook"
+      },
+      {
+        "time": "02:05:00*",
+        "secs": 600,
+        "title": "ACME deploy log",
+        "url": "https://acme.example/deploys/8812"
+      }
+    ]
+  }
+}

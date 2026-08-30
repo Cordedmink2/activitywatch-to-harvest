@@ -210,9 +210,9 @@ def _daylight_saving_transition_day() -> Day:
     00:40 start at 23:40 the previous evening. Neither failure raises anything; the day
     just reads short and starts in the wrong place.
 
-    The spans deliberately avoid 02:00-03:00, the hour that happens twice. A wall clock
-    is genuinely ambiguous there and the fixture should not depend on which of the two
-    passes a resolver picks.
+    The spans deliberately avoid 02:00-03:00, the hour that happens twice, so that this
+    day pins the conversion and nothing else. `_fall_back_repeated_hour_day` is its
+    complement and works inside that hour.
     """
     d = day(dt.date(2026, 4, 5), zone=NZ)
     d.classify(*ACME)
@@ -228,6 +228,40 @@ def _daylight_saving_transition_day() -> Day:
     # A web row in the pre-change session, so the zoom's web-watcher path renders a time
     # on the far side of the transition rather than only the span list.
     d.web("00:40", "01:45", "ACME release runbook", "https://acme.example/runbook")
+    return d
+
+
+def _fall_back_repeated_hour_day() -> Day:
+    """Work either side of the hour that happens twice, which one clock string cannot tell
+    apart.
+
+    `Pacific/Auckland` goes back at 03:00 on 2026-04-05, so local 02:00-03:00 runs once at
+    UTC+13 and again at UTC+12. A cutover team working through it stops at 02:30, waits an
+    hour for a restore, and resumes at 02:30 — the same reading, sixty minutes later.
+
+    Every ambiguity the skill can emit is in here at once. The break is the sharpest:
+    unmarked it renders `02:30:00-02:30:00`, an hour off shown as a zero-length string,
+    which is also a range `parse_range` would refuse to read back. The two active spans
+    abut on the clock and do not abut in time. And the two web rows are ordered against
+    the clock — the runbook at 02:35 on the first pass really does precede the deploy log
+    at 02:05 on the second — so a sort on the rendered string reverses them.
+
+    The `*` suffix is what separates them, and it is exact rather than decorative: the
+    `cover` and `windows` probes below are written in the notation the goldens come back
+    in, so the golden is also the round-trip test.
+    """
+    d = day(dt.date(2026, 4, 5), zone=NZ)
+    d.classify(*ACME)
+    d.afk("00:00", "01:30")
+    d.active("01:30", "02:30")            # first pass over 02:00-03:00: UTC+13
+    d.afk("02:30", "02:30*")              # an hour, both ends reading 02:30
+    d.active("02:30*", "04:15")           # second pass, then out the far side: UTC+12
+    d.afk("04:15", "24:00")
+
+    d.window("01:30", "02:30", "Code.exe", "release-cutover - ACME")
+    d.window("02:30*", "04:15", "Code.exe", "release-cutover - ACME")
+    d.web("02:35", "02:45", "ACME release runbook", "https://acme.example/runbook")
+    d.web("02:05*", "02:15*", "ACME deploy log", "https://acme.example/deploys/8812")
     return d
 
 
@@ -287,6 +321,22 @@ SCENARIOS: tuple[Scenario, ...] = (
         # at the pre-change session deliberately: that is the half a single offset put an
         # hour out, so it is the half worth rendering twice.
         zoom="00:40-01:45",
+    ),
+    Scenario(
+        name="fall-back-repeated-hour-day",
+        doc=_fall_back_repeated_hour_day.__doc__,
+        build=_fall_back_repeated_hour_day,
+        # Written with the marker the scripts print, so a green run is evidence that a
+        # block read out of one script's output resolves to the same hour when handed
+        # back. Unmarked, `02:30*-04:15` would claim an hour of work that never happened.
+        cover="01:30-02:30,02:30*-04:15",
+        # The middle probe is the hour-long break. It used to be unwritable: both ends
+        # resolved to one instant, so `parse_range` rejected it as reversed.
+        windows=("01:30-02:30", "02:30-02:30*", "02:30*-04:15"),
+        # Ends inside the repeated hour rather than past it, so the marker is load-bearing:
+        # `03:00` is unambiguous and `03:00*` would be refused. Wide enough to hold both
+        # web rows, which is what makes the golden pin their ordering.
+        zoom="02:00-02:30*",
     ),
 )
 

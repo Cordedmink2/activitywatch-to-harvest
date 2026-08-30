@@ -242,6 +242,59 @@ def test_the_hour_the_clocks_give_back_is_counted_as_elapsed_time(live_aw):
     assert overnight[0]["min"] == 510.0
 
 
+def test_an_hour_long_break_across_the_change_is_not_a_zero_length_one(live_aw):
+    """The sharpest instance of one clock string for two instants. Both ends of this break
+    read 02:30; unmarked it printed `02:30:00-02:30:00`, sixty minutes as a zero-length
+    range — and a range `parse_range` would then refuse to read back as reversed."""
+    got = probe(BY_NAME["fall-back-repeated-hour-day"], live_aw)
+    breaks = [(b["start"], b["end"], b["min"]) for b in got["afk_json"]["breaks"]]
+    assert breaks == [("02:30:00", "02:30:00*", 60.0)]
+
+
+def test_two_spans_an_hour_apart_do_not_wear_the_same_clock_string(live_aw):
+    """They abut on the clock and do not abut in time. The marker is the only thing
+    separating `02:30:00` from the 02:30 an hour later, and the minutes are what say the
+    hour between them was really counted: 60 + 105 is the day's whole 165."""
+    got = probe(BY_NAME["fall-back-repeated-hour-day"], live_aw)
+    afk = got["afk_json"]
+    spans = [(s["start"], s["end"], s["min"]) for s in afk["active_spans"]]
+    assert spans == [("01:30:00", "02:30:00", 60.0), ("02:30:00*", "04:15:00", 105.0)]
+    assert afk["total_active_min"] == 165.0
+
+
+def test_a_block_read_out_of_the_output_covers_the_hour_it_names(live_aw):
+    """The round trip, which is the reason the marker is exact rather than decorative.
+    `--cover 01:30-02:30,02:30*-04:15` is written in the notation the spans came back in;
+    drop the marker and the second block claims 13:30Z onward — an hour of work nobody did,
+    and an hour of real work left uncovered."""
+    got = probe(BY_NAME["fall-back-repeated-hour-day"], live_aw)
+    cov = got["afk_json"]["coverage_report"]
+    assert cov["uncovered"] == []
+    assert (cov["covered_active_min"], cov["total_active_min"]) == (165.0, 165.0)
+
+
+def test_the_repeated_hour_is_measurable_as_a_window_of_its_own(live_aw):
+    """`02:30-02:30*` names the hour between the two identical readings. It was previously
+    unwritable — both ends resolved to one instant, so `parse_range` rejected it as
+    reversed — and it has to come back as a real sixty minutes at a ratio of zero, not as
+    an empty window that would read as 'nothing to see here'."""
+    got = probe(BY_NAME["fall-back-repeated-hour-day"], live_aw)
+    report = got["window_reports"]["02:30-02:30*"]
+    assert report["window_min"] == 60.0
+    assert (report["active_ratio"], report["verdict"]) == (0.0, "mostly idle (<0.4)")
+
+
+def test_web_rows_in_the_repeated_hour_keep_the_order_they_happened_in(live_aw):
+    """The runbook at 02:35 on the first pass really does precede the deploy log at 02:05
+    on the second. Sorting the rendered strings reverses them and tells the model the day
+    ran the other way round."""
+    got = probe(BY_NAME["fall-back-repeated-hour-day"], live_aw)
+    assert [(w["time"], w["title"]) for w in got["zoom_json"]["web"]] == [
+        ("02:35:00", "ACME release runbook"),
+        ("02:05:00*", "ACME deploy log"),
+    ]
+
+
 def test_a_user_outside_new_zealand_gets_their_own_zones_day_boundaries(live_aw):
     """The criterion the whole timezone change exists for. Nothing about this run is New
     Zealand's: the day is written in `Europe/London`, the zone is the configured one, and

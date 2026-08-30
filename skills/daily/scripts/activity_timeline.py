@@ -200,7 +200,7 @@ def main():
                   f"(seconds optional): {e}", file=sys.stderr)
             return 2
         spans = [s for s in spans if s["end"] > ws and s["start"] < we]
-        web_rows = []
+        dated = []
         for pref in ("aw-watcher-web-firefox", "aw-watcher-web-chrome"):
             try:
                 b = pick_bucket(buckets, pref)
@@ -213,12 +213,22 @@ def main():
                     # that names the client, and keying on the start alone dropped it.
                     if t + dt.timedelta(seconds=e["duration"]) <= ws or t >= we:
                         continue
-                    web_rows.append({"time": to_local(t), "secs": int(e["duration"]),
-                                     "title": (e["data"].get("title") or "")[:60],
-                                     "url": (e["data"].get("url") or "")[:80]})
+                    dated.append((t, {"time": to_local(t), "secs": int(e["duration"]),
+                                      "title": (e["data"].get("title") or "")[:60],
+                                      "url": (e["data"].get("url") or "")[:80]}))
             except Exception:
                 pass
-        web_rows.sort(key=lambda r: r["time"])
+        # Sorted on the instant, not on the rendered clock. Inside the hour a fall-back
+        # repeats, the two orders disagree: a tab opened at 02:40 on the first pass really
+        # does come before one opened at 02:10 on the second, and sorting the strings put
+        # the day's browsing in the wrong order for that hour. Two browsers are merged
+        # here as well, so this list is never already in order.
+        #
+        # The instant rides alongside the row rather than inside it: a `datetime` is not
+        # JSON-serialisable, and a key added to the payload to be deleted after the sort
+        # only has to survive one `return` inserted between the two to reach `json.dumps`.
+        dated.sort(key=lambda pair: pair[0])
+        web_rows = [row for _, row in dated]
 
     result = {
         "date": args.date,

@@ -86,6 +86,20 @@ Two things follow, and they are the reason this section exists:
   is what decides that; a scenario that hands the flag over anyway takes the shortcut the
   scripts are being tested for not needing.
 
+A `*` on a time asks for the **second** pass over the hour a fall-back repeats, which is
+otherwise unwritable — `at()` localises with `fold=0`, so `"02:30"` is always the first:
+
+```python
+d.active("01:30", "02:30")     # 12:30Z-13:30Z, at UTC+13
+d.afk("02:30", "02:30*")       # 13:30Z-14:30Z: an hour, both ends reading 02:30
+d.active("02:30*", "04:15")    # 14:30Z-16:15Z, at UTC+12
+```
+
+It is the same marker the scripts render and read back, so a fixture is written in the
+notation its golden returns. `.thin()` and `.locked()` refuse it: they slice a range into
+pieces with `_fmt()`, which cannot carry it, and would otherwise put every generated piece
+in the first pass — a fixture that looks like it straddles the change and does not.
+
 ## Adding a scenario
 
 Define it in `scenarios.py`, run `pytest --regen-golden`, then **read the generated

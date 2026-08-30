@@ -153,11 +153,23 @@ def parse_ts(ts):
     return dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
+SECOND_PASS_MARK = "*"
+
+
 def parse_local_time(s):
-    """Parse 'HH:MM' or 'HH:MM:SS' to a datetime.time."""
+    """Parse 'HH:MM' or 'HH:MM:SS' to a datetime.time, reading a trailing `*`.
+
+    The `*` is how a caller names the *second* pass over the hour a fall-back repeats —
+    the shape `local_clock()` writes — and it survives as the returned time's `fold`,
+    which `to_utc()` then honours. Without it the plain reading stands, so every time
+    written before this existed still means what it did.
+    """
     s = s.strip()
+    fold = 0
+    if s.endswith(SECOND_PASS_MARK):
+        s, fold = s[:-len(SECOND_PASS_MARK)].strip(), 1
     fmt = "%H:%M:%S" if s.count(":") == 2 else "%H:%M"
-    return dt.datetime.strptime(s, fmt).time()
+    return dt.datetime.strptime(s, fmt).time().replace(fold=fold)
 
 
 def to_utc(local_date, local_time, zone):
@@ -165,12 +177,25 @@ def to_utc(local_date, local_time, zone):
 
     The single place a local clock becomes an instant, so the transition-day answer is the
     same for a day boundary, a `--window` and a `--cover` block. On the hour a fall-back
-    repeats, the wall clock is genuinely ambiguous and this takes the first pass over it;
-    on the hour a spring-forward skips, it takes the instant the clock would have reached.
-    Both are conventions rather than facts — but only inside that one hour, and both
-    scripts read the same one.
+    repeats, the wall clock is genuinely ambiguous, and this resolves it to whichever pass
+    `local_time.fold` asks for — the first unless the caller marked it, which is what an
+    unmarked time has always meant. On the hour a spring-forward skips, it takes the
+    instant the clock would have reached. Both are conventions rather than facts — but
+    only inside that one hour, and both scripts read the same one.
+
+    A marker on a time that is *not* ambiguous is refused rather than ignored. `zoneinfo`
+    drops `fold` on an unambiguous reading, so `09:00*` would quietly mean `09:00` — and a
+    marker that sometimes carries meaning is worse than one that always does, because
+    nothing in the output distinguishes the two cases.
     """
-    return dt.datetime.combine(local_date, local_time, tzinfo=zone).astimezone(dt.timezone.utc)
+    moment = dt.datetime.combine(local_date, local_time, tzinfo=zone)
+    if local_time.fold and moment.utcoffset() == moment.replace(fold=0).utcoffset():
+        clock = local_time.strftime("%H:%M:%S")
+        raise ValueError(
+            f"'{clock}{SECOND_PASS_MARK}' names a second pass over a repeated hour, but "
+            f"the clock reads {clock} only once on {local_date} in this zone — "
+            f"drop the '{SECOND_PASS_MARK}'")
+    return moment.astimezone(dt.timezone.utc)
 
 
 def parse_range(rng, local_date, zone):
@@ -214,5 +239,16 @@ def local_clock(moment, zone):
 
     No date: a day that runs past midnight renders its end as `01:12:00`, which is the
     established output shape and the one the goldens pin.
+
+    On the hour a fall-back repeats, that shape is not enough on its own — two instants an
+    hour apart show the same clock — so the second pass over it is suffixed `*`. An
+    hour-long break across the change used to render `02:30:00-02:30:00`, sixty minutes as
+    a zero-length string; it now ends `02:30:00*`. The marker is exact rather than
+    decorative: `parse_local_time()` reads it back, so a time lifted out of one script's
+    output names the same instant when handed to another's `--window` or `--cover`.
+
+    It appears on one hour of one day a year, and never at all for a `--utc-offset` run,
+    whose zone is that offset all year and so has no repeated hour to mark.
     """
-    return moment.astimezone(zone).strftime("%H:%M:%S")
+    local = moment.astimezone(zone)
+    return local.strftime("%H:%M:%S") + (SECOND_PASS_MARK if local.fold else "")

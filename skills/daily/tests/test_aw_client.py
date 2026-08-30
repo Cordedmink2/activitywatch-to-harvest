@@ -10,6 +10,7 @@ import ast
 import datetime as dt
 import os
 import sys
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -112,6 +113,109 @@ def test_utc_bounds_spans_local_midnight_to_local_midnight():
     """NZST is UTC+12, so a local day starts at 12:00Z the day before."""
     start, end = aw.utc_bounds(dt.date(2026, 5, 28), fixed(12))
     assert (start, end) == ("2026-05-27T12:00:00Z", "2026-05-28T12:00:00Z")
+
+
+# --------------------------------------------------------------------------------------
+# The hour the clocks repeat
+#
+# `Pacific/Auckland` goes back at 03:00 on 2026-04-05, so local 02:00-03:00 happens twice:
+# once at UTC+13 (2026-04-04 13:00Z-14:00Z) and again at UTC+12 (14:00Z-15:00Z). Without a
+# marker both passes render `02:30:00`, and the two instants an hour apart are one string.
+# --------------------------------------------------------------------------------------
+
+NZ = ZoneInfo("Pacific/Auckland")
+FIRST_PASS = dt.datetime(2026, 4, 4, 13, 30, tzinfo=dt.timezone.utc)    # 02:30 NZDT
+SECOND_PASS = dt.datetime(2026, 4, 4, 14, 30, tzinfo=dt.timezone.utc)   # 02:30 NZST
+
+
+def test_local_clock_marks_only_the_second_pass_over_the_repeated_hour():
+    """The whole point: two instants an hour apart must not print the same string."""
+    assert aw.local_clock(FIRST_PASS, NZ) == "02:30:00"
+    assert aw.local_clock(SECOND_PASS, NZ) == "02:30:00*"
+
+
+@pytest.mark.parametrize("moment", [
+    dt.datetime(2026, 4, 4, 12, 30, tzinfo=dt.timezone.utc),   # 01:30, before the change
+    dt.datetime(2026, 4, 4, 15, 30, tzinfo=dt.timezone.utc),   # 03:30, after it
+    dt.datetime(2026, 4, 4, 21, 0, tzinfo=dt.timezone.utc),    # 09:00, later the same day
+], ids=["before", "after", "well-after"])
+def test_local_clock_leaves_unambiguous_times_on_a_transition_day_unmarked(moment):
+    """The marker costs the reader nothing on the other twenty-four hours of the day."""
+    assert not aw.local_clock(moment, NZ).endswith("*")
+
+
+def test_local_clock_never_marks_a_fixed_offset_zone():
+    """`--utc-offset` means a zone that is that offset all year, so it has no repeated
+    hour to mark and no run passing a number should ever grow the character."""
+    assert aw.local_clock(SECOND_PASS, fixed(12)) == "02:30:00"
+
+
+def test_parse_local_time_reads_the_marker_as_the_second_pass():
+    assert aw.parse_local_time("02:30").fold == 0
+    assert aw.parse_local_time("02:30*").fold == 1
+    # Asserted field by field: `time.__eq__` ignores `fold`, so comparing against a
+    # `dt.time(2, 30)` would pass whether or not the marker had been read at all.
+    marked = aw.parse_local_time("02:30:00*")
+    assert (marked.hour, marked.minute, marked.second, marked.fold) == (2, 30, 0, 1)
+
+
+def test_a_marker_on_a_time_the_clock_reads_only_once_is_refused():
+    """`zoneinfo` drops `fold` on an unambiguous reading, so without this `09:00*` would
+    quietly mean `09:00` — a marker that means something only sometimes, with nothing in
+    the output to say which time it was."""
+    with pytest.raises(ValueError, match="only once"):
+        aw.to_utc(dt.date(2026, 4, 5), aw.parse_local_time("09:00*"), NZ)
+
+
+def test_the_marker_is_refused_on_the_far_edge_of_the_repeated_hour():
+    """03:00 is the one reading in the neighbourhood that is *not* ambiguous: the clock
+    reaches 03:00 once, an hour after the change. `03:00*` resolving silently to `03:00`
+    is the specific mistake this catches, because it reads like it names the transition."""
+    with pytest.raises(ValueError, match="only once"):
+        aw.to_utc(dt.date(2026, 4, 5), aw.parse_local_time("03:00*"), NZ)
+
+
+def test_a_marker_is_refused_in_a_zone_that_never_repeats_an_hour():
+    with pytest.raises(ValueError, match="only once"):
+        aw.to_utc(dt.date(2026, 4, 5), aw.parse_local_time("02:30*"), fixed(12))
+
+
+def test_the_transition_instant_is_nameable_only_as_a_marked_time():
+    """The first instant of the new offset. `02:00` is an hour before it and `03:00` an
+    hour after, so `02:00*` is the only clock string that names it — which is why
+    `output-format.md` tells the model to split a straddling entry there."""
+    transition = dt.datetime(2026, 4, 4, 14, 0, tzinfo=dt.timezone.utc)
+    assert aw.to_utc(dt.date(2026, 4, 5), aw.parse_local_time("02:00*"), NZ) == transition
+    assert aw.local_clock(transition, NZ) == "02:00:00*"
+
+
+@pytest.mark.parametrize("written,expected", [("02:30", FIRST_PASS), ("02:30*", SECOND_PASS)])
+def test_to_utc_resolves_each_pass_to_its_own_instant(written, expected):
+    got = aw.to_utc(dt.date(2026, 4, 5), aw.parse_local_time(written), NZ)
+    assert got == expected
+
+
+@pytest.mark.parametrize("moment", [FIRST_PASS, SECOND_PASS])
+def test_a_rendered_clock_reads_back_as_the_instant_it_came_from(moment):
+    """The round trip is the reason for the marker: a time the model reads out of one
+    script's output has to name the same instant when fed back as `--window` / `--cover`."""
+    written = aw.local_clock(moment, NZ)
+    assert aw.to_utc(dt.date(2026, 4, 5), aw.parse_local_time(written), NZ) == moment
+
+
+def test_parse_range_spanning_the_repeated_hour_is_an_hour_long():
+    """The sharpest instance: an hour-long break from the first 02:30 to the second one.
+    Unmarked, both ends resolve to the same instant and the range reads as empty — which
+    `parse_range` rejects outright as a reversed range."""
+    ws, we = aw.parse_range("02:30:00-02:30:00*", dt.date(2026, 4, 5), NZ)
+    assert (we - ws) == dt.timedelta(hours=1)
+    assert (ws, we) == (FIRST_PASS, SECOND_PASS)
+
+
+def test_parse_range_reads_a_block_wholly_inside_the_second_pass():
+    ws, we = aw.parse_range("02:00*-03:00", dt.date(2026, 4, 5), NZ)
+    assert (ws, we) == (dt.datetime(2026, 4, 4, 14, 0, tzinfo=dt.timezone.utc),
+                        dt.datetime(2026, 4, 4, 15, 0, tzinfo=dt.timezone.utc))
 
 
 # `parse_range` joined this list on 2026-08-14: the two scripts had separate copies that
