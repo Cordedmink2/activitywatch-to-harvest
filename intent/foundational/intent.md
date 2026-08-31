@@ -18,7 +18,7 @@ A user asks their agent to reconstruct a workday and receives a timesheet that i
 
 The agent should use recorded activity together with retained user context to resolve the day by itself. When genuinely necessary context is missing, it should ask the user a focused question rather than guess. Useful answers should be retained and maintained so the same ambiguity can be resolved automatically in future sessions.
 
-The workflow should also remain context-efficient as the amount of activity grows. Raw evidence should be divided, delegated or otherwise structured so that the main agent works from the evidence and conclusions it needs rather than carrying the whole day in one context. Subagents, graph-style processing or equivalent approaches are possible means, not requirements.
+The workflow should remain context-efficient as the amount of activity grows. The main agent should work from the evidence and conclusions it needs rather than carrying the whole day's raw activity in one context.
 
 Nothing is billed until the user explicitly approves it.
 
