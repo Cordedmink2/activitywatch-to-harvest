@@ -114,7 +114,13 @@ marketplace access):
   judgement thresholds and default task — *not* the timezone, which is plugin configuration in step
   8; each line names the flag it maps to), AW buckets (hostname suffix — you can discover this from the buckets
   endpoint), Internal colleagues, Known external contacts, Active client projects (one block per
-  client with its code/Edge profile/URLs/repo signals), How I bill, and exclusions.
+  client with its code/Edge profile/URLs/repo signals), Work kinds, How I bill, and exclusions.
+- **The Work kinds table is the one section the skill cannot fall back on a default for.** It
+  classifies a block as one of seven neutral work kinds and has no idea what the user's Harvest
+  account calls them, because no two accounts agree — so no task name is shipped. Their credentials
+  arrive in step 8, so leave this table until then, come back, and fill it from the user's own task
+  names: refresh the catalogs, then read the `task_assignments[]` names out of
+  `.mcp/harvest_assignments.json` and offer those rather than making the user type from memory.
 - Write only confirmed facts. This file stays local (git-ignored).
 
 ### 8. Configuration (the user supplies the values)

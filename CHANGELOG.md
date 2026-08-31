@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The rules decide a work kind; your workspace names the task.** The classification rubric used to
+  map a block's activity straight onto the literal task names of one Harvest account —
+  `Gen - Development/Configuration`, `Gen - Meeting`, and the rest — and `SKILL.md` shipped one of
+  them as a default. No other account names its tasks that way, so those strings were one user's
+  facts shipped as everybody's. The rubric now stops at one of seven neutral **work kinds**
+  (`Meeting`, `Development`, `Documentation`, `Project management`, `Testing`, `Investigation`,
+  `Internal admin`), and a new "Work kinds" table in `references/context.md.example` is where your
+  provider's own task names live. There is no default task name anywhere in the shipped skill: a run
+  with no mapping asks, because a guessed task name is not a task your provider has. The vocabulary
+  behind this is written down in `CONTEXT.md` at the repo root, `docs/adr/0002-…` records why the
+  provider adapter stays inside this plugin for now, and `tests/test_provider_neutrality.py` fails if
+  a provider's task name comes back or if the seven kinds drift apart across the three documents
+  that spell them.
+
+  **Two things do decide differently, and neither could be avoided while removing the names.**
+  Internal-admin blocks used to name one account's `No Display` task and now take your
+  `.context.md` default task for internal/admin time — a different task on an existing install, so
+  check where that time lands on your first run. And the two named last-resort fallbacks are gone:
+  where the task you'd pick isn't assigned to a project, the skill now matches the work kind
+  against that project's *actual* task names instead of reaching for a fixed one. Everything else
+  is wording. The golden days are byte-identical, but say what that is worth: they measure the
+  day skeleton, not task selection, so they prove no script changed — not that classification
+  didn't. The two changes above are what reading the diff finds.
 - **The confirmation gate is part of the invocation.** `harvest_post.py` and `harvest_patch.py` now
   write only when passed `--confirm`; without it they print the exact body they would have sent and
   exit 0, having created or changed nothing. The gate was previously an instruction only, backed by

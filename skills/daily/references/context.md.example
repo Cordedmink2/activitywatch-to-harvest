@@ -43,8 +43,9 @@ is why it lives with your facts rather than in a shipped script.
   <!-- no flag: the model applies this when it drafts, per references/output-format.md -->
 - **Lunch detection window**: `11:30`–`14:30` local — longest AFK in here is lunch
 - **Work-hours window for AW rendering**: `06:00`–`20:00` local
-- **Default Harvest task for client work**: `Gen - Development/Configuration`
-- **Default Harvest task for internal/admin time**: `Meeting - Standup Meetings`
+- **Default task for client work**: `<the task most of your client work bills to>` — spelled
+  exactly as your timesheet provider spells it
+- **Default task for internal/admin time**: `<your non-billable catch-all task>`
 - **Display name in window titles**: `<YourFirstName>` (used by Edge profile signal — e.g. titles ending `… - <Profile> - <YourFirstName> - Microsoft Edge`)
 
 Each `<!-- ... -->` names the flag the skill passes when you change the value beside it.
@@ -89,10 +90,11 @@ One section per client. Include every signal that would let the skill identify
 
 ### <Client Name>
 
-**Harvest client**: `<exact name as shown in Harvest>`
-**Default Harvest project**: `<project code>` `<project name>`
+**Client name**: `<exact name as your timesheet provider shows it>`
+**Default project**: `<project code>` `<project name>`
 
 Signals:
+- Work-item prefixes: `<PREFIX>` (e.g. numbers like `<PREFIX>1234` are this client's)
 - `<token>` appears in URL or window title
 - Edge profile `<ProfileName>` (window title ends `... - <ProfileName> - <YourName> - Microsoft Edge`)
 - Dynamics 365 at `<env-url>.crm6.dynamics.com`
@@ -121,14 +123,40 @@ the shared patterns here and the rule for splitting.
 <Client A> and <Client B> are both part of <Parent>. Some artefacts span both:
 
 - **Recurring `<Meeting Name>`** → bills to <project> (the convention you actually use)
-- **Codebase `<repo>`** → serves both clients; pick by ticket / commit context
+- **Codebase `<repo>`** → serves both clients; pick by work item / commit context
 
 ---
 
+## Work kinds
+
+**This table is what makes the skill work against your provider.** The shipped rubric
+decides one of seven neutral *work kinds* for each block — it can't know what your
+account calls them, because no two accounts spell their tasks the same way. Fill in the
+right-hand column with your provider's exact task names and the mapping is done.
+
+Leave a row blank and that work kind falls back to the default task above. Leave the whole
+table out and the skill matches each work kind against the tasks your projects actually
+offer, then proposes the row it worked out — so an existing `.context.md` keeps working and
+fills this in as you go.
+
+| Work kind | Your task |
+|---|---|
+| `Meeting` | `<task name>` |
+| `Development` | `<task name>` |
+| `Documentation` | `<task name>` |
+| `Project management` | `<task name>` |
+| `Testing` | `<task name>` |
+| `Investigation` | `<task name>` |
+| `Internal admin` | `<a non-billable task>` |
+
+A name here only decides *which* task to reach for. Whether it exists on a given project,
+and whether it's billable, comes from that project's own task assignments — the skill
+checks, and substitutes with a note when your task isn't offered there.
+
 ## How I bill (overrides + examples)
 
-The generic conventions (client-readable outcome-focused notes, bill by ticket not
-by window, stale-ticket→new-case, catalog caveats) live in the skill's
+The generic conventions (client-readable outcome-focused notes, bill by work item not
+by window, stale-item→new-item, catalog caveats) live in the skill's
 classification rubric — don't restate them here. Only *your* overrides and voice:
 
 Real note examples from your entries (paste 3–5 here once you have them):
@@ -139,6 +167,8 @@ Real note examples from your entries (paste 3–5 here once you have them):
 Per-project conventions:
 - **<Project code> default task**: `<task name>` — <when it applies>
 - **Codebase `<repo path>`** serves multiple projects (`<code>`, `<code>`) — pick by work item
+- **Shared prefix**: `<PREFIX>` spans several clients — resolve it from the assignment catalog,
+  not from the prefix alone
 
 ---
 
@@ -157,6 +187,6 @@ your machine — specific patterns avoid false positives:
 
 Standing user-specific rules that don't fit the categories above. Examples:
 
-- **Harvest itself** (Timesheet tab in browser) → `<your internal-admin project>`, not billable client work.
+- **The timesheet provider's own UI** (its tab in the browser) → `<your internal-admin project>`, not billable client work.
 - **Internal-admin project** for the rubric's terminal-adjacency rule = `<project>`. Timesheet-automation paths on this machine: `<paths>`.
 - **Recurring meeting `<name>`** → `<project · task>` (your canonical attribution).

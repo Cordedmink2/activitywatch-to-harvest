@@ -237,7 +237,7 @@ It also seeds **`Timesheets/.context.md`** from the template (without overwritin
 it's what makes classification accurate. It stays **local** (it's git-ignored). Open it and fill in:
 
 - **Preferences** — the judgement calls: AFK/lunch thresholds, what counts as substantive activity,
-  the active/thin bands, the timeline's noise floor, your default Harvest task. Each line names the
+  the active/thin bands, the timeline's noise floor, your default task. Each line names the
   flag the skill passes for it, so retuning one never means editing a script an update would
   overwrite. (Your *timezone* is not here — it's plugin configuration, set once at install.)
 - **AW buckets** — your machine's hostname suffix (the skill can discover this on first run).
@@ -246,6 +246,12 @@ it's what makes classification accurate. It stays **local** (it's git-ignored). 
 - **Active client projects** — one block per client: its code/bracket tag, Edge profile name,
   Dynamics/SharePoint/Azure DevOps URLs, repo paths, VS Code workspace names — every signal that
   identifies "this is client X".
+- **Work kinds** — the skill classifies each block as one of seven neutral kinds (`Meeting`,
+  `Development`, `Documentation`, `Project management`, `Testing`, `Investigation`,
+  `Internal admin`) and this table says what *your* Harvest account calls each one. No task name
+  ships with the skill, because no two accounts spell theirs the same way. Easiest filled in after
+  step 8, once your catalogs exist — the skill can read the task names off your own projects and
+  offer them. Leave it out and it works that out per block and proposes the row back to you.
 - **How I bill** — your description style and project-selection conventions.
 - **Personal browsing to exclude** — anything that should never be billed.
 

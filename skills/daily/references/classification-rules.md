@@ -1,11 +1,13 @@
 # Classification rubric
 
-Goal: for each proposed time block, pick a `(client, project_id, task_id, billable)` tuple and a `confidence` rating.
+Goal: give each proposed **block** its attribution — `(client, project_id, task_id, billable)` — and a `confidence` rating. A block is local and still redrawable; it becomes an **entry** only when Step 9 posts it.
+
+The provider's own strings never appear here. This rubric decides a **work kind** — one of the seven in "Work kind and task selection" below — and the user's `.context.md` maps that to the task their provider actually offers. Everything a run needs is in this file; the repo's `CONTEXT.md` carries the same vocabulary for whoever is *changing* the skill, and is not something a run has to have.
 
 **`Timesheets/.context.md` is the source of truth.** It holds the per-user facts:
-- Active client profiles + signals (Edge profile names, URLs, ChatGPT projects, VS Code workspaces, repo paths, SharePoint subdomains, ticket-number prefixes)
+- Active client profiles + signals (Edge profile names, URLs, ChatGPT projects, VS Code workspaces, repo paths, SharePoint subdomains, work-item prefixes)
 - Internal-colleague + external-contact names
-- Billing-convention *overrides* (default tasks, per-project conventions, note-style examples in the user's voice)
+- The **work kind → task** mapping, and billing-convention *overrides* (per-project conventions, note-style examples in the user's voice)
 - User-specific personal-browsing recognizers (on top of the generic exclusion categories below)
 - Preferences (AFK threshold, activity floor, active/thin bands, lunch window, etc.) — the timezone is *not* here, it is plugin configuration
 
@@ -13,18 +15,18 @@ This file contains only the **generic heuristics** for *applying* `.context.md` 
 
 ## Signal hierarchy (most → least reliable)
 
-### 1. Ticket-number match (HIGH confidence)
+### 1. Work-item match (HIGH confidence)
 
-If any window title, URL, or terminal task name within the block contains a string matching the user's ticket pattern (typically `[A-Z]{2,4}\d{3,}S?` — but check `.context.md` for the exact regex if customised):
+If any window title, URL, or terminal task name within the block contains a string matching the user's work-item pattern (typically `[A-Z]{2,4}\d{3,}S?` — but check `.context.md` for the exact regex if customised):
 
-1. Look up the prefix in `.context.md` "Ticket prefixes" / "Active client projects" sections to identify the client.
-2. Look up in `.mcp/harvest_assignments*.json` matching the same string against `project.code` to get `project.id` and `task_assignments[]`.
-3. If the user maintains a ticket-catalog file (e.g. a dump of active incidents), look up the title there for the description.
+1. Look up the prefix under `.context.md` § "Active client projects" — each client's signal list carries its work-item prefixes — to identify the client. A prefix that resolves to more than one client there is settled by grouping the assignment catalog on `project.code` prefix → `client.name`, not by picking the first match.
+2. Look up the same string against `project.code` in the assignment catalog (`.mcp/harvest_assignments*.json`) to get `project.id` and `task_assignments[]`.
+3. If the user maintains a work-item catalog file (e.g. a dump of active incidents), look up the title there for the description.
 4. Direct hit → HIGH confidence.
 
-**Caveat — ticket existence ≠ today's billing target.** A ticket-catalog lists *all* known incidents; thematic match isn't billing match. The user may be supporting a colleague's ticket, doing release-level work that bills to a different project, or working on something not yet ticketed. When the work item isn't named explicitly in window/URL titles, ask — don't pick the most "thematically matching" entry from the catalog.
+**Caveat — a work item existing ≠ today's billing target.** A work-item catalog lists *all* known items; thematic match isn't billing match. The user may be supporting a colleague's work item, doing release-level work that bills to a different project, or working on something not yet tracked. When the work item isn't named explicitly in window/URL titles, ask — don't pick the most "thematically matching" row from the catalog.
 
-A trailing `S` (or other suffix) on a ticket number often indicates **Support work** — check `.context.md` for the user's convention. If so, tag the description as `[Support]` but use the same `project_id` / `task_id`.
+A trailing `S` (or other suffix) on a work-item number often indicates **Support work** — check `.context.md` for the user's convention. If so, tag the description as `[Support]` but use the same `project_id` / `task_id`.
 
 ### 2. Edge profile in window title (HIGH confidence for browser activity)
 
@@ -34,7 +36,7 @@ Windows ending in `… - <ProfileName> - <UserDisplayName> - Microsoft Edge` (or
 
 Teams windows follow this pattern: `Chat | <Name>[, <Name>…] | <TenantName> | <user-email> | Microsoft Teams`.
 
-- Title contains an **internal-colleague** name (see `.context.md` "Internal colleagues") → *probably* internal, but **don't auto-classify a meeting as internal just because the participants are all colleagues**. Internal teammates regularly hop on calls to discuss client work. Before billing to the internal-admin project, peek at a screenshot during the meeting to check the shared screen / agenda — if it shows a client environment, architecture diagram, ticket, or repo, bill the meeting to *that* client's project instead. Only fall back to internal-admin when the screenshot shows internal artefacts (internal wiki, the consultancy's own CRM, AI training material, timesheet work) or is genuinely unrevealing.
+- Title contains an **internal-colleague** name (see `.context.md` "Internal colleagues") → *probably* internal, but **don't auto-classify a meeting as internal just because the participants are all colleagues**. Internal teammates regularly hop on calls to discuss client work. Before billing to the internal-admin project, peek at a screenshot during the meeting to check the shared screen / agenda — if it shows a client environment, architecture diagram, work item, or repo, bill the meeting to *that* client's project instead. Only fall back to internal-admin when the screenshot shows internal artefacts (internal wiki, the consultancy's own CRM, AI training material, timesheet work) or is genuinely unrevealing.
 - Title contains a **known external contact** (see `.context.md` "Known external contacts") → use the mapped client. The `(External unfamiliar)` Teams flag is often stale; treat it as a soft warning, not a hard rule.
 - Title contains an **unrecognised external** with no client signal → ask the user; don't auto-classify.
 - **Recurring meeting names** → see `.context.md` "Notes on inference" or "Recurring meetings" for the user's canonical attribution.
@@ -43,7 +45,7 @@ Teams windows follow this pattern: `Chat | <Name>[, <Name>…] | <TenantName> | 
 
 VS Code workspaces, Obsidian vaults, repo paths, ChatGPT project names, and other app signatures map to **codebases** that belong to a client — see `.context.md` for the current mapping.
 
-**Codebase ≠ Harvest project.** A single client codebase can serve multiple Harvest projects. The repo path tells you the client family; the work item context (active ticket, commit message, who's being supported, what's being released) tells you the specific Harvest project.
+**Codebase ≠ project.** A single client codebase can serve multiple projects. The repo path tells you the client family; the work-item context (the active item, commit message, who's being supported, what's being released) tells you the specific project.
 
 **Focused window ≠ active attention (autonomous agents + multi-monitor).** The window-watcher logs only the *foreground* window. When a Claude Code agent runs unattended (`auto mode`, a background agent) in a VS Code window, that window counts as "focused" for the agent's whole runtime — while the user's real work is a *different* client's session on another monitor. This inflates the `activity_timeline.py` rollup minutes for the agent's workspace and drops the parallel client work. Signal: a screenshot showing `auto mode on ← 1 agent` or `Waiting for … background agent to finish`. Action: when one workspace dominates the rollup on a multi-monitor day, read the *other* monitors (`_m1`/`_m3`) at that timestamp before trusting the per-category minutes, and treat that day's per-client hours as a user-confirmed split rather than a rollup readout. The same effect has a mirror image on the AFK side: a low `active_ratio` while an agent runs is supervision, not absence. Supervised agent time is billable, so check the other monitors for the agent's output before shrinking a thin block or dropping a stretch on ratio alone.
 
@@ -63,7 +65,7 @@ Pure `claude.exe` / `WindowsTerminal.exe` (or other AI-assist clients) — apply
 
 - Pure terminal time adjacent to a client app stack → attribute to that client.
 - Terminal adjacent to timesheet-automation paths (`Claude/Scheduled/`, `Pictures/WorkScreenshots/`, `Timesheets/`) → the user's internal-admin project.
-- Claude Code task names visible in terminal titles (e.g. `✳ <slug>`) are useful signals but **the slug usually names a feature, not a client** — e.g. `hardcode-confidential-team-lookups` tells you *what* is being worked on, not *who* it's for. Triangulate with the surrounding Edge profile, repo path, or open Dataverse environment to pin the client. If the slug is the only signal you have and you can't triangulate, flag the block 🔸 and ask.
+- Claude Code task names visible in terminal titles (e.g. `✳ <slug>`) are useful signals but **the slug usually names a feature, not a client** — e.g. `hardcode-confidential-team-lookups` tells you *what* is being worked on, not *who* it's for. Triangulate with the surrounding Edge profile, repo path, or open client environment to pin the client. If the slug is the only signal you have and you can't triangulate, flag the block 🔸 and ask.
 
 ## Interleaved days — find the switch point, don't average
 
@@ -84,33 +86,45 @@ The costliest real-world misattributions are long blocks on days where the user 
 6. **A named Teams meeting recurring in fragments through the block is its own sub-block** (the user attending while multitasking) — carve it out with its own attribution per signal §3, even though no single fragment is long. The parallel coding stays with its own client.
 7. **Some days have no switch point to find.** Two workspaces with an agent session in each, focus alternating every 1–3 min for hours, is genuinely parallel work — step 2 will keep finding flips and never bracket a boundary. Don't manufacture one, and don't keep spending screenshots hunting it. Ask per step 4. If the user hands the split back to you ("you decide"), tally each client's minutes across the block from the zoom, allocate proportionally, and place each boundary where that client's corroborating evidence clusters (a CRM/ADO/SharePoint run, a commit, a bug fixed). A client whose fragments total under step 4's ≥15 min bar is noise — leave that time with the dominant client. Say in the presentation that the boundary is an allocation rather than an observed switch, so the user knows which kind of call they are approving.
 
-## Task (Harvest sub-category) selection
+## Work kind and task selection
 
-**This table owns the activity → task mapping**; `SKILL.md` Step 4 points here rather than restating it. Resolution order:
+**This table owns the activity → work kind mapping**; `SKILL.md` Step 4 points here rather than restating it. It stops at the work kind, because the task's *name* belongs to the user's provider and cannot be shipped: the seven work kinds are the same for everyone, and no two accounts spell their tasks the same way.
 
-1. **`.context.md` overrides win.** Check the user's "How I bill" / preferences section first — it typically sets a default task (e.g. `Gen - Development/Configuration`) and per-project conventions (e.g. a specific default task for the internal-admin project, or a hardcoded `project · task` pair under a client's section). A per-client hardcoded task beats the activity mapping below — e.g. if the client entry pins `Gen - Development/Configuration`, a design-doc-heavy block still bills there, not to Documentation.
-2. **The task follows the block's *dominant* activity**, not its incidental surfaces. A dev block that included reading docs and a 5-min chat is still Development/Configuration. Only give a block a meeting task when the block *is* a call/meeting.
-3. Generic mapping when `.context.md` doesn't decide it:
+Resolution order:
 
-| Dominant block activity | Task choice |
+1. **`.context.md` overrides win.** Check the user's "How I bill" / preferences section first — it names a default task for client work, per-project conventions (a specific default task for the internal-admin project, say), and any hardcoded `project · task` pair under a client's section. A per-client hardcoded task beats the mapping below — if the client entry pins the development task, a design-doc-heavy block still bills there, not to documentation.
+2. **The work kind follows the block's *dominant* activity**, not its incidental surfaces. A dev block that included reading docs and a 5-min chat is still `Development`. Only give a block `Meeting` when the block *is* a call/meeting.
+3. Read the work kind off the evidence:
+
+| Dominant block activity | Work kind |
 |---|---|
-| A Teams meeting / call | `Gen - Meeting` |
-| Code / config / build / deploy / bug fixing | `Gen - Development/Configuration` |
-| Docs / wiki / SOW writing | `Gen - Documentation` |
-| Project management, planning, backlog grooming | `Gen - Project Management` |
-| Testing, QA, smoke tests | `Gen - Testing` |
-| Sustained pure read-only analysis, **no edits at all** | `Gen - Investigation` (rare — any config/code change makes it Development/Configuration) |
-| Harvest itself, internal admin tooling | `No Display` or the project's NB equivalent |
+| A Teams meeting / call | `Meeting` |
+| Code / config / build / deploy / bug fixing | `Development` |
+| Docs / wiki / SOW writing | `Documentation` |
+| Planning, backlog grooming, coordination | `Project management` |
+| Testing, QA, smoke tests | `Testing` |
+| Sustained pure read-only analysis, **no edits at all** | `Investigation` (rare — any config/code change makes it `Development`) |
+| The timesheet itself, internal admin tooling, training | `Internal admin` |
 
-4. Pick only from the project's actual `task_assignments[]` (via `harvest_lookup.py`). If the task you'd pick isn't assigned, fall back to `Gen - Issue Resolution` for investigation-type work, else `Gen - General Consulting`. Don't invent tasks.
+4. **Turn the work kind into a task name.** Three sources, in this order — the first that answers wins, and the order is the whole point of the step:
+
+   a. **The work kind's row in `.context.md` § "Work kinds"**, where that table exists and the row is filled in. The user's own mapping, and the cheapest correct answer.
+   b. **Otherwise, the task in *this project's* `task_assignments[]` whose name most nearly means that work kind.** `harvest_lookup.py` returns them. Read the mapping off the account rather than guessing a name — these are the tasks that demonstrably exist.
+   c. **Otherwise, `.context.md`'s default task** for client work, or for `Internal admin` its default task for internal/admin time.
+
+   **(b) sits before (c) deliberately, and getting that backwards is the failure this step exists to stop.** An install predating the "Work kinds" table has a default task and no rows — both (a) and (c) are "unanswered" and "answered" at once. Taking the default there would collapse `Meeting`, `Documentation`, `Testing` and `Project management` all onto the development task, which is worse than what the rules did before the table existed. (c) is the catch-all for when (b) finds nothing near, not a shortcut past it.
+
+   If two tasks are equally near under (b) and none is obviously right, flag the block 🔸 and ask.
+5. **Whatever the source, the task has to be in this project's `task_assignments[]`** — that list is the authority on what the project offers. A task `.context.md` names but this project doesn't have falls back to (b) against what it does have; say in the presentation that you substituted. **Don't invent tasks** — a name that isn't in `task_assignments[]` doesn't exist as far as the provider is concerned, and posting it fails.
+6. **A mapping you had to work out is a fact `.context.md` is missing.** Propose the row at Step 11, so the next run reads it rather than re-deriving it. (b) is how the skill works on day one; the table is how it stops costing anything.
 
 ## Billing conventions (defaults — `.context.md` overrides win)
 
-- **Bill by ticket / work item, not by window or app.** One sustained block of work on one ticket = one Harvest entry, even when the surface switched between IDE, browser, Teams, and admin portals. Don't fragment by window-title change.
-- **The timesheet run itself lands *after* the last block it can bill.** Doing the timesheet is real internal-admin time, but it happens at the end of the day — usually in the dead stretch past `work_end`, which is unbillable anyway. The failure is back-dating it onto the last live block: the day's final 20-30 min get labelled "timesheet & expenses, non-billable" while the screenshots across that window show ordinary client work, and the client silently loses the time. **Before booking — or verifying an already-posted — timesheet-admin entry, read a screenshot inside the window and confirm a timesheet or Harvest surface is actually on one of the monitors.** Verification is the easier half to skip: Step 1's already-covered branch checks coverage and idle ratio, and both pass on a block that is correctly timed and booked to the wrong project. If it shows client work, bill the client; put the admin time where it really happened, or leave it off if that stretch is already excluded. Observed on 2026-08-18: 17:30-17:54 posted as internal admin, four captures across it showing client access-sync work and no Harvest UI on any monitor.
-- **A matching ticket/case older than ~1 week → make a NEW case, don't reuse it.** The old case is likely closed or already invoiced. Create a fresh one (`references/new-client-work.md`) and bill to that; only reuse a genuinely recent / still-open ticket.
+- **Bill by work item, not by window or app.** One sustained block of work on one work item = one entry, even when the surface switched between IDE, browser, Teams, and admin portals. Don't fragment by window-title change.
+- **The timesheet run itself lands *after* the last block it can bill.** Doing the timesheet is real `Internal admin` time, but it happens at the end of the day — usually in the dead stretch past `work_end`, which is unbillable anyway. The failure is back-dating it onto the last live block: the day's final 20-30 min get labelled "timesheet & expenses, non-billable" while the screenshots across that window show ordinary client work, and the client silently loses the time. **Before booking — or verifying an already-posted — timesheet-admin entry, read a screenshot inside the window and confirm a timesheet or provider surface is actually on one of the monitors.** Verification is the easier half to skip: Step 1's already-covered branch checks coverage and idle ratio, and both pass on a block that is correctly timed and booked to the wrong project. If it shows client work, bill the client; put the admin time where it really happened, or leave it off if that stretch is already excluded. Observed on 2026-08-18: 17:30-17:54 posted as internal admin, four captures across it showing client access-sync work and no timesheet UI on any monitor.
+- **A matching work item older than ~1 week → make a NEW one, don't reuse it.** The old one is likely closed or already invoiced. Create a fresh one (`references/new-client-work.md`) and bill to that; only reuse a genuinely recent / still-open item.
 
-## Writing the Harvest note (description)
+## Writing the entry note (description)
 
 Notes go to clients on invoices — `SKILL.md` carries the hard rule (client-readable, SOW test). Style defaults:
 
@@ -122,11 +136,11 @@ Notes go to clients on invoices — `SKILL.md` carries the hard rule (client-rea
 **Sourcing a work-item number: delegate the dig to a subagent.** A window title rarely names the exact US/Bug number, but `git log` in the client's repos at the block's timestamps often does, and a subagent can search several repos and a project wiki in parallel without spending the main session's context on file listings and commit dumps. Give it: the repo paths, the local-time windows in question, and what each window's window-titles/screenshots showed (so it knows what to corroborate). Tell it explicitly not to invent a number — a wrong ADO number on a client invoice is worse than a generic description — and to report its evidence (commit hash + message, or wiki doc title) alongside each finding so you can judge confidence yourself rather than trust its say-so.
 - A subagent finding a file open in a workspace doesn't confirm it's that client's file — have it check the file's actual repo history, not just the window title, before citing anything from it.
 
-**Billable status comes from the task assignment, not the task name.** `task_assignments[N].billable` in the catalog is authoritative. The `(NB)` suffix is a naming convention hint — some non-billable tasks (e.g. everything under an internal admin project) don't carry it. When the block is internal/admin/training, pick a task whose `billable: false` in the catalog.
+**Billable status comes from the task assignment, not the task name.** `task_assignments[N].billable` in the assignment catalog is authoritative. A `(NB)`-style suffix is a naming convention hint — some non-billable tasks (e.g. everything under an internal admin project) don't carry one. When the work kind is `Internal admin`, pick a task whose `billable` is `false` in the catalog.
 
 ## Confidence rating
 
-- **HIGH** — direct ticket-number hit, OR two corroborating signals (e.g. Edge profile + URL agree).
+- **HIGH** — direct work-item hit, OR two corroborating signals (e.g. Edge profile + URL agree).
 - **MEDIUM** — single signal (profile, URL, or app), no contradictions.
 - **LOW** — conflicting signals, or signal absent but block is non-trivial duration. Mark with 🔸 and ask the user.
 

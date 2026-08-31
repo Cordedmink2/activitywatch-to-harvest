@@ -41,7 +41,7 @@ When the same setting is available from more than one of those, a per-command fl
 | `Timesheets/.context.md` | The user's attribution rules — **source of truth** for all ambiguity calls | Read every run |
 | `Timesheets/<date>_timesheet.md` | Optional markdown audit trail | Format reference; create only on request |
 | `.mcp/harvest_assignments*.json` | Cached Harvest project assignments (`project.id/name/code`, `client.name`, `task_assignments[]`) | Project + task IDs, via `harvest_lookup.py` |
-| `.mcp/<catalog>.txt/.json` | User-specific catalogs (e.g. active-incident list) | Ticket-number → title |
+| `.mcp/<catalog>.txt/.json` | User-specific catalogs (e.g. active-incident list) | Work-item number → title |
 
 **Screenshot location:** `~/Pictures/WorkScreenshots/` above is the default. If `TIMESHEET_SCREENSHOTS_DIR` is configured, captures go there instead — read that path rather than the literal one in the commands below.
 
@@ -70,10 +70,10 @@ Run in parallel before classifying anything. If any first-run piece is missing (
 1. **`Timesheets/.context.md` — read it, whole, every run.** If missing, run first-run setup; don't classify without it. **Read the entire file into context; never grep it, never read a slice of it, never skim to the section you think you need.** Its facts are cross-cutting — an exclusion in one section decides a block whose client is named in another — so a partial read produces confident wrong answers rather than an obvious gap. The Step 11 size budget exists precisely so this file always fits in one read; if it has grown past budget, fix the budget (Step 11), don't switch to reading part of it.
 2. **ActivityWatch reachable** — `curl -s <activity-url>/api/0/buckets/` returns JSON, where `<activity-url>` is the configured `TIMESHEET_ACTIVITY_URL` or `http://localhost:5600` if unset. Use the configured one: probing localhost on a machine that reads a remote AW reports the instrument dead when the scripts would have worked. If not, fall back to `daily_exports/<date>/compact.jsonl`; if both missing, the day can only be reconstructed from screenshots + user memory — say so explicitly.
 3. **AW bucket ids resolved** — from `.context.md` if cached, else discover and offer to cache.
-4. **Catalogs fresh** — `.mcp/harvest_assignments*.json` + client catalogs modified within 7 days; else run `scripts/refresh_catalogs.py` (details: `references/catalog-refresh.md`). Surface a >30-day gap to the user before refreshing, unless `.context.md` preferences say refresh silently.
+4. **Catalogs fresh** — the assignment catalog (`.mcp/harvest_assignments*.json`) + any work-item catalogs modified within 7 days; else run `scripts/refresh_catalogs.py` (details: `references/catalog-refresh.md`). Surface a >30-day gap to the user before refreshing, unless `.context.md` preferences say refresh silently.
 5. **Harvest credentials work** — `python scripts/harvest_list.py <today> <today>` runs without auth error. "credentials not found" → `references/setup.md`; `401/403` → PAT revoked, user must regenerate.
 
-**Tunable defaults** (override via `## Preferences` in `.context.md`): AFK break threshold `1050s` (17.5 min); substantive-activity floor `120s`; end-of-day blip gap `600s`; smallest uncovered stretch worth flagging `900s`; active/thin bands `0.7`/`0.4`; timeline noise floor `5s`, gap fold `60s` and minimum displayed span `3.0 min`; minimum billable block `0.25 hr`; lunch window `11:30–14:30`; work-hours rendering window `06:00–20:00`; default Harvest task `Gen - Development/Configuration`.
+**Tunable defaults** (override via `## Preferences` in `.context.md`): AFK break threshold `1050s` (17.5 min); substantive-activity floor `120s`; end-of-day blip gap `600s`; smallest uncovered stretch worth flagging `900s`; active/thin bands `0.7`/`0.4`; timeline noise floor `5s`, gap fold `60s` and minimum displayed span `3.0 min`; minimum billable block `0.25 hr`; lunch window `11:30–14:30`; work-hours rendering window `06:00–20:00`. **The task names have no default and cannot have one** — the rubric decides a *work kind*, and `.context.md` § "Work kinds" maps each one to the task the user's own provider offers. With no mapping there yet — every install predating that table — the rubric matches the work kind against the project's own `task_assignments[]` rather than guessing a name, and proposes the row at Step 11. A guessed task name is not a task the provider has.
 
 Where `## Preferences` names a value that differs from the default, **pass it on the command line** — each entry in the template carries the flag it maps to. Never edit a constant in `scripts/`: an update overwrites it, silently reverting a preference the user set once and expects to hold.
 
@@ -102,7 +102,7 @@ Convert relative dates ("yesterday", "Friday") using today's date in the user's 
 
 Read in parallel:
 - `Timesheets/.context.md` — the **whole** file (Prerequisite 1), if you have not already read it this run
-- `references/classification-rules.md` (the classification rubric — client, project, **task selection**, interleaved-day protocol)
+- `references/classification-rules.md` (the classification rubric — client, project, **work kind and task selection**, interleaved-day protocol)
 - Cached catalogs from `.mcp/`
 - `python scripts/afk_blocks.py <date>` — the day skeleton (work_start, work_end, breaks, active spans)
 - `python scripts/activity_timeline.py <date>` — merged window spans tagged with the AW client category, plus per-category rollup. **Compact output is the default and is enough** — do NOT reach for `--full` routinely; zoom specific blocks later with `--window HH:MM-HH:MM`. Loading the full raw timeline for a mostly-single-client day is the main cause of context bloat.
@@ -140,11 +140,11 @@ These rules apply identically when **backfilling an older date** — trailing le
 
 ### Step 4 — Classify each block
 
-For each block determine **client + Harvest project + Harvest task + billable + confidence (high/medium/low)** per `references/classification-rules.md`. Mechanics:
+For each block determine its attribution — **client + project + task + billable + confidence (high/medium/low)** — per `references/classification-rules.md`. Mechanics:
 
-- The AW category from the timeline is a client-level first pass only — never project/ticket-level, never 100%. Investigate every `uncategorized` and `!MULTI` span.
-- Ticket-shaped strings (`[A-Z]{2,4}\d{3,}S?`) in titles/URLs are the highest-confidence signal: resolve the title in the user's incident catalog and the project/task via `python scripts/harvest_lookup.py <code-name-or-client>` — it searches ALL catalog pages and falls back to the user's recent entries for archived projects. Never hand-roll a glob loop (it reads one page and misses projects). **A client's name is a first-class search term, and the top hit is not automatically the right project:** the live delivery project is often named for the *work* and matches only on `client.name` (reported as `matched_on: client`, ranked last), while a dead presales or shell project named after the client ranks above it. Read all candidates before picking — an all-non-billable task set is the tell for a shell. Trailing `S` = Support: tag the description `[Support]`, same project/task selection.
-- **Task selection and billable status: follow the rubric's "Task selection" section exactly** — `.context.md` overrides first, task follows the block's dominant activity, billable comes from `task_assignments[].billable` not the task name.
+- The AW category from the timeline is a client-level first pass only — never project/work-item-level, never 100%. Investigate every `uncategorized` and `!MULTI` span.
+- Work-item-shaped strings (`[A-Z]{2,4}\d{3,}S?`) in titles/URLs are the highest-confidence signal: resolve the title in the user's work-item catalog and the project/task via `python scripts/harvest_lookup.py <code-name-or-client>` — it searches ALL catalog pages and falls back to the user's recent entries for archived projects. Never hand-roll a glob loop (it reads one page and misses projects). **A client's name is a first-class search term, and the top hit is not automatically the right project:** the live delivery project is often named for the *work* and matches only on `client.name` (reported as `matched_on: client`, ranked last), while a dead presales or shell project named after the client ranks above it. Read all candidates before picking — an all-non-billable task set is the tell for a shell. Trailing `S` = Support: tag the description `[Support]`, same project/task selection.
+- **Task selection and billable status: follow the rubric's "Work kind and task selection" section exactly** — `.context.md` overrides first, then the block's dominant activity gives a work kind, then `.context.md` § "Work kinds" turns that into the user's own task name. Billable comes from `task_assignments[].billable`, never from the task name.
 - **If the day shows more than one client, or a block is titled by an agent-session file (`CLAUDE.md`, `AGENTS.md`, plan `.md`s): apply the rubric's "Interleaved days" protocol before accepting any block over an hour.** This is the single largest source of real misattributions.
 
 ### Step 5 — Disambiguate flagged blocks
@@ -153,7 +153,7 @@ For any 🔸 block (low confidence, thin ratio, or ambiguous attribution):
 
 - **AFK status is settled by the AFK watcher** — never re-infer active/idle from screenshots. Screenshots and zooms answer only *which client/project*.
 1. **Zoom the timeline first:** `python scripts/activity_timeline.py <date> --window HH:MM-HH:MM` folds in Firefox/Chrome web-watcher rows — richer URL/title signals without opening images.
-2. **Then screenshots**, for generic apps that don't name their client (XrmToolBox, bare VS Code, terminals): find the nearest `HH-MM-SS_mN.png` to the ambiguous timestamps, read the env URL / workspace / repo / ticket on screen. Different clients in different screenshots within one block → split the block (switch-point protocol).
+2. **Then screenshots**, for generic apps that don't name their client (XrmToolBox, bare VS Code, terminals): find the nearest `HH-MM-SS_mN.png` to the ambiguous timestamps, read the env URL / workspace / repo / work item on screen. Different clients in different screenshots within one block → split the block (switch-point protocol).
    - **When several blocks need screenshot-checking, delegate the reading to a cheap subagent** (e.g. `Agent` with `model: "haiku"`) rather than reading every capture in the main session — image tokens add up fast once a date needs more than a couple of captures, and this is a plain read-what's-on-screen task a smaller model handles fine. Give the subagent no conversation context of its own, so its prompt must carry: the screenshot directory and exact timestamps to check (all monitors — `_m1`/`_m2`/…), the signal list from `.context.md`, the AFK-settled rule above, and classification-rules.md's "Interleaved days" probe-economically procedure (3 spread, densify around flips) if any block needs a switch point. It reports **raw signals per capture** (app, environment URL, ticket numbers, Edge profile, workspace) — never a billing verdict; attribution against `.context.md` stays with the main session.
 3. **Still ambiguous → ask the user**, showing which screenshots you checked, what you saw, and the candidate clients.
 - **Never silently bill an abandoned-task block.** Setup/sign-in/install work that ended without a client deliverable and a pivot elsewhere → surface it; default to internal-admin non-billable unless the user says otherwise.
@@ -165,7 +165,7 @@ Render in the user's format:
 ```markdown
 | Time | Duration | Client | Description |
 |------|----------|--------|-------------|
-| 08:12–08:46 | 0.5 hrs | <Client> | <Description with ticket # if any> |
+| 08:12–08:46 | 0.5 hrs | <Client> | <Description with work item # if any> |
 ```
 
 Flag uncertain blocks 🔸 below the table. End-of-day and breaks are deterministic; *which client / billable / where to split* is judgment — flag it rather than committing silently. The user's review is what makes the sheet accurate, so make uncertain calls easy to see.
@@ -201,7 +201,7 @@ First self-check every line of the proposal:
 - [ ] Skeleton still current — if the day was still in progress when you read it, or the session has since crossed midnight, re-run `afk_blocks.py <date>` before posting. An open day's `work_end` advances and late spans appear, which moves both the final block's end and the coverage denominator
 - [ ] No block past `work_end`; no block crossing a script break
 - [ ] Every `project_id`/`task_id` came from `harvest_lookup.py`; billable flag checked
-- [ ] Task = dominant activity per the rubric, `.context.md` overrides applied
+- [ ] Work kind = the block's dominant activity per the rubric, and the task name came from `.context.md` § "Work kinds" or from this project's own `task_assignments[]` — never from memory; `.context.md` overrides applied
 - [ ] Every Harvest note passes the client-readability test (Non-negotiables below)
 - [ ] All 🔸 blocks resolved with the user
 - [ ] `.context.md` exclusions applied (personal browsing, recurring internal items)
@@ -211,7 +211,7 @@ Then show:
 
 > "Ready to post to Harvest. This will create N time entries:
 > - 0.5 hrs · [Northwind Consulting Ltd] · Northwind Internal — Team Standup
-> - 0.75 hrs · [Beta Industries] · BET2020S Beta Fabrics Copy job — Gen - Investigation [Support]
+> - 0.75 hrs · [Beta Industries] · BET2020S Beta Fabrics Copy job — Investigation [Support]
 >
 > Proceed? (yes / no / edit block <n>)"
 
@@ -234,7 +234,7 @@ python scripts/harvest_post.py <project_id> <task_id> <YYYY-MM-DD> <HH:MM> <HH:M
 
 Fix a wrong entry with `python scripts/harvest_patch.py <entry_id> [--start HH:MM] [--end HH:MM] [--notes "..."] [--hours N] [--project-id N] [--task-id N] [--date YYYY-MM-DD] [--confirm]` (≥1 field flag; same OK/ERR convention, same gate — it previews as `WOULD PATCH <entry_id> <body>` until `--confirm` is added). A patch overwrites a line the user already approved, so it needs its own yes; Step 8's covers the entries it listed, not a later correction to one.
 
-**Block belongs to brand-new client work with no Harvest project yet** → follow `references/new-client-work.md` (create the backend case, post other blocks now, bill the deferred one when the synced project appears).
+**Block belongs to brand-new client work with no project yet** → follow `references/new-client-work.md` (create the backend work item, post other blocks now, bill the deferred one when the synced project appears).
 
 ### Step 10 — Wrap-up
 
@@ -250,7 +250,7 @@ A run frequently reveals a fact the skill or `.context.md` doesn't know (a new s
 
 Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in `.context.md`; I guessed Ledger Learning. Add `XrmToolBox connecting to env X → Ledger Learning` under Ledger Learning?"
 
-**`.context.md` size budget — check after every edit to it.** `(Get-Item Timesheets/.context.md).Length` must stay under **14,000 bytes** (override via `## Preferences`). The budget exists to keep Prerequisite 1's whole-file read affordable on every run — that is what it is *for*, so a file over budget gets trimmed, never partially read. Over budget → compact in the same session, in this order: (1) move any *generic* rule that crept in into this skill's references — that's skill drift, not a user fact; (2) delete facts proven wrong or superseded (finished workstreams, retired clients, one-off ticket examples older than a few months); (3) shorten confirmed-example parentheticals to the date stamp. If getting under budget would drop a live user fact, ask the user which to drop — never silently delete.
+**`.context.md` size budget — check after every edit to it.** `(Get-Item Timesheets/.context.md).Length` must stay under **14,000 bytes** (override via `## Preferences`). The budget exists to keep Prerequisite 1's whole-file read affordable on every run — that is what it is *for*, so a file over budget gets trimmed, never partially read. Over budget → compact in the same session, in this order: (1) move any *generic* rule that crept in into this skill's references — that's skill drift, not a user fact; (2) delete facts proven wrong or superseded (finished workstreams, retired clients, one-off work-item examples older than a few months); (3) shorten confirmed-example parentheticals to the date stamp. If getting under budget would drop a live user fact, ask the user which to drop — never silently delete.
 
 ### Step 12 — One date per session, then reset
 
@@ -271,7 +271,7 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - **No Harvest write without explicit confirmation.** `harvest_post.py` and `harvest_patch.py` write only when passed `--confirm`. Never type that flag on a yes you don't have — a posted entry is not recoverable from your side.
 - **Honor `.context.md` exclusions** — personal browsing, AFK breaks, personal home admin are NEVER billable.
 - **Don't fabricate confidence.** A block that could be 2–3 clients gets surfaced, not arbitrated.
-- **Harvest notes are client-readable.** They go out on invoices: describe *what part of the client's project* was worked on, never the internal mechanism, file names, internal app names, or chat partners. If a term wouldn't appear in the SOW or on the client's own board, it doesn't go in the note. Tickets (`ACM2232S`) and recurring meeting names are fine. The markdown timesheet stays internal and can be granular. Style defaults: the rubric's "Writing the Harvest note" section; the user's own examples in `.context.md` "How I bill".
+- **Entry notes are client-readable.** They go out on invoices: describe *what part of the client's project* was worked on, never the internal mechanism, file names, internal app names, or chat partners. If a term wouldn't appear in the SOW or on the client's own board, it doesn't go in the note. Work-item numbers (`ACM2232S`) and recurring meeting names are fine. The markdown timesheet stays internal and can be granular. Style defaults: the rubric's "Writing the entry note" section; the user's own examples in `.context.md` "How I bill".
 - **`.context.md` is the source of truth for per-user facts** — propose new user facts there, not in the skill.
 
 ## Files in this skill
@@ -281,11 +281,11 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `.env.example` / `.gitignore` — Harvest credential template (copy to `.env`, gitignored)
 - `references/setup.md` — first-run setup: screenshot task, `.context.md` creation, Harvest creds, AW discovery, AW category maintenance
 - `references/context.md.example` — starter template for `Timesheets/.context.md`
-- `references/classification-rules.md` — client/project/**task** rubric + interleaved-day switch-point protocol
+- `references/classification-rules.md` — client/project/**work kind** rubric + interleaved-day switch-point protocol
 - `references/activitywatch.md` — raw AW API reference (endpoints, buckets, heartbeat dedupe, lock-screen quirk)
 - `references/output-format.md` — timesheet .md template
 - `references/catalog-refresh.md` — refreshing `.mcp/` catalogs
-- `references/new-client-work.md` — billing work that has no Harvest project yet (Dataverse case creation)
+- `references/new-client-work.md` — billing work that has no project yet (Dataverse case creation)
 - `references/reporting-issues.md` — reporting a defect upstream when the user installed this skill rather than maintaining it: the repo, what to redact first, and the confirmation gate before filing
 - `references/self-development.md` — **for changing this skill, not for running it.** Start here before editing `SKILL.md`, a reference, or a script: where maintenance content goes, which instruments to test against, the rules that have more than one copy, and where the release ritual lives. Ignore it on a normal run.
 - `TESTING.md` — the record behind those decisions: test results, evidence rungs, and options already tried and rejected. Read it so you don't re-add something that was measured unnecessary; new findings go here, not in `SKILL.md`.

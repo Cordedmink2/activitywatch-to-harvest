@@ -16,6 +16,8 @@ is what is specific to *this* skill.
 | One user's clients, signals, machine facts | that user's `Timesheets/.context.md` |
 | How to change the skill — this file's subject | this file |
 | Test records, settled decisions, rejected options, evidence rungs | `TESTING.md` |
+| The vocabulary a rule is written in, and which words to avoid | the repo root's `CONTEXT.md` |
+| Why the code is shaped the way it is | the repo root's `docs/adr/` |
 | Releasing and propagating a change | the `daily-timesheet-release` skill |
 
 `SKILL.md`'s "What lives where" section governs the first two rows at *run* time — it is
@@ -33,12 +35,22 @@ something a test found unnecessary.
 not the instrument for a wording change — `TESTING.md` § "What the instruments measure"
 has the full argument and the fixture design that has been used so far.
 
-Two gates a doc edit can trip, both cheap to run from the skill folder:
+Three gates a doc edit can trip. **Run them from the repo root, not the skill folder** —
+`pytest.ini` here sets `testpaths = tests`, so a run started in this folder collects the
+skill's own suite and silently skips every repo-level guard:
 
-- `python -m pytest -q` — `test_references.py` scans `SKILL.md` and every
-  `references/*.md` (globbed, so a new reference file is covered automatically) and
-  fails any `python scripts/<name>.py` command naming a script the skill does not ship.
-  Write workspace-relative commands some other way.
+```
+python -m pytest -q tests skills/daily/tests
+```
+
+- `skills/daily/tests/test_references.py` scans `SKILL.md` and every `references/*.md`
+  (globbed, so a new reference file is covered automatically) and fails any
+  `python scripts/<name>.py` command naming a script the skill does not ship. Write
+  workspace-relative commands some other way.
+- `tests/test_provider_neutrality.py` fails if a provider's literal task name returns to
+  the shipped rules, if the rules name a work kind the glossary doesn't define, or if the
+  work kinds in `references/context.md.example` drift from the ones in `CONTEXT.md` — that
+  last pair is matched string-for-string at run time.
 - A `.context.md` under the Step 11 size budget after any change that proposes writing
   to one.
 
@@ -56,7 +68,8 @@ to have in front of you.
 | `work_end` is a ceiling | Step 3, second bullet | Step 6 guard 2, Step 8 checklist |
 | No entry under 0.25 hr | Step 3, `0.4–0.7` band | Step 3 granularity line, Step 6 guard 1 |
 | Per-user facts belong in `.context.md` | "What lives where" | Step 11, Non-negotiables |
-| Task selection and interleaved days | `references/classification-rules.md` | Step 4 points at it |
+| Work kind and task selection, and interleaved days | `references/classification-rules.md` | Step 4 points at it |
+| The rules name a work kind; the user's workspace names the provider's task. No task name is a shipped default | the repo root's `CONTEXT.md` glossary, and `docs/adr/0002-defer-splitting-the-provider-into-its-own-plugin.md` for why | `references/classification-rules.md` §"Work kind and task selection", `references/context.md.example` §"Work kinds", `SKILL.md` "Tunable defaults" + Step 4, the repo-level `tests/test_provider_neutrality.py` |
 | One date per session | Step 12 | Step 1 scope paragraph, Step 10 wrap-up |
 | Read `.context.md` whole, never partially | Prerequisite 1 | Step 2 load list, Step 11 size budget |
 | Check the date against Harvest before rebuilding it | Step 1 | Step 8 checklist |

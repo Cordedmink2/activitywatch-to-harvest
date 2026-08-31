@@ -57,10 +57,10 @@ The `Timesheets/<date>_timesheet.md` is an *optional* internal-audit artefact. G
   Everywhere else the marker is absent, including every `--utc-offset` run, so there is nothing to do about it on the other 364 days. Splitting only arises for work that actually runs through the change; a day whose blocks sit either side of it, like a break across the hour, needs none of this.
 - **Duration**: decimal hours rounded to 0.25 (`0.25`, `0.5`, `0.75`, `1.0`, …). Append ` hrs` literally.
 - **Break rows**: *only* for breaks ≥17.5 min (or the user's overridden threshold). Render `*Break*` in italic, `—` em-dash in the Client column. Shorter AFK gaps fold silently into the surrounding work block.
-- **Client column**: short canonical name as defined in `.context.md`, not the long Harvest client name.
-- **Description (markdown column)**: 1 sentence, concrete, internal-audit style. The markdown file stays local — so it can mention tools, tickets, file names, participants if useful for review. Match the user's own tone (read existing files in `Timesheets/` or their Harvest history for examples).
-- **Harvest `notes` field is different.** Those get sent to clients with invoices — follow `classification-rules.md` "Writing the Harvest note"; the user's own examples are in `.context.md` "How I bill".
-- **Support tickets**: prefix description with `[Support] ` for tickets matching the support pattern (e.g. trailing `S` if defined in `.context.md`).
+- **Client column**: short canonical name as defined in `.context.md`, not the long client name the provider carries.
+- **Description (markdown column)**: 1 sentence, concrete, internal-audit style. The markdown file stays local — so it can mention tools, work items, file names, participants if useful for review. Match the user's own tone (read existing files in `Timesheets/` or their posted entries for examples).
+- **An entry's `notes` field is different.** Those get sent to clients with invoices — follow `classification-rules.md` "Writing the entry note"; the user's own examples are in `.context.md` "How I bill".
+- **Support work**: prefix description with `[Support] ` for work items matching the support pattern (e.g. trailing `S` if defined in `.context.md`).
 - **Notes section**: 3-6 bullets typically. Cover splits, judgment calls, exclusions. Skip trivial observations.
 
 ## Anti-patterns
