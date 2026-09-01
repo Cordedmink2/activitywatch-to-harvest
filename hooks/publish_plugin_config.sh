@@ -10,7 +10,7 @@
 #
 # Why this wrapper exists rather than naming an interpreter in the manifest: on Windows a
 # bare `python` is frequently the Microsoft Store stub, a 0-byte executable that prints an
-# install nag and exits non-zero (`llms.txt` § "Environment detection" makes the same
+# install nag and exits non-zero (the `setup` skill's "Before you start" makes the same
 # point about running the scripts). Trying the candidates in order is the difference
 # between "configuration silently absent" and "configuration present".
 #

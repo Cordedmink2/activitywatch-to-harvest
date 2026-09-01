@@ -42,6 +42,18 @@ an interpreter explicitly when probing picks wrong.
 Verify the fix by running the task once (`Start-ScheduledTask -TaskName WorkScreenshots`)
 and confirming new PNGs appear for every monitor.
 
+## First-run: the workspace
+
+The `setup` skill deliberately does not build this — it covers only what a person has to do by hand, and this is not that. It belongs to this skill's first run, which is where a user arrives with no `Timesheets/` at all.
+
+Ask which folder should be the workspace (the current directory is the usual answer), then from a clone of the repo run `install/setup_workspace.ps1 [-Workspace <path>]` (POSIX: `install/setup_workspace.sh [<path>]`). Without a clone, create the three directories directly — the script does nothing else:
+
+- `Timesheets/` — `.context.md` plus optional per-day markdown audit files.
+- `daily_exports/` — optional historical ActivityWatch dumps, the fallback when the server is unreachable.
+- `.mcp/` — the cached catalogs, refreshed on demand.
+
+It also seeds `Timesheets/.context.md` from `references/context.md.example` without overwriting an existing one. If the workspace is not the folder Claude Code starts in, set `TIMESHEET_WORKSPACE` (`/plugin configure billables`) once it exists — `find_workspace()` accepts a path that isn't there, so a value set before the folder is a value that silently resolves to nothing.
+
 ## First-run: `Timesheets/.context.md`
 
 If `Timesheets/.context.md` doesn't exist:

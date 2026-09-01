@@ -6,16 +6,18 @@ everyone — rather than a fact about this user or a setting on their machine. S
 file on a normal run.
 
 **If the user maintains this skill, this is the wrong file.** `references/self-development.md`
-owns editing it and the `daily-timesheet-release` skill owns shipping the change. Ask if you
-don't know; the answer is stable, so it is worth recording under `## Preferences` in
-`.context.md` once rather than re-asking every run.
+owns editing it, and shipping the change is a commit to the repo below — there is no separate
+release ritual. Ask if you don't know; the answer is stable, so it is worth recording under
+`## Preferences` in `.context.md` once rather than re-asking every run.
 
 ## The repository
 
     https://github.com/Cordedmink2/activity-to-timesheet
 
-Nothing an agent reads on a run names the origin — not `SKILL.md`, not `VERSION` — so read
-it from here rather than asking the user, who may well not remember either.
+Nothing an agent reads on a run names the origin — `SKILL.md` does not, and there is no
+version marker beside it — so read it from here rather than asking the user, who may well
+not remember either. The version the issue form asks for is the plugin's: `/plugin` lists
+it in Claude Code, and the export prints it as `Exporting billables v...`.
 
 ## Redact before drafting, not after
 

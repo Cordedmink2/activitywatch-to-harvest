@@ -1,8 +1,9 @@
 # AGENTS.md
 
 Steering for agents **working on this repo**. If you are instead helping a user *install* the
-billables plugin on their machine, this is not the file you want: [`llms.txt`](./llms.txt) gets the plugin
-installed, and the plugin's own `setup` skill walks the manual steps from there.
+billables plugin on their machine, this is not the file you want: the two `/plugin` commands in
+[`README.md`](./README.md) get it installed, and the plugin's own `setup` skill walks the manual
+steps from there, verifying each one.
 
 ## Agent skills
 

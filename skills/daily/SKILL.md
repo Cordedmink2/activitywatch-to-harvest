@@ -278,7 +278,6 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 ## Files in this skill
 
 - `SKILL.md` — this file
-- `VERSION` — release marker. The `daily-timesheet-release` skill owns bumping it; don't edit it by hand.
 - `.env.example` / `.gitignore` — Harvest credential template (copy to `.env`, gitignored)
 - `references/setup.md` — first-run setup: screenshot task, `.context.md` creation, Harvest creds, AW discovery, AW category maintenance
 - `references/context.md.example` — starter template for `Timesheets/.context.md`

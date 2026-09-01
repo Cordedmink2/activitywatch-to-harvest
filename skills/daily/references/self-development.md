@@ -18,7 +18,7 @@ is what is specific to *this* skill.
 | Test records, settled decisions, rejected options, evidence rungs | `TESTING.md` |
 | The vocabulary a rule is written in, and which words to avoid | the repo root's `CONTEXT.md` |
 | Why the code is shaped the way it is | the repo root's `docs/adr/` |
-| Releasing and propagating a change | the `daily-timesheet-release` skill |
+| Releasing a change | `.claude-plugin/plugin.json` `version` + `CHANGELOG.md` — see §Releasing |
 
 `SKILL.md`'s "What lives where" section governs the first two rows at *run* time — it is
 what Step 11 sorts proposals against. This table is the maintainer's view of the same
@@ -78,20 +78,20 @@ to have in front of you.
 | Screenshots never settle active/idle | Step 5, first bullet | `SKILL.md` folder mechanics, `classification-rules.md` §"Focused window ≠ active attention" |
 | Check the other monitors before trusting one | `classification-rules.md` §"Focused window ≠ active attention" | `SKILL.md` folder mechanics + Step 5 subagent brief, `classification-rules.md` long-agent-CLI and browser-row paragraphs, interleaved-days probe step |
 | Setting precedence: flag, then `.env`, then the process environment, then the script default; blank counts as unset | `scripts/skill_config.py` docstring | `SKILL.md` "What lives where", `references/setup.md` §"First-run: configuration", the `refresh_catalogs.py` and `screenshot_capture.py` module docstrings |
-| The declared configuration surface: which keys exist, which are required, which are sensitive | `.claude-plugin/plugin.json` `userConfig` | `tests/test_plugin_config.py`, `references/setup.md` §"First-run: configuration" table, `llms.txt` step 8 table |
+| The declared configuration surface: which keys exist, which are required, which are sensitive | `.claude-plugin/plugin.json` `userConfig` | `tests/test_plugin_config.py`, `references/setup.md` §"First-run: configuration" table, `README.md`'s install table |
 | No assumed timezone: an unconfigured run refuses rather than guessing an offset | `scripts/aw_client.py` `resolve_zone()` docstring | `SKILL.md` "Timezone", `references/activitywatch.md` §"Time zones", both scripts' module docstrings |
 | A day is bounded by its zone at each end, not by one offset — so the day the clocks change is 23 or 25 hours long | `scripts/aw_client.py` `utc_bounds()` docstring | `references/activitywatch.md` §"Time zones", `SKILL.md` "Timezone", `tests/scenarios.py` `daylight-saving-transition-day` |
 | The second pass over the hour a fall-back repeats is suffixed `*`, and reads back as the same instant | `scripts/aw_client.py` — `local_clock()` writes the marker, `parse_local_time()` / `to_utc()` read it back and refuse it where the clock reads once | `references/activitywatch.md` §"Time zones", `references/output-format.md` §Conventions, `SKILL.md` "Timezone", `tests/README.md` §"Dating a day", `tests/scenarios.py` `fall-back-repeated-hour-day`, `TESTING.md` §"Two instants an hour apart printed the same clock time", `CHANGELOG.md` |
-| The shared-directory export is prefixed `<plugin>-<skill>`, its declared `name:` rewritten to match, and it is generated rather than hand-edited | `docs/adr/0004-generate-the-shared-agent-skills-export.md` | `install/export_agent_skills.py` module docstring, the repo-level `tests/test_distribution.py`, `README.md` step 5, `llms.txt` step 5 |
+| The shared-directory export is prefixed `<plugin>-<skill>`, its declared `name:` rewritten to match, and it is generated rather than hand-edited | `docs/adr/0004-generate-the-shared-agent-skills-export.md` | `install/export_agent_skills.py` module docstring, the repo-level `tests/test_distribution.py`, `README.md` step 5 |
 | The export deletes only what carries its stamp — the prefix says where to look, never who wrote it | `TESTING.md` §"Sharing a prefix is not proof of authorship" | `install/export_agent_skills.py` `retire_departed_skills()` / `refuse_unless_ours()` docstrings, `docs/adr/0004-…` §Consequences, the three retirement tests in the repo-level `tests/test_install_scripts.py` |
 | Writing to the provider takes `--confirm`; without it the scripts preview the exact body and exit 0, so a forgotten flag is a preview and not an error | `TESTING.md` §"The confirmation gate is in the invocation, not only the prose" | both write scripts' module docstrings, `SKILL.md` Step 8 + Step 9 + the patch line + Non-negotiables + "Files in this skill", `README.md`, the repo root's `CONTEXT.md` glossary, `tests/test_references.py`'s ready-typed-flag guard, `tests/test_cli_contracts.py` |
 | The gate is removed from the argument list before anything is read positionally, so it may be typed anywhere and no dangling field flag can swallow it | both write scripts' `--confirm` handling — `harvest_post.py` is where the shape was set | `harvest_patch.py` `parse_args()`, the two placement tests in `tests/test_cli_contracts.py` |
 | The judgement tunables live in the user's `## Preferences`, and reach the scripts as flags — never as an edited constant | `references/context.md.example` §Preferences | `SKILL.md` "Tunable defaults", the two scripts' constant blocks |
 | Workspace resolution is anchored on the install shape, not a depth; a plugin's own root is never a workspace | `TESTING.md` §"Workspace resolution is anchored on the install shape, not on a depth" | `scripts/skill_config.py` `_install_workspace()` docstring, the two install-shape tests in `tests/test_config_seam.py`, `CHANGELOG.md` |
 | The `scripts/` prefix is resolved from the directory `SKILL.md` was read from, never written down | `SKILL.md` "Running the scripts" | the repo-level `tests/test_install_scripts.py` guards, the `setup` skill's "Finding the files this skill needs" (which resolves a *sibling* skill the same way, `daily` or `billables-daily` by install shape) |
-| Standing the pipeline up for the first time is the `setup` skill; `references/setup.md` is the mid-run diagnostic for a prerequisite that failed on a machine already working | the `setup` skill's `SKILL.md` | `SKILL.md` "When to invoke", `references/setup.md` header, `AGENTS.md`, `llms.txt` |
-| An allow-list ask names the task and the interpreter and script paths read back off the registered task — never a folder-wide exclusion — and a block is evidenced before it is escalated | the `setup` skill's `references/endpoint-security.md` | `llms.txt` hard rules, `README.md`'s endpoint-security note, the `setup` skill's Step 5 "If it fails" |
-| The browser extension's ID, which is what a managed browser's `ExtensionInstallAllowlist` takes | the `setup` skill's `references/endpoint-security.md` §"The browser extension" | `llms.txt` step 2, `README.md` |
+| Standing the pipeline up for the first time is the `setup` skill; `references/setup.md` is the mid-run diagnostic for a prerequisite that failed on a machine already working | the `setup` skill's `SKILL.md` | `SKILL.md` "When to invoke", `references/setup.md` header, `AGENTS.md`, `README.md`'s install section |
+| An allow-list ask names the task and the interpreter and script paths read back off the registered task — never a folder-wide exclusion — and a block is evidenced before it is escalated | the `setup` skill's `references/endpoint-security.md` | `README.md`'s endpoint-security note, the `setup` skill's Step 5 "If it fails" |
+| The browser extension's ID, which is what a managed browser's `ExtensionInstallAllowlist` takes | the `setup` skill's `references/endpoint-security.md` §"The browser extension" | the `setup` skill's Step 2, `README.md` step 2 |
 
 The `--cover` pair has already drifted once and cost a re-run — `TESTING.md` has the
 entry. The fix at the time touched the checklist copy and missed the owner.
@@ -109,6 +109,12 @@ repo cannot, and three of three test agents handed a genuine script defect came 
 
 ## Releasing
 
-The skill exists in three copies and a change is only done when all three agree. The
-`daily-timesheet-release` skill owns that ritual — VERSION, `CHANGELOG.md`, tags, which
-direction to propagate, and how to verify each leg. Don't bump `VERSION` by hand here.
+There is one copy: this repo is the plugin, and installing it is `/plugin install`. A
+change ships by being committed here — nothing to propagate, no second leg to verify, and
+no marker inside the skill to keep in step.
+
+Bump `version` in `.claude-plugin/plugin.json` and add the matching `## [x.y.z]` heading to
+`CHANGELOG.md` in the same change. Those two are the whole release, and
+`tests/test_distribution.py` fails when they disagree. A user on the shared Agent Skills
+export re-runs the export to update; it is generated from this plugin every time, so their
+copy cannot be a stale fork of it.

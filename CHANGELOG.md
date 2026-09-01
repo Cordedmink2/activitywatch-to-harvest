@@ -122,6 +122,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request body itself so it cannot drift from what a confirmed run sends. The existing guards still
   run first: a reversed range is an error, not a preview.
 
+### Removed
+- **The old install path is gone: `llms.txt`, the `VERSION` file and the release ritual.** There
+  were two ways in — the two `/plugin` commands, and a 225-line runbook you pasted a prompt about
+  and an agent followed. Two install paths drift, which is the failure this whole effort exists to
+  remove: the runbook had already spent two releases stating flatly that ActivityWatch was not on
+  winget, which it is. Installing is now the two commands and then `/billables:setup`, which covers
+  the same manual ground with a check after every step. `docs/adr/0005-…` records the reasoning.
+
+  The README keeps its prose walkthrough — someone judging the tool before installing anything
+  needs to be able to read what it will ask of them — marked as the reading version of what the
+  skill runs rather than a second procedure.
+
+  Nothing is lost for a user with no marketplace access: `install/install_skill.{sh,ps1}` generates
+  the shared Agent Skills export from a clone, and the `setup` skill is in it. What is gone is the
+  zero-clone shortcut, which was the copy that drifted.
+
+- **The version lives only in the plugin manifest.** `skills/daily/VERSION` recorded it a second
+  time, and nothing bumped the two together. `export_agent_skills.py` already read the manifest to
+  print the version it exports, so there was nothing to replace; `tests/test_distribution.py` holds
+  the manifest against the changelog heading, and that pair is the whole release. On a shared export
+  there is now no version marker at all — the issue form asks for the plugin's version instead
+  (`/plugin` in Claude Code, or the `Exporting billables v...` line the export prints).
+
+  The publish script and the three-copy ritual it drove went with it, along with the instructions
+  that described them.
+
 ### Fixed
 - **`--confirm` can be typed anywhere on a patch, and a field flag left without its value can no
   longer swallow it.** `harvest_post.py` accepted the flag before or after its positional arguments;

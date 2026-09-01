@@ -160,7 +160,7 @@ def test_each_declared_skill_name_matches_its_directory(skill):
 # name and not the plugin name, so nothing else in here pins it — which is how the docs
 # came to name a slug that returned 404 for a day.
 SLUG = "Cordedmink2/activity-to-timesheet"
-SLUG_DOCS = [REPO / "README.md", REPO / "llms.txt",
+SLUG_DOCS = [REPO / "README.md",
              SKILLS / "daily" / "references" / "reporting-issues.md"]
 
 
@@ -204,20 +204,64 @@ def test_the_documented_slug_resolves_on_github():
 
 
 def test_every_version_marker_agrees():
-    """Three markers exist while `VERSION` is still shipped — the manifest (what a
-    marketplace displays), the `VERSION` file, and the changelog. Any one of them going
-    stale is worse than it being absent, and the manifest/`VERSION` pair is the likeliest
-    to drift because nothing bumps them together.
+    """Two markers, and the manifest is the one that owns the number — it is what a
+    marketplace displays and what the export prints. The changelog is the only other
+    place a version is written down, and a heading that disagrees with what shipped is
+    worse than no heading at all.
     """
     changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
     released = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.M)
     assert released, "no released version heading in CHANGELOG.md"
     markers = {
         "plugin.json": manifest(PLUGIN_MANIFEST)["version"],
-        "skills/daily/VERSION": (SKILLS / "daily" / "VERSION").read_text(encoding="utf-8").strip(),
         "CHANGELOG.md": released.group(1),
     }
     assert len(set(markers.values())) == 1, f"version markers disagree: {markers}"
+
+
+# --------------------------------------------------------------------------------------
+# The retired install path
+# --------------------------------------------------------------------------------------
+#
+# There was a second way in: clone the repo and have an agent follow `llms.txt`, a
+# hand-maintained runbook, with a `VERSION` file and a publish script keeping the copies
+# in step. Two install paths drift — that is the failure the plugin exists to remove — so
+# the runbook, the second version marker and the release ritual are gone, and this is what
+# says they stay gone. See `docs/adr/0005-the-setup-skill-replaces-llms-txt.md`.
+
+RETIRED_FILES = ["llms.txt", "skills/daily/VERSION"]
+
+# What a reader is *told to do*, as opposed to what happened. `CHANGELOG.md`,
+# `docs/RECOVERY.md`, `docs/adr/` and `skills/daily/TESTING.md` are records of the past and
+# may name a retired thing accurately; nothing below may, because everything below is an
+# instruction someone will act on.
+def instruction_docs() -> list[Path]:
+    docs = [REPO / "README.md", REPO / "AGENTS.md", REPO / "CLAUDE.md"]
+    docs += sorted((REPO / ".github").rglob("*.yml"))
+    docs += sorted((REPO / "hooks").iterdir()) + sorted((REPO / "install").iterdir())
+    for skill in skill_dirs():
+        docs += [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
+    return [p for p in docs if p.is_file()]
+
+
+RETIRED_NAMES = re.compile(r"llms\.txt|publish\.ps1|daily-timesheet-release")
+
+
+@pytest.mark.parametrize("path", RETIRED_FILES)
+def test_the_retired_install_path_is_gone(path):
+    assert not (REPO / path).exists(), f"{path} is still here — the second install path survives"
+
+
+@pytest.mark.parametrize("doc", instruction_docs(),
+                         ids=lambda p: p.relative_to(REPO).as_posix())
+def test_no_instruction_names_the_retired_install_path(doc):
+    """An instruction naming a file that no longer exists is worse than a missing one: the
+    reader follows it, finds nothing, and cannot tell whether their install is broken."""
+    offenders = [line.strip() for line in doc.read_text(encoding="utf-8").splitlines()
+                 if RETIRED_NAMES.search(line)]
+    assert not offenders, (
+        f"{doc.relative_to(REPO).as_posix()} still sends a reader to the retired install "
+        "path:\n  " + "\n  ".join(offenders))
 
 
 # --------------------------------------------------------------------------------------

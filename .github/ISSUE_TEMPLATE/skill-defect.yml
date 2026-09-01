@@ -34,8 +34,11 @@ body:
   - type: input
     id: version
     attributes:
-      label: Skill version
-      description: The contents of `skills/daily/VERSION`, or of `VERSION` in your installed skill folder.
+      label: Plugin version
+      description: >
+        The version of the `billables` plugin. In Claude Code, `/plugin` lists it. On a
+        shared Agent Skills export, it is the `Exporting billables v...` line the export
+        printed. "Not sure" is better than a guess.
       placeholder: "0.4.10"
     validations:
       required: true

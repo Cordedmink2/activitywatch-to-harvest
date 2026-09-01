@@ -23,10 +23,19 @@ This repo is a plugin marketplace holding one plugin, `billables`. From inside C
 /plugin install billables@activity-to-timesheet
 ```
 
-That gives you `/billables:daily`. It does **not** give you the parts only you can do —
+That gives you `/billables:daily`, `/billables:reconcile` and `/billables:setup`.
+
+**Then run `/billables:setup`.** It walks you through the parts only a person can do —
 installing ActivityWatch, the browser extension, the browser-profile title tags, the category
-rules, and scaffolding your workspace. The manual setup below walks through all of those:
-**steps 1–4 and 6–10 still apply**, and step 5 is the only one the two commands above replace.
+rules and the screenshot task — and *verifies each one before moving on*, which is the
+difference that matters: every one of those steps can look like it worked and have done
+nothing, and the symptom arrives days later as an empty timesheet. It tells you when setup is
+finished, and if endpoint security blocks a step it hands you the exact allow-list request.
+
+The prose walkthrough below covers the same ground for reading rather than running, plus the
+two things the setup skill deliberately leaves alone: scaffolding your workspace
+([step 6](#6-scaffold-your-workspace)) and filling in your `.context.md`
+([step 7](#7-fill-in-your-contextmd)), which the `daily` skill's first run does with you.
 
 The install then asks you for your own details, once:
 
@@ -62,25 +71,15 @@ told.
 
 ---
 
-## The lazy path — let Claude Code set it up for you
+## The short version — let Claude Code set it up for you
 
-Don't want to click through the manual setup below? This repo ships an [`llms.txt`](./llms.txt) — a
-machine-readable runbook for the setup. Just open Claude Code anywhere and paste this — it tells
-Claude where to find everything, so you don't even need to clone first:
-
-```
-Clone https://github.com/Cordedmink2/activity-to-timesheet, read its llms.txt, and set up the
-billables `daily` skill for me on this machine. Walk me through anything you can't do yourself
-(installing ActivityWatch, the browser extension, the browser-profile title tags, the AW
-categories). Ask me for any secrets — don't guess them — and never commit my .env.
-```
-
-Claude will clone the repo, run the install/scaffold scripts, help you create your `.env`, verify
-ActivityWatch is reachable, and talk you through the manual browser steps that only a human can do.
+Install the plugin with the two commands above, then run **`/billables:setup`** and answer its
+questions. That is the whole path: you don't need to clone this repo, read anything here, or run
+a script by hand.
 
 > **Heads-up on antivirus / EDR.** A scheduled task that silently screenshots every few minutes looks
-> like spyware to endpoint security, so it (or `pip install`) may be blocked mid-setup. The runbook
-> `setup` skill checks each step actually took effect rather than assuming it — and if one is
+> like spyware to endpoint security, so it (or `pip install`) may be blocked mid-setup. The `setup`
+> skill checks each step actually took effect rather than assuming it — and if one is
 > blocked, it stops and hands you a request your security team can action: the `WorkScreenshots` task
 > plus the interpreter and script paths read back off the registered task, never a folder-wide
 > exclusion. It establishes that the step really was blocked before sending you anywhere.
@@ -98,9 +97,9 @@ On the **exported copy**, you update by getting the latest repo files and regene
   git pull
   pwsh -File install\install_skill.ps1        # macOS/Linux: ./install/install_skill.sh
   ```
-- **If you used the lazy path above** (no local clone), just ask your agent to *"update the
-  billables `daily` skill from the latest activity-to-timesheet repo"* — it'll fetch the current
-  version and regenerate the export.
+- **If you have no local clone**, just ask your agent to *"update the billables `daily` skill from
+  the latest activity-to-timesheet repo"* — it'll fetch the current version and regenerate the
+  export.
 
 Regenerating never touches your workspace or your `.context.md`, and your `.env` is kept where it
 is. Everything else in `~/.agents/skills/billables-daily` is **rewritten from the plugin**, so a
@@ -142,6 +141,9 @@ to clean out before a reinstall.
 ---
 
 ## Setup — step by step
+
+> `/billables:setup` does steps 1–4 and 10 for you, checking each one rather than assuming it.
+> This is the same ground written out, for reading first or for working without an agent.
 
 ### 1. Install ActivityWatch
 
@@ -396,13 +398,14 @@ activity-to-timesheet/
 ├── README.md                 # you are here
 ├── .github/ISSUE_TEMPLATE/   # the form behind "New issue"
 ├── CHANGELOG.md              # what changed in each release
-├── llms.txt                  # machine-readable setup runbook for Claude Code
 ├── LICENSE                   # MIT
 ├── demo/
 │   └── tag-rule-demo.html    # interactive demo of the tag/category-rule failure modes
 ├── .claude-plugin/           # marketplace + plugin manifests, incl. the configuration it asks for
 ├── hooks/                    # SessionStart: hands that configuration to the bundled scripts
-├── skills/daily/             # the skill itself
+├── skills/setup/             # /billables:setup — the manual steps, each one verified
+├── skills/reconcile/         # /billables:reconcile — days worked but never billed
+├── skills/daily/             # /billables:daily — the timesheet run
 │   ├── SKILL.md              # the skill's instructions
 │   ├── .env.example          # credential + optional-config template
 │   ├── references/           # classification rules, setup, context template, formats

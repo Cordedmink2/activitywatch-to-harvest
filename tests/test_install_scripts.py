@@ -601,18 +601,11 @@ def latest_changelog_version() -> str:
     return match.group(1)
 
 
-def test_installed_skill_carries_a_version_marker():
-    """Without one there's no way to tell an installed copy's version from a stale one."""
-    marker = SKILL / "VERSION"
-    assert marker.is_file(), "the skill ships no VERSION file"
-    assert re.fullmatch(r"\d+\.\d+\.\d+", marker.read_text(encoding="utf-8").strip()), \
-        "VERSION is not a bare semver string"
-
-
-def test_version_marker_matches_the_changelog():
-    """A marker that drifts from the changelog is worse than none."""
-    version = (SKILL / "VERSION").read_text(encoding="utf-8").strip()
-    assert version == latest_changelog_version()
+# The skill used to ship its own `VERSION` file, checked against the changelog here. It is
+# gone: the plugin manifest owns the version, `export_agent_skills.py` reads it from there
+# to print the line the test above asserts on, and `tests/test_distribution.py` holds it
+# against the changelog. A second marker is a second thing to bump, which is how the two
+# drifted in the first place.
 
 
 @pytest.mark.parametrize("script", ["install/install_skill.sh", "install/setup_workspace.sh"])

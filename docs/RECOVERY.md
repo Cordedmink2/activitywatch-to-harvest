@@ -22,14 +22,17 @@ that produced the originals (GitHub tracker, default triage labels, single-conte
 - `docs/agents/domain.md`
 - `docs/agents/triage-labels.md`
 
-**Still lost - bodies of all five ADRs.** Only the filenames survive, but the titles carry the
-decisions:
+**Bodies of all five ADRs were lost.** Only the filenames survived, but the titles carried the
+decisions, and three have since been rewritten from those titles plus the spec in issue #2 —
+under the ticket that enacted each decision, which is where the reasoning was live again:
 
-- `docs/adr/0001-the-plugin-is-the-only-copy.md`
-- `docs/adr/0002-one-plugin-now-mcp-providers-later.md`
-- `docs/adr/0003-named-billables-not-timesheet.md`
-- `docs/adr/0004-two-channels-one-of-them-generated.md`
-- `docs/adr/0005-the-setup-skill-replaces-llms-txt.md`
+| Original filename | State |
+|---|---|
+| `docs/adr/0001-the-plugin-is-the-only-copy.md` | **Still to write** |
+| `docs/adr/0002-one-plugin-now-mcp-providers-later.md` | Rewritten as `0002-defer-splitting-the-provider-into-its-own-plugin.md` |
+| `docs/adr/0003-named-billables-not-timesheet.md` | **Still to write** |
+| `docs/adr/0004-two-channels-one-of-them-generated.md` | Rewritten as `0004-generate-the-shared-agent-skills-export.md` |
+| `docs/adr/0005-the-setup-skill-replaces-llms-txt.md` | Rewritten under the same name |
 
 ## Not lost
 
@@ -45,7 +48,7 @@ what was pushed lived, what was untracked did not.
 
 ## What still needs writing
 
-`CONTEXT.md`, the five ADR bodies, and the tail of `INTENT.md`. The ADR titles above, the
-recovered `INTENT.md` head, and the spec in issue #2 carry enough of the reasoning to rewrite
-them; `mattpocock-skills:domain-modeling` is the skill that produces them. Commit them when
-they exist.
+ADR-0001 and ADR-0003, and the tail of `INTENT.md`. (`CONTEXT.md` and three of the five ADRs
+have been rewritten.) The ADR titles above, the recovered `INTENT.md` head, and the spec in issue
+#2 carry enough of the reasoning; `mattpocock-skills:domain-modeling` is the skill that produces
+them. Commit them when they exist.
