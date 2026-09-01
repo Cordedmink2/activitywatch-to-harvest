@@ -1183,6 +1183,59 @@ not safe on its own. Corrected in the affected user's `.context.md`; `SKILL.md` 
 `classification-rules.md` §1 still state the `S` rule without this qualification and were
 left alone pending a decision on wording.
 
+### One `fold` guard could not tell the two transition hours apart — rung 1, observed
+
+Two defects, filed as #18 and #19, both reproduced directly before the fix. Neither came
+from the change that surfaced them; both are from the repeated-hour work above, and both
+were found by a review subagent reading the code rather than by anything in the suite.
+
+**The shared cause is that `fold` was read as a boolean.** A wall clock changes offset in
+two directions, and PEP 495 uses the same field for both: `fold=0` is always the offset in
+force *before* a change and `fold=1` the one after. So a repeated hour shifts backwards
+(`Pacific/Auckland`, +13 to +12) and a skipped hour forwards (+12 to +13). Asking only
+whether the two offsets *differ* — which is what `to_utc` did — cannot separate them, and
+neither can comparing two `datetime.time` objects, because `time.__eq__` and `__gt__`
+ignore `fold` outright. The distinction needs the **sign** of the shift, and now lives in
+one place, `clock_reads()`, which both callers route through.
+
+**#19: the marker was accepted inside the hour the clocks skip, and read an hour early.**
+`to_utc` refused a marker only where the two offsets matched. Inside a gap they differ, so
+`02:30*` on `2026-09-27` sailed through and `zoneinfo` resolved it at the post-change
+offset — `13:30Z`, local 01:30, an hour *earlier* than unmarked `02:30` at `14:30Z`. The
+consequences were silent rather than loud: `--window 02:15*-02:45*` reported on 01:15–01:45
+without saying so, and `--window 02:15*-02:45` returned ninety minutes from a thirty-minute
+clock range. The docstring promising "a marker on a time that is not ambiguous is refused
+rather than ignored" had been true for one of the two ways a time can fail to be ambiguous.
+
+**#18: a one-ended marker on a fall-back day was reported as a spring-forward.** With the
+instants running backwards, `parse_range` asked `hi > lo` on two `time` objects to decide
+whether the clock readings were ordered. `fold` being ignored there, `02:30*` and `02:45`
+compared as ordered, and the range took the clocks-skip branch: `'02:30*-02:45' spans the
+hour the clocks skip on 2026-04-05` — a date on which nothing is skipped. The message sent
+the reader hunting a transition six months away, which is the precise failure the comment
+above that branch had been written to prevent. `02:00*-02:30` is the same shape and is what
+a model writes after `output-format.md` tells it the split point is `02:00*`, so this was
+reachable from the instructions rather than only from a typo.
+
+The real cause there is the *end* of the range, not the range, and the message now says so:
+mark both ends or neither. The skip branch is gated on a reading genuinely falling in a gap.
+
+**The branch was tested, and the first draft of this entry said otherwise.** Review caught
+it: `test_afk_blocks.py` has covered `02:00-03:00` on `2026-09-27` since 2026-08-31, and it
+was green throughout, because on that input the branch fires correctly. The claim came from
+grepping one test file rather than the suite — worth recording as a method note, since an
+entry here that invents a blind spot sends the next person to fix a hole that is not there.
+What was missing is narrower: no test asserted the branch fires *only* where a gap really
+is, which is the half #18 broke. Both defects are now pinned in `test_aw_client.py` under
+"The hour the clocks skip", at the shared module rather than through one script's re-export.
+
+**What is refused and what is not, inside a skipped hour.** A marked reading and a spanning
+range are refused by name. An *unmarked* reading is not: `02:30` on the spring morning still
+resolves to `14:30Z`, the instant a clock left running would next have shown, which is the
+standing convention `to_utc` documents and `utc_bounds` depends on for a zone whose change
+lands at local midnight. So `--window 02:15-02:45` wholly inside the gap is accepted and
+reports on 03:15–03:45. That was left alone deliberately — see `## Open gaps`.
+
 ## Rejected
 
 ### Byte size as a "static screen" signal — narrowed, 2026-08-28
@@ -1342,6 +1395,47 @@ Full suite now **267 passed / 5 skipped**.
 helper is reachable from the product. Where a fix is one call site, test the call site.
 
 ## Open gaps
+
+### An unmarked `--window` *starting* inside the hour the clocks skip is accepted — undecided
+
+Left as-is while fixing #18/#19, 2026-09-02, and recorded because the reasoning is finely
+balanced rather than settled. An unmarked reading inside the gap resolves forward to the new
+offset, so any range starting there has its start moved an hour later than written — the
+same plausible-wrong-answer shape both those defects were about.
+
+The accepted set is wider than "wholly inside", which is how this entry was first written,
+and the governing quantity is not the length of the range — a second draft said that too,
+and the table is here because both readings were wrong. What decides it is whether the
+*other* end is also in the gap. Measured on `2026-09-27` in `Pacific/Auckland`:
+
+| `--window` | Clock | Real | Result |
+|---|---|---|---|
+| `02:15-02:45` | 30m | 30.0m | accepted, reported on 03:15–03:45 |
+| `02:05-02:55` | 50m | 50.0m | accepted, reported on 03:05–03:55 |
+| `02:45-03:00` | 15m | — | refused as spanning |
+| `02:00-03:00` | 60m | — | refused as spanning |
+| `02:30-03:30` | 60m | — | refused as spanning |
+| `02:30-03:45` | 75m | **15.0m** | accepted, an hour short |
+| `02:30-04:00` | 90m | **30.0m** | accepted, an hour short |
+
+Both ends inside the gap resolve at the same pre-change offset, so the range keeps its
+length and moves wholesale to the hour after. Only the start inside, and the end keeps its
+own offset while the start is relabelled, so the range loses exactly an hour — refused when
+that leaves nothing, accepted silently short when it does not. The refusal is therefore a
+side effect of the arithmetic collapsing rather than a check anyone wrote, and a 15-minute
+range is caught while a 90-minute one is not. The long ones are the dangerous shape, because
+a shortened `window_min` also shrinks the denominator `active_ratio` is measured against.
+
+Two things argue for leaving it. `to_utc` documents the forward-resolution convention
+explicitly and `utc_bounds` calls the same function for both ends of a day, so refusing an
+unmarked gap reading *there* would break a zone whose change lands at local midnight, and
+neither issue asked for it. Refusing it in `parse_range` alone would be safe and narrow, and
+is the change to make if this is picked up — the two functions would then disagree about the
+same reading, which needs a sentence in the `to_utc` docstring saying why.
+
+`references/activitywatch.md` states the current behaviour outright rather than implying a
+refusal; the line before this change promised one, which is what makes this worth an entry
+instead of a silent decision.
 
 ### Does a piece split out of a thin block re-validate at its own ratio? — untested
 

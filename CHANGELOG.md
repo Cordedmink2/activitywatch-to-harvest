@@ -160,6 +160,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that described them.
 
 ### Fixed
+- **The second-pass marker is refused inside the hour the clocks *skip*, where it used to be accepted
+  and read an hour early.** On a spring-forward morning `02:30*` resolved an hour *before* unmarked
+  `02:30`, so `--window 02:15*-02:45*` was accepted and silently reported on 01:15–01:45, and
+  `--window 02:15*-02:45` returned ninety minutes from a thirty-minute clock range. The marker names
+  a second pass over a *repeated* hour, so inside a skipped one it names nothing and now says so by
+  name. An unmarked reading in that hour is unchanged: it still resolves to the instant a clock left
+  running would next have shown.
+- **A one-ended marker on a fall-back day is no longer reported as the hour the clocks skip.**
+  `--window 02:30*-02:45` on `2026-04-05` — and `02:00*-02:30`, which is the shape
+  `references/output-format.md` leads a reader to write — was refused as spanning a spring-forward
+  that does not happen on that date, sending them hunting a transition six months away. The cause is
+  the unmarked *end*, which resolves to the first pass an hour before the marked start, and that is
+  what the message now says: mark both ends or neither.
+
+  Both came of reading `fold` as a boolean. A repeated hour and a skipped one shift the offset in
+  opposite directions, so telling them apart needs the sign of the shift and not merely that there is
+  one — `datetime.time` comparisons ignore `fold` entirely, which is how the two cases were crossed.
+  That distinction now lives in one function both callers route through.
 - **`--confirm` can be typed anywhere on a patch, and a field flag left without its value can no
   longer swallow it.** `harvest_post.py` accepted the flag before or after its positional arguments;
   `harvest_patch.py` read the entry id off the first argument, so the same habit —

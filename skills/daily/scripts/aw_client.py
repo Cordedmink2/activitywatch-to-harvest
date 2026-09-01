@@ -172,6 +172,31 @@ def parse_local_time(s):
     return dt.datetime.strptime(s, fmt).time().replace(fold=fold)
 
 
+READS_ONCE, READS_TWICE, READS_NEVER = "once", "twice", "never"
+
+
+def clock_reads(local_date, local_time, zone):
+    """How many times a clock in `zone` reaches this reading on this date — `READS_ONCE`
+    on any ordinary reading, `READS_TWICE` inside the hour a fall-back repeats,
+    `READS_NEVER` inside the hour a spring-forward skips.
+
+    The two transition hours are told apart by the *sign* of the offset shift across
+    `fold`, not by the fact that there is one. Under PEP 495 `fold=0` always means the
+    offset in force before the change and `fold=1` the one after, so a repeated hour
+    shifts backwards (in `Pacific/Auckland`, +13 to +12) and a skipped hour forwards (+12
+    to +13). Asking only whether the two differ cannot separate them, and the callers
+    below need to: a marker means one thing in a repeated hour and nothing at all in a
+    skipped one.
+    """
+    moment = dt.datetime.combine(local_date, local_time, tzinfo=zone)
+    shift = moment.replace(fold=1).utcoffset() - moment.replace(fold=0).utcoffset()
+    if shift < dt.timedelta(0):
+        return READS_TWICE
+    if shift > dt.timedelta(0):
+        return READS_NEVER
+    return READS_ONCE
+
+
 def to_utc(local_date, local_time, zone):
     """A wall-clock time on a local date, as the UTC instant it names in `zone`.
 
@@ -179,22 +204,33 @@ def to_utc(local_date, local_time, zone):
     same for a day boundary, a `--window` and a `--cover` block. On the hour a fall-back
     repeats, the wall clock is genuinely ambiguous, and this resolves it to whichever pass
     `local_time.fold` asks for — the first unless the caller marked it, which is what an
-    unmarked time has always meant. On the hour a spring-forward skips, it takes the
-    instant the clock would have reached. Both are conventions rather than facts — but
-    only inside that one hour, and both scripts read the same one.
+    unmarked time has always meant. On the hour a spring-forward skips, an *unmarked*
+    reading takes the instant the clock would have reached. Both are conventions rather
+    than facts — but only inside that one hour, and both scripts read the same one.
 
-    A marker on a time that is *not* ambiguous is refused rather than ignored. `zoneinfo`
-    drops `fold` on an unambiguous reading, so `09:00*` would quietly mean `09:00` — and a
-    marker that sometimes carries meaning is worse than one that always does, because
-    nothing in the output distinguishes the two cases.
+    A marker on a time the clock does not read twice is refused rather than ignored, and
+    the two ways that happens are named apart. `zoneinfo` drops `fold` on an unambiguous
+    reading, so `09:00*` would quietly mean `09:00` — a marker that sometimes carries
+    meaning is worse than one that always does, because nothing in the output
+    distinguishes the two cases. Inside a skipped hour `zoneinfo` does the opposite and
+    honours `fold`, resolving `02:30*` an hour *earlier* than `02:30`, so the marker there
+    used to be accepted and quietly report on a different hour than the one asked for.
     """
     moment = dt.datetime.combine(local_date, local_time, tzinfo=zone)
-    if local_time.fold and moment.utcoffset() == moment.replace(fold=0).utcoffset():
+    if local_time.fold:
+        reads = clock_reads(local_date, local_time, zone)
         clock = local_time.strftime("%H:%M:%S")
-        raise ValueError(
-            f"'{clock}{SECOND_PASS_MARK}' names a second pass over a repeated hour, but "
-            f"the clock reads {clock} only once on {local_date} in this zone — "
-            f"drop the '{SECOND_PASS_MARK}'")
+        opening = (f"'{clock}{SECOND_PASS_MARK}' names a second pass over a repeated "
+                   f"hour, but ")
+        if reads == READS_NEVER:
+            raise ValueError(
+                f"{opening}the clock never reads {clock} on {local_date} in this zone — "
+                f"the clocks go forward at that hour, so no instant on that date carries "
+                f"that reading at all")
+        if reads == READS_ONCE:
+            raise ValueError(
+                f"{opening}the clock reads {clock} only once on {local_date} in this "
+                f"zone — drop the '{SECOND_PASS_MARK}'")
     return moment.astimezone(dt.timezone.utc)
 
 
@@ -206,18 +242,37 @@ def parse_range(rng, local_date, zone):
     afk one rejected `17:00-09:00`, the timeline one accepted it and printed an empty
     result, so the same typo produced an error in one script and a plausible-looking
     "nothing happened then" in the other.
+
+    A range that runs backwards in real time has three causes on a transition day, and
+    each gets its own message. Naming the wrong one is worse than naming none: a range
+    refused for spanning a spring-forward on the day the clocks went *back* sends the
+    reader hunting a transition six months away.
     """
     a, b = rng.split("-", 1)
     lo, hi = parse_local_time(a), parse_local_time(b)
     ws, we = to_utc(local_date, lo, zone), to_utc(local_date, hi, zone)
     if we <= ws:
-        if hi > lo:
-            # Ordered on the clock and empty in real time: the range spans the hour a
-            # spring-forward skips, which no instant on this date corresponds to. Falling
+        # `time` comparison ignores `fold`, so this asks only whether the two *clock
+        # readings* run forwards — which is the question worth asking here, the instants
+        # having already been shown not to. Stripping `fold` says so out loud.
+        clock_ordered = hi.replace(fold=0) > lo.replace(fold=0)
+        skipped = READS_NEVER in (clock_reads(local_date, lo, zone),
+                                  clock_reads(local_date, hi, zone))
+        if clock_ordered and skipped:
+            # Ordered on the clock and empty in real time, with a reading inside the hour
+            # a spring-forward skips: no instant on this date corresponds to it. Falling
             # through to "end must be after start" would send the user hunting a typo they
             # did not make.
             raise ValueError(f"'{rng}' spans the hour the clocks skip on {local_date}, "
                              f"so no time passed between those two readings")
+        if clock_ordered and lo.fold and not hi.fold:
+            # A fall-back day, marked on one end. The start is the second pass and the
+            # unmarked end is the first, an hour earlier — the cause is the *end*, so say
+            # so rather than blaming the range.
+            raise ValueError(
+                f"'{rng}' carries the second-pass marker on its start only, so the end "
+                f"resolves to the first pass over the hour the clocks repeat on "
+                f"{local_date} — an hour before the start. Mark both ends or neither")
         raise ValueError(f"end must be after start in range '{rng}'")
     return ws, we
 

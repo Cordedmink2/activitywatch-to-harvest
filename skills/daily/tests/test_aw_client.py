@@ -218,6 +218,68 @@ def test_parse_range_reads_a_block_wholly_inside_the_second_pass():
                         dt.datetime(2026, 4, 4, 15, 0, tzinfo=dt.timezone.utc))
 
 
+@pytest.mark.parametrize("rng", ["02:30*-02:45", "02:00*-02:30"])
+def test_parse_range_names_the_unmarked_end_rather_than_a_spring_forward(rng):
+    """A marker on the start only is a reversed range, and the reason is the *end*: it
+    resolves to the first pass, an hour before the marked start. Nothing is skipped on a
+    fall-back day, so a message about the hour the clocks skip sends the reader hunting a
+    transition that is six months away. `02:00*-02:30` is what a model writes after
+    `output-format.md` tells it the split point is `02:00*`, so this is the likely typo."""
+    with pytest.raises(ValueError) as exc:
+        aw.parse_range(rng, dt.date(2026, 4, 5), NZ)
+    assert "skip" not in str(exc.value)
+    assert "start only" in str(exc.value)
+
+
+# --------------------------------------------------------------------------------------
+# The hour the clocks skip
+#
+# `Pacific/Auckland` goes forward at 02:00 on 2026-09-27, so local 02:00-03:00 never
+# happens: no instant on that date carries those readings. The marker names the second
+# pass over a *repeated* hour, so inside this one it names nothing — and `zoneinfo`
+# resolves it to the offset in force *after* the change, an hour earlier than the same
+# reading unmarked, which is the wrong direction as well as the wrong hour.
+# --------------------------------------------------------------------------------------
+
+SPRING = dt.date(2026, 9, 27)
+
+
+@pytest.mark.parametrize("written", ["02:00*", "02:30*", "02:59*"])
+def test_the_marker_is_refused_inside_the_hour_the_clocks_skip(written):
+    """The guard used to compare the two offsets for inequality alone. Inside a gap they
+    differ, so the marker sailed through and landed an hour early — `02:30*` reporting on
+    01:30. Telling a gap from a repeated hour needs the *sign* of the difference."""
+    with pytest.raises(ValueError, match="never reads"):
+        aw.to_utc(SPRING, aw.parse_local_time(written), NZ)
+
+
+@pytest.mark.parametrize("rng", ["02:15*-02:45*", "02:15*-02:45", "02:15-02:45*"])
+def test_a_window_marked_inside_the_skipped_hour_is_refused(rng):
+    """`02:15*-02:45*` was accepted and silently reported on 01:15-01:45; `02:15*-02:45`
+    yielded ninety minutes from a thirty-minute clock range. Both now stop at the marker
+    rather than producing a plausible wrong answer."""
+    with pytest.raises(ValueError, match="never reads"):
+        aw.parse_range(rng, SPRING, NZ)
+
+
+@pytest.mark.parametrize("rng", ["02:30-03:30", "02:00-03:00", "02:30-03:00"])
+def test_parse_range_names_the_skipped_hour_when_a_range_spans_it(rng):
+    """Ordered on the clock and empty in real time. Falling through to "end must be after
+    start" would send the user hunting a typo they did not make. `test_afk_blocks.py`
+    already covers `02:00-03:00` through one script's re-export; this pins the shared
+    module, and the two neighbouring shapes that reverse rather than collapse."""
+    with pytest.raises(ValueError, match="spans the hour the clocks skip"):
+        aw.parse_range(rng, SPRING, NZ)
+
+
+def test_an_unmarked_reading_inside_the_skipped_hour_takes_the_instant_the_clock_reached():
+    """The standing convention, pinned rather than changed: `02:30` on the spring morning
+    is the instant a clock left at the wall would next have shown, 03:30 at the new
+    offset. It is a convention and not a fact, but both scripts read the same one."""
+    got = aw.to_utc(SPRING, aw.parse_local_time("02:30"), NZ)
+    assert got == dt.datetime(2026, 9, 26, 14, 30, tzinfo=dt.timezone.utc)
+
+
 # `parse_range` joined this list on 2026-08-14: the two scripts had separate copies that
 # disagreed about a reversed range, so one errored and the other printed an empty result
 # for the same typo. That is the drift this whole module exists to prevent.
