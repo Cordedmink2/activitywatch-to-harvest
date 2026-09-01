@@ -41,7 +41,7 @@ SETTING_KEYS = (
     "DATAVERSE_URL", "PAC_AUTH_PROFILE",
 )
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, cast
 
 # The one spelling of the repeated-hour marker, taken from the script that renders it.
 # `conftest` puts `scripts/` on `sys.path` before importing this module, which is the only
@@ -307,6 +307,13 @@ def with_heartbeats(events: list[dict], steps: int = 3) -> list[dict]:
 
 Handler = Callable[[str, str, dict, dict | None], tuple[int, object]]
 
+# What a route in `harvest_server(routes=...)` may be worth. A route value is declared
+# `object` because a bare body is allowed to be anything, which leaves `callable()` as the
+# only way to tell a function route from a body that happens to be one — a runtime question
+# a type cannot answer. `RouteFn` names what such a function must return, so the `cast` at
+# the one place that calls it is saying something checkable rather than silencing a check.
+RouteFn = Callable[[dict, dict | None], tuple[int, object]]
+
 
 class FakeServer:
     """A throwaway localhost HTTP server driven by one `handler(method, path, query, body)`
@@ -325,7 +332,7 @@ class FakeServer:
         class _H(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
-            def log_message(self, *a):        # keep pytest output clean
+            def log_message(self, format, *args):   # keep pytest output clean
                 pass
 
             def _run(self, method):
@@ -439,15 +446,17 @@ def harvest_server(routes: dict[tuple[str, str], object] | None = None,
     """
     routes = routes or {}
 
-    def default_handler(method, path, query, body):
+    def default_handler(method: str, path: str, query: dict,
+                        body: dict | None) -> tuple[int, object]:
         key = (method, path[len("/v2"):] if path.startswith("/v2") else path)
         if key not in routes:
             return 404, {"error": f"unrouted {method} {path}"}
         payload = routes[key]
         if callable(payload):                       # a function gets query + body
-            return payload(query, body)
+            return cast(RouteFn, payload)(query, body)
         if isinstance(payload, tuple) and len(payload) == 2 and isinstance(payload[0], int):
-            return payload                          # an explicit (status, body) pair
+            status, response = payload              # an explicit (status, body) pair
+            return status, response
         return 200, payload                         # a bare body means 200
 
     return FakeServer(handler or default_handler)

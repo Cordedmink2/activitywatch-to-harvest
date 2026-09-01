@@ -72,6 +72,7 @@ def test_bench_afk_day_arithmetic():
     with timed("afk: spans + bounds + breaks + active", 2.0):
         spans = ab.to_spans(events)
         bounds = ab.work_bounds(spans)
+        assert bounds is not None
         ab.total_active_seconds(spans)
         ab.find_breaks(spans, bounds["work_start"], bounds["work_end"], ab.DEFAULT_THRESHOLD)
         ab.active_spans(spans, ab.DEFAULT_THRESHOLD)

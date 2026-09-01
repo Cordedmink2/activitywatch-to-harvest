@@ -34,6 +34,7 @@ zone — see aw_client.resolve_zone.
 """
 import argparse
 import datetime as dt
+import io
 import json
 import re
 import sys
@@ -48,11 +49,9 @@ from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
 NOISE_FLOOR = 5    # drop sub-5s events (tab-switch noise), per SKILL.md
 GAP_FOLD = 60      # inter-event gaps shorter than this don't break a span (seconds)
 
-for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigure
-    try:
+for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout is not one of these
+    if isinstance(_s, io.TextIOWrapper):
         _s.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
 
 
 def load_classes():

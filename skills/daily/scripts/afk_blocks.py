@@ -151,7 +151,7 @@ def active_spans(spans, threshold_s):
     cur_start = cur_end = None
     for s, e, status, dur in spans:
         if status == "not-afk":
-            if cur_start is None:
+            if cur_end is None:      # set with cur_start, so either one answers "no run open"
                 cur_start, cur_end = s, e
             else:
                 cur_end = max(cur_end, e)

@@ -21,6 +21,7 @@ from __future__ import annotations
 import ast
 import datetime as dt
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -99,7 +100,11 @@ def test_a_flag_is_taken_exactly_as_given():
 
 def test_the_zone_comes_from_the_configuration(monkeypatch):
     monkeypatch.setenv("TIMESHEET_TIMEZONE", "Europe/London")
-    assert aw.resolve_zone(None).key == "Europe/London"
+    zone = aw.resolve_zone(None)
+    # A real zone, not the fixed-offset one `--utc-offset` produces: the whole point of
+    # reading the setting is that the day's two ends can be resolved at different offsets.
+    assert isinstance(zone, ZoneInfo)
+    assert zone.key == "Europe/London"
 
 
 def test_the_configured_zone_dates_a_day_by_the_offset_in_force_on_it(monkeypatch):

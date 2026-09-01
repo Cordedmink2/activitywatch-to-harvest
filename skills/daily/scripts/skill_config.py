@@ -40,7 +40,7 @@ machine that has nothing but Python.
 import os
 import sys
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, TypeGuard, overload
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = SKILL_ROOT / ".env"
@@ -67,7 +67,7 @@ def _parse_env_file(path: Path) -> dict:
     return out
 
 
-def has_value(candidate: str | None) -> bool:
+def has_value(candidate: str | None) -> TypeGuard[str]:
     """Whether a candidate counts as configured. Blank and whitespace-only do not.
 
     Public because the rule outlives `setting()`: `harvest_lookup.find_catalog_dir`
@@ -75,8 +75,18 @@ def has_value(candidate: str | None) -> bool:
     of its own to resolve through. Asking here keeps "blank means unset" to one
     implementation instead of a truth test per call site — which is how `--mcp-dir ""`
     came to beat a perfectly good configured workspace.
+
+    A `TypeGuard` rather than a plain `bool` so a caller that guards on this is known to
+    be holding a real string afterwards. That is what the check means; saying so keeps
+    the callers from having to repeat it.
     """
     return bool(candidate and candidate.strip())
+
+
+@overload
+def setting(key: str, *, flag: str | None = ..., default: str) -> str: ...
+@overload
+def setting(key: str, *, flag: str | None = ..., default: None = ...) -> str | None: ...
 
 
 def setting(key: str, *, flag: str | None = None, default: str | None = None) -> str | None:
@@ -86,6 +96,11 @@ def setting(key: str, *, flag: str | None = None, default: str | None = None) ->
     is returned when no layer offers a value, so an optional setting can be told apart
     from a configured one — callers decide whether an unset value is fatal, and the ones
     for which it is say so through `fail_missing()`.
+
+    The two overloads above say the same thing to a type checker: a caller that supplies
+    a `default` cannot be handed None, and one that does not must expect it. Without them
+    every caller of the first kind looks like it is about to use an optional value, which
+    buries the callers where the possibility is real.
     """
     file_vals = _parse_env_file(ENV_PATH) if ENV_PATH.exists() else {}
     for candidate in (flag, file_vals.get(key), os.environ.get(key)):

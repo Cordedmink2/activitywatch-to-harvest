@@ -45,8 +45,9 @@ def load_publisher():
     It is a hook script, not a package member — the harness runs it by path and nothing
     imports it — so there is no module to import by name.
     """
-    spec = importlib.util.spec_from_file_location(
-        "publish_plugin_config", HOOKS / "publish_plugin_config.py")
+    path = HOOKS / "publish_plugin_config.py"
+    spec = importlib.util.spec_from_file_location("publish_plugin_config", path)
+    assert spec and spec.loader, f"{path} is not importable as a module"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

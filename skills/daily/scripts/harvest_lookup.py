@@ -22,20 +22,19 @@ Usage:
 """
 import argparse
 import glob
+import io
 import json
 import os
 import sys
 
 from skill_config import find_workspace, has_value
 
-for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout lacks reconfigure
-    try:
+for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout is not one of these
+    if isinstance(_s, io.TextIOWrapper):
         _s.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
 
 
-def find_catalog_dir(explicit):
+def find_catalog_dir(explicit: str | None) -> str:
     """Locate the `.mcp/` directory holding the catalogs.
 
     `--mcp-dir` first, then the workspace — the flag-beats-configuration order

@@ -15,6 +15,7 @@ Writes:
 """
 
 import argparse
+import io
 import json
 import os
 import re
@@ -24,11 +25,9 @@ import sys
 import tempfile
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
-for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks reconfigure
-    try:
+for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream is not one of these
+    if isinstance(_s, io.TextIOWrapper):
         _s.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
 
 from harvest_client import request as harvest_request
 from skill_config import setting, find_workspace, fail_missing

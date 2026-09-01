@@ -19,17 +19,16 @@ reasoning about what was never printed. The totals are arithmetic, and
 arithmetic done by eye over a hundred rows is wrong quietly.
 """
 import datetime as dt
+import io
 import os
 import sys
 
 from harvest_client import parse_time_to_minutes, request
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
-for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks reconfigure
-    try:
+for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream is not one of these
+    if isinstance(_s, io.TextIOWrapper):
         _s.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
 
 
 def to_24h(t: str | None) -> str:

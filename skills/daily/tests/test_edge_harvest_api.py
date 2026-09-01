@@ -705,7 +705,7 @@ def _raw_http(status: int, raw: bytes):
     class _H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
-        def log_message(self, *a):
+        def log_message(self, format, *args):
             pass
 
         def _run(self):

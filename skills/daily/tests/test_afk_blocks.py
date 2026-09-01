@@ -63,6 +63,7 @@ def test_work_bounds_runs_first_to_last_not_afk():
         ev("12:00", 300, "afk"),       # done for the day
     ])
     bounds = ab.work_bounds(spans)
+    assert bounds is not None
     assert (hhmm(bounds["work_start"]), hhmm(bounds["work_end"])) == ("09:00", "12:00")
     assert bounds["blip"] is False
 
@@ -75,6 +76,7 @@ def test_work_bounds_flags_a_late_flicker_as_a_blip():
         ev("14:00", 1, "not-afk"),     # the flicker
     ])
     bounds = ab.work_bounds(spans)
+    assert bounds is not None
     assert bounds["blip"] is True
     assert hhmm(bounds["work_end"]) == "14:01"
     assert hhmm(bounds["last_solid_end"]) == "11:00"
@@ -88,6 +90,7 @@ def test_work_bounds_reports_only_bounds():
     """The whole-day activity total is not a bound - it belongs to its own function,
     where it gets tested rather than riding along untested inside this struct."""
     bounds = ab.work_bounds(ab.to_spans([ev("09:00", 60, "not-afk")]))
+    assert bounds is not None
     assert set(bounds) == {"work_start", "work_end", "last_solid_end", "blip"}
 
 
@@ -107,6 +110,7 @@ def test_find_breaks_ignores_afk_outside_the_workday():
         ev("11:30", 300, "afk"),       # after work
     ])
     bounds = ab.work_bounds(spans)
+    assert bounds is not None
     breaks = ab.find_breaks(spans, bounds["work_start"], bounds["work_end"], ab.DEFAULT_THRESHOLD)
     assert [(hhmm(s), hhmm(e)) for s, e, _ in breaks] == [("10:00", "10:30")]
 
@@ -118,6 +122,7 @@ def test_find_breaks_ignores_afk_shorter_than_the_threshold():
         ev("10:10", 60, "not-afk"),
     ])
     bounds = ab.work_bounds(spans)
+    assert bounds is not None
     assert ab.find_breaks(spans, bounds["work_start"], bounds["work_end"], ab.DEFAULT_THRESHOLD) == []
 
 
