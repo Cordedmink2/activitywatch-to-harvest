@@ -78,7 +78,9 @@ def print_by_day(entries: list[dict], dates: list[str]) -> None:
     counts: dict[str, int] = {d: 0 for d in dates}
     codes: dict[str, list[str]] = {d: [] for d in dates}
     for e in entries:
-        d = e["spent_date"]
+        # `.get`, not `[...]`: this mode reads a whole month, and one entry missing the
+        # field it is grouped by would take the sweep down before a single row printed.
+        d = e.get("spent_date")
         if d not in totals:                  # the API answered outside the range asked for
             continue
         totals[d] += e.get("hours") or 0.0
@@ -89,7 +91,10 @@ def print_by_day(entries: list[dict], dates: list[str]) -> None:
     for d in dates:
         weekday = dt.date.fromisoformat(d).strftime("%a")
         shown = ", ".join(codes[d]) or "-"
-        print(f"{d}  {weekday}  {totals[d]:>6.2f}h  {counts[d]:>2} entries  {shown}")
+        # Padded to the width of "entries" so the codes column stays aligned on the one
+        # date that reads "1 entry".
+        unit = "entry  " if counts[d] == 1 else "entries"
+        print(f"{d}  {weekday}  {totals[d]:>6.2f}h  {counts[d]:>2} {unit}  {shown}")
 
 
 def main() -> None:
@@ -131,21 +136,25 @@ def main() -> None:
             break
         page += 1
 
-    all_entries.sort(key=sort_key)
     if not all_entries:
         # To stderr so stdout stays machine-readable: a day with no entries and a run
         # that silently did nothing look identical otherwise, and the credential check in
         # `references/setup.md` reads exactly this case.
         print(f"(no time entries from {from_date} to {to_date})", file=sys.stderr)
     if by_day:
+        # Sorted deliberately not at all: the rows are grouped by date, so order is
+        # decided by `dates`. The sort key reads `spent_date` and `id` without a
+        # fallback, and this is the mode that reads a whole month — one malformed entry
+        # would take down the sweep before a single row printed.
         print_by_day(all_entries, dates)
         return
+    all_entries.sort(key=sort_key)
     for e in all_entries:
         eid = e["id"]
         d = e["spent_date"]
         st = to_24h(e.get("started_time"))
         en = to_24h(e.get("ended_time"))
-        h = e.get("hours", 0)
+        h = e.get("hours") or 0    # present-but-null is a float format error, not a zero
         code = (e.get("project") or {}).get("code") or "?"
         task = ((e.get("task") or {}).get("name") or "?")[:25]
         notes_raw = (e.get("notes") or "").replace("\n", " ").replace("\r", " ")

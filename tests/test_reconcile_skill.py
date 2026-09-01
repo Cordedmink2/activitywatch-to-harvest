@@ -134,6 +134,62 @@ def test_it_can_find_its_sibling_skill_on_either_install_shape(sibling):
         "install shapes cannot resolve the scripts it runs")
 
 
+def test_no_command_leaves_a_script_path_to_resolve_against_the_workspace():
+    """`python scripts/afk_blocks.py` is the spelling the `daily` skill defines as relative
+    to *its own folder*, and the session's working directory is the workspace, where those
+    scripts are not.
+
+    It is a live defect here rather than a hypothetical: the brief handed to a per-day
+    subagent is all that subagent gets, so a bare path in it is a missing-file error on
+    every gap day, and a worklist that comes back empty for what looks like a broken
+    install. The resolved form — `python "<daily>/scripts/…"` — is what has to travel.
+    """
+    bare = re.findall(r"^.*[\w.\-]+\s+scripts/[A-Za-z0-9_]+\.py.*$", shipped_text(), re.M)
+    unresolved = [ln.strip() for ln in bare if not re.search(r'["<]\s*[^"\n]*scripts/', ln)]
+    assert not unresolved, (
+        "a command names a script by a path that resolves against the workspace:\n  "
+        + "\n  ".join(unresolved))
+
+
+def test_the_screenshot_index_is_read_from_the_configured_directory():
+    """The literal `~/Pictures/WorkScreenshots` is the default, not the path.
+
+    A machine with `TIMESHEET_SCREENSHOTS_DIR` set has an empty folder at the literal one,
+    and an empty index is not an error — it is a month in which nothing looks worked. The
+    sweep would report one dead capture task over a healthy install and investigate none of
+    the real gaps.
+    """
+    blocks = re.findall(r"```[a-z]*\n(.*?)```", shipped_text(), re.S)
+    literal = [b.strip() for b in blocks if "Pictures" in b]
+    assert not literal, f"a command hardcodes the default screenshot path: {literal}"
+    assert "TIMESHEET_SCREENSHOTS_DIR" in shipped_text(), (
+        "the skill never names the setting the screenshot directory actually comes from")
+
+
+def test_the_short_day_floor_is_a_preference_the_user_can_set():
+    """Pinned to the workspace template, which is the file a user edits.
+
+    "Billed short" is a judgement about someone's working day, so a number shipped in a
+    skill is one user's habits imposed on everyone. The skill may name a default; what it
+    may not do is be the only place the number exists.
+    """
+    template = (SKILLS / "daily" / "references" / "context.md.example").read_text(
+        encoding="utf-8")
+    assert re.search(r"Short-day floor", template), (
+        "the workspace template offers no way to set the floor the sweep triages on")
+    assert re.search(r"short-day floor", shipped_text(), re.I), (
+        "the skill never names the floor it triages on")
+
+
+def test_today_is_not_swept_as_a_gap():
+    """A day still being worked is not a day billed short, and the `daily` skill says so in
+    as many words ("Today is always 'in progress' on a no-date run"). A sweep that puts
+    today in the table sends the user to bill a day that is not over."""
+    assert re.search(r"today is in progress|today — in progress|in progress",
+                     shipped_text(), re.I), (
+        "nothing in the skill says today is in progress rather than unbilled")
+
+
 def test_every_script_it_names_is_one_the_sibling_skill_actually_ships():
     """Pinned across the skill boundary, which is the only place this can go stale: the
     scripts belong to `daily` and nothing in that skill's own tests knows this one reads
@@ -173,12 +229,28 @@ def test_it_uses_the_glossarys_terms():
     a new skill is where drift gets in — it is written against one account's habits by
     whoever happens to be looking at that account that week.
 
-    The distinction this skill leans on hardest is the glossary's load-bearing one: a
-    **block** is proposed and local, an **entry** has been billed and is out in the world.
-    Reconciliation is entirely about the second, and every synonym below blurs them.
+    This is the denylist half only: it says what the skill stopped saying, not that what it
+    says now is right. The distinction below is the positive half.
     """
     text = shipped_text()
     offenders = [phrase for phrase in words_to_avoid() if phrase.lower() in text.lower()]
     assert not offenders, (
         f"the reconcile skill uses words CONTEXT.md replaces: {offenders}.\n"
         "The glossary's table gives the term to use instead.")
+
+
+# A block is proposed and local; an entry has been billed and is out in the world. The
+# inversion is the one this skill is placed to make — it proposes all day, and the thing it
+# proposes is never an entry, because an entry is by definition already recorded.
+PROPOSED_ENTRY = re.compile(
+    r"\b(propos\w+|draft\w*|suggest\w+|creat\w+)\s+(an?\s+|the\s+)?entr(y|ies)\b", re.I)
+
+
+def test_it_does_not_propose_entries():
+    """`CONTEXT.md`: "a block can be redrawn freely, an entry is out in the world". A run
+    that thinks it is proposing entries is a run one step from recording one, and the
+    sentence reads as harmless right up to that step."""
+    found = PROPOSED_ENTRY.findall(shipped_text())
+    assert not found, (
+        f"the skill proposes entries: {found}. What is proposed is a block; an entry is a "
+        "block that has already been recorded with the provider.")

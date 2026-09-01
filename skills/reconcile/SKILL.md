@@ -29,7 +29,7 @@ The month listing needs the configured Harvest credentials and the day skeletons
 
 ## Step 1 — Sweep the month in two cheap reads
 
-Resolve the month first. "August", "last month", "this month" convert using today's date in the user's timezone; the range is the first of the month to the last **or to today, whichever is earlier** — a future date has no activity and is not a gap.
+Resolve the month first. "August", "last month", "this month" convert using today's date in the user's timezone. The range is the first of the month to the last, **and it stops at yesterday** — today is in progress, so its billed total is not short, it is unfinished, and sweeping it produces a worklist row for a day that is still being worked. Where today falls inside the month asked for, say so in one line at the end rather than putting it in the table.
 
 Then two reads, in parallel, and nothing else:
 
@@ -38,30 +38,35 @@ Then two reads, in parallel, and nothing else:
    python "<daily>/scripts/harvest_list.py" <first> <last> --by-day
    ```
    Every date in the range gets a row, including the ones holding nothing: `<date>  <Day>  <total>h  <n> entries  <project codes>`. The dates holding nothing are the candidates; the codes on a thin day are what a short day was billed to.
-2. **Which days the machine was used**, as a date index: list the *folder names* under the screenshot directory — `TIMESHEET_SCREENSHOTS_DIR` if configured, else `~/Pictures/WorkScreenshots`. One listing of directory names, not their contents:
+2. **Which days the machine was used**, as a date index: list the *folder names* under the screenshot directory, resolved first from `TIMESHEET_SCREENSHOTS_DIR`, or `~/Pictures/WorkScreenshots` where that is unset. Substitute the resolved path — reading the literal one on a machine that configured another finds an empty folder, and an empty index makes a healthy month look like a month nobody worked. One listing of directory names, not their contents:
    ```powershell
-   Get-ChildItem "$HOME\Pictures\WorkScreenshots" -Directory | Select-Object -ExpandProperty Name
+   Get-ChildItem "<screenshots-dir>" -Directory | Select-Object -ExpandProperty Name
    ```
    `daily_exports/` carries the same index where it exists and is the fallback when the capture directory is absent.
 
-**No capture pipeline runs on macOS or Linux**, so that index does not exist there. Say so, and get the same information the only other way there is: ask the user which dates in the month were leave, holiday or otherwise not worked — **before** Step 3 dispatches anything, because without the index every unbilled weekday is a candidate.
+**The index is a proxy, and a narrow one.** It answers "was this machine used" only for the hours the capture task runs — weekdays, roughly 08:30 to 20:00, on Windows. It is silent, not negative, about a weekend, an evening, a second machine, and every macOS and Linux install, where no capture pipeline ships at all. So a date the index does not list is a date with *no evidence either way*, never a date nobody worked. Where the index is silent for a whole month, say so and ask the user which dates were leave, holiday or otherwise not worked — **before** Step 3 dispatches anything, because without an index every unbilled weekday is a candidate.
 
-Open no day here. Neither read touches the activity source.
+The authority on whether a given date holds activity is the activity source, one `afk_blocks.py` run per date. That is the right answer for a date the user disputes and the wrong one for a whole month, which is why neither read above touches it. Open no day here.
 
 ## Step 2 — Drop the days already billed
 
-Sort the month's dates into four, from the two reads alone:
+Every date in the range gets one of five verdicts, decided from the two reads alone. The first two are the subtraction — they are settled here and never reach a subagent.
 
-- **Billed** — a total at or above the short-day floor. Out of scope: not investigated, not dispatched, not mentioned again except in the count.
-- **Not a working day** — a weekend, or a date with no captures and no billed time that the user has named as leave or a holiday.
-- **Gap** — captures, and no billed time at all.
-- **Short** — captures, and a billed total under the floor.
+| Billed total | The index | Verdict |
+|---|---|---|
+| at or above the floor | either | **Billed** — out of scope. Not investigated, not dispatched, not mentioned again except in the count |
+| any | date named by the user as leave, a holiday or a day off | **Not worked** — out of scope, for the reason the user gave |
+| none | lists the date | **Gap** — investigate |
+| under the floor | lists the date | **Short** — investigate |
+| none or under the floor | silent about the date | **Unexplained** — one line in the worklist, not a dispatch |
+
+**Unexplained is a real verdict, not a rounding error.** It is where a weekend, an evening, a second machine and every non-Windows install land, and there is nothing to investigate on it because there is no evidence that anything happened. Never fold it into "not worked": the index being silent is not the machine being idle. List those dates in one line and let the user answer — a "yes, I worked that Saturday" turns one of them into a gap, and *then* it is worth a subagent. The counts have to add up to the days in the range, which is what stops a date falling between the rows.
 
 The **short-day floor** is a preference, not a fact about anyone's day: `## Preferences` in `Timesheets/.context.md` sets it, defaulting to `6.0 hrs`. It decides only *who gets investigated*. Whether a day was genuinely billed short is a comparison of its billed hours against its own active minutes, and that happens in Step 3 with the day skeleton in hand — a four-hour day that was a four-hour day is not short, and the floor cannot know that.
 
-**A run of capture-less days is one finding, not many.** When the captures stop on a date and never resume, that is a capture task that stopped firing — the failure that arrives silently and looks exactly like a month of not working. Report it once, as maintenance, and point at `references/setup.md` in the `daily` skill (`Get-ScheduledTaskInfo -TaskName WorkScreenshots`, a `LastTaskResult` of `0`). The dates after it have no index at all: they are unclassifiable rather than empty, and saying "no activity" about them is the one wrong answer.
+**A run of capture-less days is one finding, not many.** When the index stops on a date and never resumes, that is a capture task that stopped firing — the failure that arrives silently and looks exactly like a month of not working. Every date after it is *Unexplained* by the rule above, so the sweep already declines to call them idle; what it owes the user is the maintenance finding, once. `references/setup.md` in the `daily` skill owns the diagnosis; the health check is `Get-ScheduledTaskInfo -TaskName WorkScreenshots`, where `LastTaskResult` of `0` is a task that last ran cleanly and `0x80070002` is the interpreter having moved.
 
-State the split in one line before going further — `22 working days: 16 billed, 3 gaps, 2 short, 1 not worked` — so the user can see the shape of the month and stop an investigation that is about to be pointless. **If more than about eight days are candidates, ask before dispatching.** A month nobody billed is usually explained by a fact this run does not have — leave, a contract that started mid-month, a second timesheet — and eight investigations are an expensive way to be told that.
+State the split in one line before going further — `30 dates: 16 billed, 3 gaps, 2 short, 1 not worked, 8 unexplained` — so the user can see the shape of the month and stop an investigation that is about to be pointless. **If more than about eight days are candidates, ask before dispatching.** A month nobody billed is usually explained by a fact this run does not have — leave, a contract that started mid-month, a second timesheet — and eight investigations are an expensive way to be told that.
 
 ## Step 3 — Investigate each candidate day, one subagent per day
 
@@ -74,9 +79,9 @@ A subagent has no conversation context, so its brief carries everything it needs
 - the date, the resolved scripts folder, and the interpreter to run them with;
 - what Step 1 already found for that date — the billed total and the project codes, or that there is nothing;
 - the path to `Timesheets/.context.md`, to be **read whole**, for that user's clients, signals and exclusions;
-- the two commands, and no others:
-  - `python scripts/afk_blocks.py <date>` — the day skeleton: work start, work end, breaks, active spans, active minutes;
-  - `python scripts/activity_timeline.py <date>` — the categorized window timeline. Compact output is the default and is enough; `--window HH:MM-HH:MM` zooms one ambiguous stretch. Never `--full`;
+- the two commands, and no others, **with the scripts folder already substituted in** — a brief that hands on the bare `python scripts/…` spelling hands on a path that resolves against the workspace, where those scripts are not, and every day comes back as a missing file:
+  - `python "<daily>/scripts/afk_blocks.py" <date>` — the day skeleton: work start, work end, breaks, active spans, active minutes;
+  - `python "<daily>/scripts/activity_timeline.py" <date>` — the categorized window timeline. Compact output is the default and is enough; `--window HH:MM-HH:MM` zooms one ambiguous stretch. Never `--full`;
 - the rules it does not get to break:
   - **active or idle is settled by the AFK watcher.** Never re-inferred from screenshots, and never from how long a window sat in focus;
   - **screenshots are read by timestamp, for a stretch the timeline could not name** — a few captures, never the folder;
@@ -102,7 +107,7 @@ Oldest date first, the order the `daily` skill takes them in:
 | 2026-08-19 Wed | 7.9h | 1.5h | NWC-001 billed for the morning; the afternoon is on an ACME environment | `/billables:daily 2026-08-19` |
 ```
 
-Under it, in one line each: the days that were not investigated and why, any maintenance finding from Step 2, and the days whose evidence ran out — those are questions for the user, not rows to action.
+Under it, in one line each and in this order: the **Unexplained** dates, named, as a question — "the index says nothing about these five; were any of them worked?"; a day whose investigation came back `Unclear`, with what would resolve it; any maintenance finding from Step 2; and today, if the month asked for is the current one, as a day still in progress rather than a gap.
 
 Close by saying plainly that nothing was recorded and nothing was changed, and that each row is billed by invoking `/billables:daily <date>` for one date at a time.
 
@@ -113,7 +118,7 @@ Close by saying plainly that nothing was recorded and nothing was changed, and t
 - **Nothing here records time.** This run reads a month and proposes a worklist. Recording a day is the `daily` skill's, on that date's own run, and it asks first.
 - **Already-billed days are dropped before anything is dispatched.** That subtraction is the whole cost argument; running it afterwards produces the same worklist for ten times the money.
 - **Don't draft blocks.** Naming what was happening on a day is evidence. Splitting it, attributing it and pricing it is drafting, and a draft made here is a draft made without the rubric that governs it.
-- **Don't invent a working day.** A date with no captures and no billed time is a date with no evidence. Report the absence; do not report it as idleness, and do not report it as work.
+- **Don't invent a working day, and don't invent an empty one.** A date the index is silent about is a date with no evidence — *Unexplained*, and asked about. Reporting it as idleness is the same fabrication as reporting it as work; the index only ever covers weekday office hours on Windows.
 - **Every number in the worklist came from a script.** Hours, active minutes and coverage are arithmetic — `afk_blocks.py` and the by-day listing own them, and a total summed by eye off a month of rows is wrong quietly.
 
 ## Files in this skill

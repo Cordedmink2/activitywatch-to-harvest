@@ -368,8 +368,12 @@ def _entry(eid: int, date: str, start: str, end: str, *, hours: float = 1.0,
     return out
 
 
-def _list_routes(pages: list[dict]):
-    """Route `/time_entries` as `pages`, chaining `next_page` the way Harvest does."""
+def _list_routes(pages: list[list[dict]]):
+    """Route `/time_entries` as `pages`, chaining `next_page` the way Harvest does.
+
+    One list of entries per page — every call site has always passed that; the annotation
+    said `list[dict]` and made a typechecker shout at all of them.
+    """
     def entries(query, body):
         n = int(query["page"])
         return 200, {"time_entries": pages[n - 1],
@@ -487,6 +491,50 @@ def test_list_renders_a_missing_project_code_or_task_name_as_a_question_mark(
     fields = _columns(r.lines[0])
     assert fields[4] == shown_code
     assert fields[5] == shown_task
+
+
+def test_list_renders_an_entry_whose_hours_are_null(live_harvest):
+    """The same shape as the null project below, on the numeric field. `hours` formats with
+    `:.2f`, so an explicit `null` is a TypeError that takes the whole listing down — one
+    degraded entry hiding every good one, which is the failure the fallbacks exist to
+    prevent."""
+    entry = _entry(101, "2026-08-12", "9:00am", "10:00am")
+    entry["hours"] = None
+    live_harvest(_list_routes([[entry]]))
+    r = run_cli(hlist, ["2026-08-12"])
+    assert r.code == 0
+    assert "0.00h" in r.lines[0]
+
+
+def test_by_day_totals_an_entry_whose_hours_are_null(live_harvest):
+    """And on the sweep, where it would take down a month rather than a day."""
+    entry = _entry(101, "2026-08-12", "9:00am", "10:00am")
+    entry["hours"] = None
+    live_harvest(_list_routes([[entry, _entry(102, "2026-08-12", "2:00pm", "3:00pm",
+                                              hours=1.0)]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert "1.00h" in r.lines[0]
+
+
+def test_by_day_survives_an_entry_with_no_date_on_it(live_harvest):
+    """The field the rows are grouped by. Absent, it is a KeyError before anything prints —
+    and the sweep is the caller reading the most entries, so it is the likeliest to meet
+    one and the most expensive to lose."""
+    entry = _entry(101, "2026-08-12", "9:00am", "10:00am")
+    del entry["spent_date"]
+    live_harvest(_list_routes([[entry]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert "0.00h" in r.lines[0]
+    assert "Traceback" not in r.err
+
+
+def test_by_day_says_one_entry_rather_than_one_entries(live_harvest):
+    live_harvest(_list_routes([[_entry(101, "2026-08-12", "9:00am", "10:00am")]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert "1 entry" in r.lines[0] and "1 entries" not in r.lines[0]
 
 
 def test_list_renders_a_null_project_and_task_as_question_marks(live_harvest):
