@@ -80,9 +80,10 @@ ActivityWatch is reachable, and talk you through the manual browser steps that o
 
 > **Heads-up on antivirus / EDR.** A scheduled task that silently screenshots every few minutes looks
 > like spyware to endpoint security, so it (or `pip install`) may be blocked mid-setup. The runbook
-> tells Claude to verify each step actually took effect rather than assume it — if a step is blocked,
-> Claude will stop and tell you exactly what to allow-list (the skill's `scripts/` folder) instead of
-> silently carrying on.
+> `setup` skill checks each step actually took effect rather than assuming it — and if one is
+> blocked, it stops and hands you a request your security team can action: the `WorkScreenshots` task
+> plus the interpreter and script paths read back off the registered task, never a folder-wide
+> exclusion. It establishes that the step really was blocked before sending you anywhere.
 
 ---
 
