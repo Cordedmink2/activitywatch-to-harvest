@@ -1,6 +1,8 @@
 # Setup — first run per user / per machine
 
-Read this only when a prerequisite check fails (missing `.context.md`, unconfigured credentials or timezone, no screenshot task, unknown AW buckets) or the user asks about standing the pipeline up. Routine runs never need this file.
+Read this only when a prerequisite check fails (missing `.context.md`, unconfigured credentials or timezone, no screenshot task, unknown AW buckets). Routine runs never need this file.
+
+**A first install is not this file.** The `setup` skill beside this one walks a person through the parts only they can do — the activity source, the browser extension, the profile tags, the category rules, the screenshot task — and verifies each one before moving on. This file is the mid-run diagnostic: one prerequisite came back wrong on a machine that was already working.
 
 The skill is **shareable across users**. Each user maintains their own `Timesheets/.context.md` describing *their* clients, colleagues, billing conventions, and preferences. The skill stays generic; `.context.md` carries the personal facts.
 

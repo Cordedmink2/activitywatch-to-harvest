@@ -560,7 +560,9 @@ def test_install_generates_the_export_and_nothing_else(installed):
     destination — an unprefixed `daily/` from the copy they used to do — is the second
     install path growing back, which is the drift this whole change removes."""
     _, dest = installed
-    assert sorted(p.name for p in dest.parent.iterdir()) == [EXPORTED]
+    expected = sorted(f"billables-{skill.name}" for skill in (REPO / "skills").iterdir()
+                      if (skill / "SKILL.md").is_file())
+    assert sorted(p.name for p in dest.parent.iterdir()) == expected
 
 
 def test_install_excludes_pytest_cache(installed):
@@ -629,10 +631,16 @@ def test_skill_says_where_the_script_paths_resolve_from():
     )
 
 
-INSTRUCTIONS = [SKILL / "SKILL.md", *sorted((SKILL / "references").glob("*.md"))]
+# Every shipped instruction in every skill, not just `daily`'s. The guard below is about
+# what ships, and the plugin ships more than one skill — scoping it to a named directory
+# left the next skill added uncovered, which is exactly the moment it stops holding.
+INSTRUCTIONS = sorted(
+    p for skill in (REPO / "skills").iterdir() if (skill / "SKILL.md").is_file()
+    for p in [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
+)
 
 
-@pytest.mark.parametrize("doc", INSTRUCTIONS, ids=lambda p: p.name)
+@pytest.mark.parametrize("doc", INSTRUCTIONS, ids=lambda p: p.relative_to(REPO).as_posix())
 def test_no_shipped_instruction_hardcodes_a_harness_skills_directory(doc):
     """A path into one harness's skills directory is wrong for every other install.
 

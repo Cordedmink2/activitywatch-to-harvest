@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A `setup` skill that walks you through the parts of the install only a person can do, and
+  checks each one.** Installing the activity source, adding the browser extension, tagging each
+  browser profile with a client code, building the category rules that read those tags, and getting
+  the screenshot task past whatever your employer runs on the endpoint. Five steps, and after each
+  one a check that has to come back before the next starts.
+
+  The checking is the point. This part of the install fails silently in a way the rest of the plugin
+  does not: an extension added to the profile you weren't browsing in, a category rule whose brackets
+  don't match your tag, a scheduled task registered against an interpreter that has since moved. All
+  three look exactly like success, and the symptom arrives days later as a day with nothing in it. So
+  the extension is proved by finding a hostname in a real window title, the tags by finding each code
+  you named in a real title, the rules by compiling each one and running it against those titles, and
+  the capture task by firing one by hand and watching the files land — plus reading the registered
+  action back, which is what catches a task still pointing at an older hand-installed copy.
+
+  When a step really is blocked, the ask is a specific one: the task name, the resolved script and
+  interpreter paths read off your own machine, the browser extension's ID for an
+  `ExtensionInstallAllowlist`, index access for `mss` and `Pillow`. And it has to be evidenced first —
+  a quarantine entry, a denied registration, a proxy error you actually read. The first coworker
+  install of this pipeline sent its user to IT for an allow-list when the fault was a split Python
+  install that needed no ticket at all.
+
+  It collects nothing. The credentials, the timezone and the paths are already declared configuration,
+  so a missing one is routed to `/plugin configure billables` rather than asked for again — a token
+  typed into the conversation is a token written to disk in the transcript. Your workspace and the
+  `.context.md` describing your own clients stay with the `daily` skill's first run, which this hands
+  over to once it has told you setup is finished.
 - **The skills are generated into the shared Agent Skills directory, so harnesses that aren't Claude
   Code get them too.** `install/export_agent_skills.py` writes `skills/` out to `~/.agents/skills/`
   — where Codex, OpenCode, Hermes and the other Agent Skills clients look — one prefixed directory

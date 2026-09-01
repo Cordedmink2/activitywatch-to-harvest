@@ -28,7 +28,7 @@ When the same setting is available from more than one of those, a per-command fl
 **Soft triggers** — confirm first: the user mentions Harvest, ActivityWatch, `daily_exports/`, `Timesheets/` in passing; a new export landed and the user seems unsure what to do with it.
 
 **Do NOT invoke when:**
-- the user is asking about *configuring* the pipeline itself (export script, ActivityWatch setup, screenshot scheduler) — that's maintenance, not daily classification (see `references/setup.md`)
+- the user is asking about *configuring* the pipeline itself (export script, ActivityWatch setup, screenshot scheduler) — that's maintenance, not daily classification. Standing it up for the first time is the `setup` skill; `references/setup.md` is for a prerequisite that failed mid-run
 - the user wants *raw* Harvest data beyond a date range ("list my projects", "monthly totals") — point at the Harvest web UI or a one-off script
 
 ## Data sources
