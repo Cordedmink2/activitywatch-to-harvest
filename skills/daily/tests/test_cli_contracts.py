@@ -290,6 +290,35 @@ def test_the_confirmation_flag_is_not_a_field_to_update(live_harvest):
     assert srv.sent("PATCH", "/time_entries") == []
 
 
+def test_the_confirmation_flag_may_be_typed_anywhere_in_either_script(live_harvest):
+    """One gate, one grammar. `harvest_post.py` strips the flag wherever it appears and
+    says so in its own comment ("before or after the positionals"); `harvest_patch.py`
+    read the entry id off argv[1] first, so the same habit sent the flag itself in as the
+    id and failed with `Unknown flag: 2988748904` — an error naming the argument that was
+    correct. Two scripts sharing a documented gate cannot disagree about where it goes.
+    """
+    srv = live_harvest({("PATCH", "/time_entries/2988748904"): {"id": 2988748904}})
+    r = run_cli(hp, ["--confirm"] + PATCH_ARGS)
+
+    assert r.lines == ["OK 2988748904"], f"leading --confirm was not understood: {r.err}"
+    assert len(srv.sent("PATCH", "/time_entries")) == 1
+
+
+def test_a_dangling_field_flag_cannot_swallow_the_confirmation_flag(live_harvest):
+    """`--notes --confirm`, a value forgotten mid-command. Consuming the next token blindly
+    made the gate the value: notes became the literal string `--confirm`, the entry stayed
+    unconfirmed, and the preview reported both as though they were meant. Re-running with
+    the flag appended — the exact thing the preview invites — then wrote that note to the
+    timesheet. The flag is not a value, so it is removed before anything reads positionally.
+    """
+    srv = live_harvest({("PATCH", "/time_entries/2988748904"): {"id": 2988748904}})
+    r = run_cli(hp, ["2988748904", "--notes", "--confirm"])
+
+    assert r.code != 0, f"a forgotten value was accepted as a command: {r.out}"
+    assert "--notes" in (r.err + r.out)
+    assert srv.sent("PATCH", "/time_entries") == []
+
+
 def test_a_command_that_could_never_post_is_an_error_rather_than_a_preview():
     """The guards run first, so an unconfirmed bad command fails on the spot. Previewing it
     as "here is what I would have done" would invite the caller to re-run it with the flag,

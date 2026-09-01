@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run first: a reversed range is an error, not a preview.
 
 ### Fixed
+- **`--confirm` can be typed anywhere on a patch, and a field flag left without its value can no
+  longer swallow it.** `harvest_post.py` accepted the flag before or after its positional arguments;
+  `harvest_patch.py` read the entry id off the first argument, so the same habit —
+  `harvest_patch.py --confirm 12345 --notes 'x'` — failed with `Unknown flag: 12345`, naming the one
+  argument that was right. Worse, `--notes --confirm` took the gate as the note's text and previewed
+  it as though you had meant it; appending the flag, exactly as the preview's own last line tells you
+  to, then wrote `--confirm` to your timesheet as the note. The flag is now removed before anything
+  is read positionally, so a forgotten value is an honest `Missing value for --notes` instead.
 - **The day the clocks change is read at its real length.** The configured `TIMESHEET_TIMEZONE` was
   reduced to one offset per day, read at local noon, and applied to every instant in it. On a
   transition day that is wrong at both ends at once: `2026-04-05` in `Pacific/Auckland` is

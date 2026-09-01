@@ -23,7 +23,8 @@ At least one field flag must be provided.
 
 **`--confirm` is the confirmation gate**, and is not a field: without it nothing
 is written, and the script prints the entry id and the exact body it would have
-sent, then exits 0. The gate matters more here than on a create — a patch
+sent, then exits 0. It may be typed before or after the entry id, as in
+`harvest_post.py`. The gate matters more here than on a create — a patch
 overwrites a line that has already been reviewed and may already have been
 invoiced, and Harvest has no undo. See `harvest_post.py` for why the gate lives
 in the invocation rather than only in SKILL.md's prose.
@@ -69,24 +70,25 @@ USAGE = (
 
 
 def parse_args(argv: list[str]) -> tuple[str, dict, bool]:
-    if len(argv) < 2:
+    # Removed wherever it appears, matching harvest_post.py, so one documented gate has one
+    # grammar in both scripts and the flag can be typed before or after the entry id.
+    # Removing it *first* is what stops a field flag left without its value from consuming
+    # it: `--notes --confirm` set the notes to the literal string `--confirm` and previewed
+    # that as though it were meant. It is exempt from the repeated-flag guard below for the
+    # same reason — a repeated value flag silently last-wins, a repeated boolean says the
+    # same thing twice.
+    args = [a for a in argv[1:] if a != CONFIRM_FLAG]
+    confirmed = len(args) != len(argv) - 1
+    if not args:
         sys.exit(USAGE)
-    entry_id = argv[1]
+    entry_id = args[0]
     body: dict = {}
-    confirmed = False
-    i = 2
-    while i < len(argv):
-        flag = argv[i]
-        if flag == CONFIRM_FLAG:
-            # Deliberately not subject to the repeated-flag guard below. That guard exists
-            # because a repeated *value* flag silently last-wins; a boolean repeated says
-            # the same thing twice.
-            confirmed = True
-            i += 1
-            continue
+    i = 1
+    while i < len(args):
+        flag = args[i]
         if flag not in FLAGS:
             sys.exit(f"Unknown flag: {flag}\n{USAGE}")
-        if i + 1 >= len(argv):
+        if i + 1 >= len(args):
             sys.exit(f"Missing value for {flag}")
         key, caster = FLAGS[flag]
         if key in body:
@@ -94,7 +96,7 @@ def parse_args(argv: list[str]) -> tuple[str, dict, bool]:
             # both landed. A repeated flag is never deliberate — it is a command
             # assembled twice — and every other guard here blocks before the request.
             sys.exit(f"{flag} given more than once; pass it once with the final value")
-        raw = argv[i + 1]
+        raw = args[i + 1]
         try:
             body[key] = caster(raw)
         except ValueError:

@@ -64,6 +64,16 @@ Blocks are what a run drafts and the user corrects.
 load-bearing: a block can be redrawn freely, an entry is out in the world and changing one is a
 separate write the user has to approve again.
 
+**Confirmation gate** — the `--confirm` flag every write to the provider requires. It is not a
+field and not a promise in prose: the scripts refuse to write without it. The frontmatter field
+that stops a model starting the skill unprompted is honoured by some harnesses and silently
+dropped by others, so the gate lives in the invocation, where no harness can drop it.
+
+**Preview** — what an unconfirmed write prints instead: the exact body it would have sent,
+`WOULD POST <body>` or `WOULD PATCH <id> <body>`, then exit 0. A forgotten flag is therefore a
+preview and not an error. A preview is not an entry — nothing reached the provider, and the block
+it describes is still a block.
+
 **Attribution** — what a block still needs: client, project, task, billable or not, and a
 confidence rating.
 
@@ -128,6 +138,8 @@ Habits, not prohibitions — the rule above (no account's strings) is the hard o
 | "category" for what a block was | work kind (the activity source's own `category` keeps that name) |
 | "ticket" as the general term | work item ("ticket" is fine where the user's backend calls it one) |
 | "copied-in install", "the copied-in route" | the export (of the skill: an exported install) |
+| "dry run", "test post", "--dry-run" | a preview (what the confirmation gate prints) |
+| "explicit confirmation", "the confirm flag" as the concept's name | the confirmation gate (`--confirm` is its spelling) |
 
 So: naming Harvest is right where the subject genuinely *is* Harvest — the `harvest_*.py` scripts,
 their credentials contract, the declared configuration keys, the endpoint documentation, and the

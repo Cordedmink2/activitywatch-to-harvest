@@ -43,7 +43,11 @@ def test_every_skill_relative_command_names_a_shipped_script():
 # `[--confirm]` in a list of a script's optional flags is documentation; a bare `--confirm`
 # on a command line is a template someone will copy.
 OPTIONAL = re.compile(r"\[[^\]]*\]")
-WRITE_COMMAND = re.compile(r"python\s+scripts/harvest_(post|patch)\.py")
+# The interpreter is whatever the machine resolved it to — see TESTING.md § "Interpreter is
+# resolved, not literal", where `python` was the Windows Store stub and the answer was `py`
+# in that user's `.context.md`. Matching the literal word would let the same ready-typed
+# command through under any other spelling, so the interpreter is a token here, not a name.
+WRITE_COMMAND = re.compile(r"\b[\w.\-]+\s+scripts/harvest_(post|patch)\.py")
 
 
 def test_no_documented_command_hands_over_the_confirmation_flag_ready_typed():

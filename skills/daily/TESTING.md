@@ -908,6 +908,31 @@ command from a `[--confirm]` in a list of a script's optional flags.
 previews. A value flag consuming whatever follows it is pre-existing behaviour, and this
 gate fails closed under it.
 
+**Overturned 2026-09-02, issue #9 — Rung 2.** The paragraph above is wrong about the harm,
+and the review subagent that read the finished change is what caught it. "Fails closed" was
+measured one invocation deep. The preview's own last line is `Re-run with --confirm to
+apply it`, and a caller who does that reaches
+`harvest_patch.py <id> --notes --confirm --confirm`, which the shipped parser answered
+`('12345', {'notes': '--confirm'}, True)` — confirmed, with the flag written into a
+client-facing timesheet as the note. The gate fails closed only until the user follows the
+instruction the gate printed.
+
+The two scripts had also drifted apart on where the flag may go, which no test measured.
+`harvest_post.py` strips it from anywhere and its comment advertises "before or after the
+positionals"; `harvest_patch.py` read the entry id off `argv[1]` before the loop, so
+`harvest_patch.py --confirm <id> --notes 'x'` exited with `Unknown flag: <id>` — an error
+naming the one argument that was correct. One documented gate, two grammars, and the
+habit learned from the script the docs lead with is the one that fails.
+
+`parse_args()` now removes `--confirm` before anything is read positionally, matching
+`harvest_post.py`. `--notes --confirm` is `Missing value for --notes`, an honest usage
+error; a leading `--confirm` works. Two tests in `test_cli_contracts.py` pin both.
+
+*Why the original decision read as safe.* It was written from the parser outward — the flag
+is consumed as a value, therefore it is not consumed as a flag, therefore nothing is
+written. True of that one command, and the entry stopped there. What it never asked was
+what the user does next, which the script itself had already told them.
+
 **Consequence for the older suite.** Every invocation in `test_edge_harvest_api.py` now
 carries the flag, refusals included. Without it the gate would block those runs on its own
 and each guard test would pass whether or not the guard it names still existed.
