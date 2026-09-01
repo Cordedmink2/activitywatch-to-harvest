@@ -41,6 +41,10 @@ is why it lives with your facts rather than in a shipped script.
   view but still counted in the rollup  <!-- activity_timeline --min-span -->
 - **Minimum billable block**: `0.25 hr` — nothing shorter is posted as its own entry
   <!-- no flag: the model applies this when it drafts, per references/output-format.md -->
+- **Short-day floor**: `6.0 hrs` — a day billed under this is one the month-end sweep looks
+  at. Triage only: it decides which days get investigated, never which were billed short —
+  that comparison is against the day's own active minutes
+  <!-- no flag: the reconcile skill applies this when it sweeps a month -->
 - **Lunch detection window**: `11:30`–`14:30` local — longest AFK in here is lunch
 - **Work-hours window for AW rendering**: `06:00`–`20:00` local
 - **Default task for client work**: `<the task most of your client work bills to>` — spelled

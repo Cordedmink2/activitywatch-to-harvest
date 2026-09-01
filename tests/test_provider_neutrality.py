@@ -8,10 +8,12 @@ they were one workspace's facts shipped as everybody's defaults. The rules now d
 provider actually offers.
 
 Unlike the redacted names in `test_redaction.py`, these strings are not sensitive, so
-they are spelled out here. The scan covers the shipped instruction surface only —
-`SKILL.md`, `references/*.md`, `scripts/*.py`. Test fixtures are deliberately out of
-scope: the provider adapter's tests have to feed it the provider's real shapes, and a
-fake API response is not a rule.
+they are spelled out here. The scan covers the shipped instruction surface of **every**
+skill — `SKILL.md`, `references/*.md`, `scripts/*.py` under each of them — because a new
+skill is exactly where the drift gets back in: it is written against whichever account
+its author happened to be looking at, and the rules that were cleaned up don't govern it.
+Test fixtures are deliberately out of scope: the provider adapter's tests have to feed it
+the provider's real shapes, and a fake API response is not a rule.
 
 The second test is the positive half. A denylist only says what the rules stopped
 saying; it cannot tell whether what they say now is the shared vocabulary. So the work
@@ -23,7 +25,8 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-SKILL = REPO / "skills" / "daily"
+SKILLS = REPO / "skills"
+SKILL = SKILLS / "daily"
 
 # The literal task names of the one account the rules used to be written against.
 PROVIDER_TASK_NAMES = (
@@ -49,10 +52,15 @@ Name the work kind, not the task.
 
 
 def shipped_rules():
-    """The instruction surface a user reads and follows — not the tests behind it."""
-    yield SKILL / "SKILL.md"
-    yield from sorted((SKILL / "references").glob("*.md"))
-    yield from sorted((SKILL / "scripts").glob("*.py"))
+    """The instruction surface a user reads and follows — not the tests behind it.
+
+    Every shipped skill, discovered rather than listed: a skill added to the plugin and
+    left out of this walk would be the one place the old vocabulary could come back.
+    """
+    for skill in sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file()):
+        yield skill / "SKILL.md"
+        yield from sorted((skill / "references").glob("*.md"))
+        yield from sorted((skill / "scripts").glob("*.py"))
 
 
 def test_no_provider_task_name_appears_in_the_shipped_rules():

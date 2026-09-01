@@ -505,6 +505,122 @@ def test_list_renders_a_null_project_and_task_as_question_marks(live_harvest):
 
 
 # ======================================================================================
+# harvest_list.py --by-day — the month sweep the `reconcile` skill runs
+# ======================================================================================
+#
+# Reconciliation asks one question of a month: which days were never billed, and which
+# were billed short. That is arithmetic over the same listing, and the reason it lives
+# here rather than in a model's head is the same reason the day skeleton does — a total
+# summed by eye off a hundred printed rows is wrong occasionally and silently, and the
+# cost is a day billed twice or a day left unbilled forever.
+#
+# The zero-entry rows are the whole point of the mode: a day with no entries is *absent*
+# from the per-entry listing, and absent is exactly what a gap looks like.
+
+def test_by_day_prints_one_row_per_date_in_the_range_including_the_empty_ones(live_harvest):
+    """A gap day has no entries, so it has no line in the default listing. Reading gaps
+    off an entry listing means reasoning about what *isn't* printed, which is how a
+    forgotten Tuesday stays forgotten."""
+    live_harvest(_list_routes([[_entry(101, "2026-08-12", "9:00am", "10:00am", hours=1.0)]]))
+    r = run_cli(hlist, ["2026-08-11", "2026-08-13", "--by-day"])
+    assert r.code == 0
+
+    assert [ln.split()[0] for ln in r.lines] == ["2026-08-11", "2026-08-12", "2026-08-13"]
+    assert "0.00h" in r.lines[0] and "0.00h" in r.lines[2]
+    assert "1.00h" in r.lines[1]
+
+
+def test_by_day_totals_every_entry_on_a_date_and_counts_them(live_harvest):
+    """Billed-short is a comparison against a total, not against one entry: a day holding
+    a 0.25h standup and nothing else is short, and it is not empty."""
+    live_harvest(_list_routes([[
+        _entry(101, "2026-08-12", "9:00am", "9:15am", hours=0.25),
+        _entry(102, "2026-08-12", "1:00pm", "3:30pm", hours=2.5),
+    ]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert len(r.lines) == 1
+    assert "2.75h" in r.lines[0]
+    assert "2 entries" in r.lines[0]
+
+
+def test_by_day_totals_across_every_page(live_harvest):
+    """A month passes 100 entries routinely. Stopping at page one under-reports the days
+    on later pages — and an under-reported day reads as a day billed short, which sends a
+    subagent to investigate a day that was fine."""
+    srv = live_harvest(_list_routes([
+        [_entry(101, "2026-08-12", "9:00am", "10:00am", hours=1.0)],
+        [_entry(202, "2026-08-12", "2:00pm", "4:00pm", hours=2.0)],
+    ]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert [c["query"]["page"] for c in srv.sent("GET", "/time_entries")] == ["1", "2"]
+    assert "3.00h" in r.lines[0]
+
+
+def test_by_day_names_the_weekday_so_a_weekend_is_not_chased(live_harvest):
+    """Most unbilled Saturdays are Saturdays, not gaps. The weekday is what lets the sweep
+    drop them before anything is dispatched to investigate them."""
+    live_harvest(_list_routes([[]]))
+    r = run_cli(hlist, ["2026-08-15", "2026-08-17", "--by-day"])
+    assert r.code == 0
+    assert [ln.split()[1] for ln in r.lines] == ["Sat", "Sun", "Mon"]
+
+
+def test_by_day_names_the_projects_already_billed_on_a_short_day(live_harvest):
+    """A day billed short is usually a day billed to *one* of the clients that were on
+    screen. Naming what is already there is what tells the worklist which client to look
+    past, and it costs nothing — the listing was fetched anyway."""
+    live_harvest(_list_routes([[
+        _entry(101, "2026-08-12", "9:00am", "10:00am", code="ACM-CR202"),
+        _entry(102, "2026-08-12", "10:00am", "11:00am", code="NWC-001"),
+        _entry(103, "2026-08-12", "11:00am", "12:00pm", code="ACM-CR202"),
+    ]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert "ACM-CR202" in r.lines[0] and "NWC-001" in r.lines[0]
+    assert r.lines[0].count("ACM-CR202") == 1, "each project named once, not once per entry"
+
+
+def test_by_day_refuses_a_range_that_ends_before_it_starts(live_harvest):
+    """A transposed month prints no rows at all, and no rows is indistinguishable from a
+    month with no gaps in it — the sweep would report "all caught up" over a month it
+    never looked at."""
+    live_harvest(_list_routes([[]]))
+    r = run_cli(hlist, ["2026-08-31", "2026-08-01", "--by-day"])
+    assert r.code != 0
+    assert "Traceback" not in r.err
+
+
+def test_by_day_refuses_a_date_it_cannot_parse(live_harvest):
+    """The mode walks the range date by date, so a malformed bound is a crash rather than
+    the API's own error message."""
+    live_harvest(_list_routes([[]]))
+    r = run_cli(hlist, ["2026-08-01", "the-31st", "--by-day"])
+    assert r.code != 0
+    assert "Traceback" not in r.err
+
+
+def test_by_day_replaces_the_per_entry_rows_rather_than_adding_to_them(live_harvest):
+    """The sweep is one cheap read of a month. Printing both shapes puts the per-entry
+    listing it was meant to replace back into the context it was meant to save."""
+    live_harvest(_list_routes([[_entry(101, "2026-08-12", "9:00am", "10:00am")]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert len(r.lines) == 1
+    assert "101" not in r.lines[0], "the entry id belongs to the per-entry listing"
+
+
+def test_the_default_listing_is_unchanged_by_the_flag_existing(live_harvest):
+    """The pin on the older contract: `harvest_list.py <date>` is what Step 1 of the
+    `daily` skill and the credential check in the install runbook both run."""
+    live_harvest(_list_routes([[_entry(101, "2026-08-12", "9:00am", "10:00am")]]))
+    r = run_cli(hlist, ["2026-08-12"])
+    assert r.code == 0
+    assert r.lines[0].split()[0] == "101"
+
+
+# ======================================================================================
 # A raw HTTP server, for the one response shape FakeServer cannot express
 # ======================================================================================
 

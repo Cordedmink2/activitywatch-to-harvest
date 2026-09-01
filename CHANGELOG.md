@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A `reconcile` skill that asks one question of a month: which days were worked but never
+  billed, or billed short — and what was happening on them.** The answer is a worklist, not a
+  report. Each row names a date, what the evidence says was going on, and the next action; you
+  bill it by running `/billables:daily <date>` as usual. Nothing in the sweep records time.
+
+  The shape is what keeps it cheap. Two reads find the month's gaps — one listing of what is
+  already billed, one listing of the folder names under your screenshot directory, which is the
+  index of days the machine was used at all — and the days that are already billed drop out
+  before anything is investigated. What is left is usually two to five days rather than
+  twenty-two, and each one is handed to its own small subagent: independent, so a messy day
+  neither slows the others down nor contaminates them, and mechanical enough that a cheap model
+  does it well. Each reports the day skeleton and the raw client signals it found, never a
+  billing verdict.
+
+  Two things it refuses to guess. A day with no captures and no billed time is a day with no
+  evidence, so it is reported as that rather than as idleness — and a run of capture-less days
+  from one date onward is a capture task that stopped firing, which is one maintenance finding
+  and not a month of gaps. Where the evidence runs out, the row is a question for you.
+- **`harvest_list.py --by-day`**, one row per date instead of one per entry — total, entry count
+  and project codes, with a row for every date in the range including the ones holding nothing.
+  A day with no entries is *absent* from the per-entry listing, so reading gaps off that listing
+  means reasoning about what was never printed. It is what the month sweep runs, and it is also
+  the cheapest way to see a fortnight's gaps at the start of an ordinary day's run.
 - **A `setup` skill that walks you through the parts of the install only a person can do, and
   checks each one.** Installing the activity source, adding the browser extension, tagging each
   browser profile with a client code, building the category rules that read those tags, and getting
