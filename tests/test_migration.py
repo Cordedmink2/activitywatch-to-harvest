@@ -98,10 +98,15 @@ def test_the_migration_says_the_users_own_files_survive():
         "the migration never mentions the workspace their timesheets live in:\n" + body)
 
 
-# Every setting the retired copy could be carrying. The credentials and the two optional
-# paths came from its `.env`; the timezone came from a flag with a New Zealand default,
-# which is the one that changes shape rather than moving — an offset is not an IANA name,
-# and nothing can convert one to the other without knowing where the user is.
+# Every setting the retired copy could be carrying, whatever vintage it is. Which ones came
+# from the `.env` is not fixed: the released hand install had five keys and no
+# `TIMESHEET_SCREENSHOTS_DIR` — a custom capture directory lived on the scheduled task's
+# `-ScreenshotsDir` argument — while later copies read it through the same resolver as the
+# rest. The migration has to account for the setting either way, which is why this list is
+# of settings rather than of file contents.
+#
+# The timezone is the one that changes shape rather than moving: an offset is not an IANA
+# name, and nothing can convert one to the other without knowing where the user is.
 OLD_SETTINGS = [
     "HARVEST_ACCOUNT_ID",
     "HARVEST_API_KEY",

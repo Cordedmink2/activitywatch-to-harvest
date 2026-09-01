@@ -130,8 +130,8 @@ command line:
 |---|---|
 | `HARVEST_ACCOUNT_ID`, `HARVEST_API_KEY` in `.env` | `/plugin configure billables`. Both are declared sensitive, so they go to Claude Code's credential store instead of a file in the skill folder. |
 | `--utc-offset 12` (13 in daylight saving) on every command | **Your timezone**, asked for as an IANA name — `Pacific/Auckland`, not `12`. This is a change of kind, not a rename: the offset is derived per date, so the twice-yearly edit stops being yours to remember. There is no default, and no conversion from your old number — say where you are. |
-| `TIMESHEET_WORKSPACE` in `.env` | **Workspace directory** in `/plugin configure billables`. Leave it blank if you start sessions in the workspace, which is the normal case. |
-| `TIMESHEET_SCREENSHOTS_DIR` in `.env` | **Screenshot directory** in `/plugin configure billables`. Blank still means `~\Pictures\WorkScreenshots`. |
+| `TIMESHEET_WORKSPACE` in `.env` | **Workspace directory** in `/plugin configure billables`. If you left it blank, look at where your workspace actually is before doing the same here: the old copy also searched the folders it was installed under, which from `~\.claude\skills\` reaches your home directory — so a `~\Timesheets` was found from any session. A plugin is never installed inside a workspace, so blank now means *the folder you start Claude Code in*, and nothing else. Blank is right if that is where you work; otherwise set it. |
+| `TIMESHEET_SCREENSHOTS_DIR` — in `.env` on later copies, and as `-ScreenshotsDir` on the scheduled task | **Screenshot directory** in `/plugin configure billables`. Blank still means `~\Pictures\WorkScreenshots`. Read the value off the task rather than trusting the `.env`, which the earliest hand installs had no key for: `(Get-ScheduledTask -TaskName WorkScreenshots).Actions.Arguments`. |
 | `DATAVERSE_URL`, `PAC_AUTH_PROFILE` in `.env` | Ordinary environment variables — [step 9](#9-optional-dataverse-ticket-catalog). They belong to one org rather than to every install, so the configuration dialog never asks for them. Do **not** put them in a `.env` inside the plugin folder. |
 
 Then, in order:
@@ -144,18 +144,30 @@ Then, in order:
 2. **`/plugin configure billables`**, with the old `.env` open beside you, and fill in the
    right-hand column. Start a new session afterwards: the values reach the scripts at session
    start.
-3. **Run `/billables:setup`.** The step you specifically need is the screenshot task: it was
-   registered against the capture script *inside the old skill folder*, so it keeps running that
-   script until it is re-registered, and then fails silently into `capture.log` once the folder is
-   gone. `setup` reads the registered action back and re-registers it against the plugin's copy,
-   which is the check that catches this.
-4. **Bill a day you have already billed** — `/billables:daily` on a recent date — and compare what
+3. **Read your current screenshot task back before touching it**, because the next step replaces it
+   with one built from defaults:
+   ```powershell
+   (Get-ScheduledTask -TaskName WorkScreenshots).Actions.Arguments
+   ```
+   Anything non-default in there — a capture directory, `-StartTime`, `-EndTime`,
+   `-IntervalSeconds` — is yours to carry over, and nothing carries it for you. A task silently
+   back on 08:30–20:00 every 2.5 minutes is the kind of thing you notice a fortnight later, in the
+   shape of a day with no evidence on it.
+4. **Run `/billables:setup`.** The step you specifically need is that screenshot task: it is
+   registered against the capture script *inside the old skill folder*, so it keeps running the old
+   copy of the script until it is re-registered — and once you delete that folder it stops
+   producing anything at all, showing up as a non-zero `LastTaskResult` rather than as an error
+   anyone sees. `setup` reads the registered action back and re-registers it against the plugin's
+   copy. Pass the values from step 3 through when it does.
+5. **Bill a day you have already billed** — `/billables:daily` on a recent date — and compare what
    it proposes against what is in Harvest. That is the confirmation that your credentials, your
    timezone and your workspace all arrived.
-5. **Delete `~\.claude\skills\daily-timesheet`.** Not optional and not cosmetic: until it is gone
+6. **Delete `~\.claude\skills\daily-timesheet`.** Not optional and not cosmetic: until it is gone
    you have two skills that both answer *"do my timesheet"*, and no way to tell from the answer
-   which one did. Delete the whole folder, `.env` included — everything in it now lives somewhere
-   your next update can't overwrite.
+   which one did. If you ever edited anything in there — a classification rule, a reference doc —
+   diff it against the plugin's copy first and move the change over or raise it as an issue; the
+   old installer copied files in place and never stopped you. Then delete the whole folder, `.env`
+   included: everything in it now lives somewhere your next update can't overwrite.
 
 Your `.context.md` needs no edit for any of this. The one line worth revisiting is any note in it
 recording your UTC offset: the timezone is plugin configuration now, and a stale offset written
@@ -398,9 +410,15 @@ it still picks the wrong interpreter, pin one with `-PythonExe C:\path\to\python
 `-PythonExe` is an error, never a silent fallback).
 
 > **If a previous `WorkScreenshots` task was registered as Administrator**, re-running setup from a
-> normal shell fails with `Access is denied`. Run the setup command once from an **elevated**
-> PowerShell to replace it; afterward it points at the in-place skill script, so ordinary skill
-> updates need no further elevation.
+> normal shell fails with `Access is denied`. Running setup *elevated* clears the error and brings
+> the trap straight back: the replacement is owned by `BUILTIN\Administrators` too, so the next
+> ordinary re-register fails the same way. Break it in two steps instead — remove the task from an
+> **elevated** PowerShell, then register the new one from a normal shell, so it ends up owned by
+> you and no later update needs elevation:
+>
+> ```powershell
+> Unregister-ScheduledTask -TaskName WorkScreenshots -Confirm:$false   # elevated
+> ```
 
 ### 11. Use it
 

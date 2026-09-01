@@ -91,7 +91,7 @@ Screenshots are what disambiguate generic activity into the right client, so thi
 
 **If it fails** — decide which of three it is before telling the user anything, because they lead to completely different asks:
 
-- **`Access is denied` on registration** — a previous task was registered from an elevated shell. Have the user run the setup script once from an elevated PowerShell; afterwards ordinary updates need no elevation.
+- **`Access is denied` on registration** — a previous task was registered from an elevated shell, so the task file is owned by `BUILTIN\Administrators`. Do *not* just have them re-run setup elevated: that succeeds and re-creates the task with the same owner, so the next ordinary re-register fails identically and they are back here. Two steps — `Unregister-ScheduledTask -TaskName WorkScreenshots -Confirm:$false` from an **elevated** PowerShell, then the setup script from a **normal** one, which is what leaves the task owned by the user.
 - **`No module named mss` / `No module named PIL`, or the task's `LastTaskResult` is `0x80070002`** — an interpreter problem, not a security one. The stored path is absolute, so a Python upgrade or reinstall breaks every trigger from that moment on. Re-run the setup script, or pin the interpreter with `-PythonExe <path>`.
 - **The task registers, reports `Ready`, and no image ever appears** — this is the one that is usually endpoint security. Read `references/endpoint-security.md` before saying so to the user: it has to be evidenced before it is escalated.
 

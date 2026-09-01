@@ -338,6 +338,11 @@ def test_the_export_sends_a_hand_installed_copy_to_the_plugin_not_to_itself(tmp_
         f"the note never names where the way out is written down:\n{res.stdout}")
     assert "Move any .env" not in res.stdout, (
         f"a hand install was told to rescue a .env the plugin does not read:\n{res.stdout}")
+    # A filename is only a pointer for someone holding the file. This can be run by a user
+    # with no clone — the README documents asking an agent to fetch and regenerate — so the
+    # note has to carry a link that resolves from anywhere.
+    assert "https://" in res.stdout and "#coming-from-a-hand-installed-copy" in res.stdout, (
+        f"the note names a section but no address to read it at:\n{res.stdout}")
 
 
 def test_the_migration_section_the_export_names_is_the_one_in_the_readme():

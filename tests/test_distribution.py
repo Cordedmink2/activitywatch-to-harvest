@@ -277,6 +277,22 @@ def test_the_retired_install_path_is_gone(path):
     assert not (REPO / path).exists(), f"{path} is still here — the second install path survives"
 
 
+def test_this_repo_tracks_no_env_file():
+    """The retired release ritual verified this by hand, once per release, with
+    `git ls-files "*.env"`. It is worth more as a test than it was as a step: the repo *is*
+    the plugin now, so anything tracked here is shipped to everyone who installs it, and the
+    check no longer waits for someone to remember a release.
+
+    Tracked, not present — a maintainer's own `.env` sitting in the working tree is normal
+    and `.gitignore` covers it. What must never happen is one being committed.
+    """
+    res = subprocess.run(["git", "ls-files", "-z", "*.env", "**/.env"], cwd=REPO,
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert res.returncode == 0, res.stderr
+    tracked = [p for p in res.stdout.split("\0") if p]
+    assert not tracked, f"credentials files are tracked in this repo: {tracked}"
+
+
 @pytest.mark.parametrize("doc", instruction_docs(),
                          ids=lambda p: p.relative_to(REPO).as_posix())
 def test_no_instruction_names_the_retired_install_path(doc):

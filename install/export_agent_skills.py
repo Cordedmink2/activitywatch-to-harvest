@@ -49,6 +49,12 @@ PLUGIN_MANIFEST = REPO / ".claude-plugin" / "plugin.json"
 SKILLS = REPO / "skills"
 DEFAULT_DEST = Path.home() / ".agents" / "skills"
 
+# The README section a hand-installed copy is sent to, and the GitHub anchor GitHub gives
+# it. Named rather than inlined because the note below has to link it, and the repo-level
+# tests check the heading still exists — a quoted heading is a link with nothing behind it.
+MIGRATION_SECTION = "Coming from a hand-installed copy"
+MIGRATION_ANCHOR = "#" + MIGRATION_SECTION.lower().replace(" ", "-")
+
 # Claude Code's own global skills directory — where the retired installer put the skill,
 # and not somewhere this script writes. A leftover found *there* belongs to a hand install
 # whose settings are declared plugin configuration now, so its way forward is the plugin;
@@ -252,7 +258,11 @@ def main(argv: list[str]) -> int:
         if legacy.parent == HARNESS_SKILLS:
             print("      That copy was hand-installed, and the settings it holds are")
             print("      declared plugin configuration now. The way off it is the plugin,")
-            print('      not this export: README.md, "Coming from a hand-installed copy".')
+            print(f'      not this export — "{MIGRATION_SECTION}":')
+            # The URL, not just the filename: this can be run by someone who has no clone
+            # (the README documents asking an agent to fetch and regenerate), and naming a
+            # file they do not have is the same as naming nothing.
+            print(f"      {plugin['repository']}{MIGRATION_ANCHOR}")
         else:
             print("      Move any .env you filled in there across, then delete that folder.")
     print("An exported install has no harness to hold credentials: copy the exported")
