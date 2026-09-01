@@ -15,8 +15,8 @@ Two install paths drift. That is not a prediction; this repo has already shipped
 weeks behind the live one, and the reason it went unnoticed is that the maintainer used one path
 and strangers used the other. `llms.txt` had the same shape: a hand-maintained description of what
 the plugin does, next to the plugin, with nothing holding the two in step. It had already been
-wrong in the way that costs a user an afternoon — for two releases it stated flatly that
-ActivityWatch was not on winget, which it is.
+wrong in the way that costs a user an afternoon: through 0.4.4 it stated flatly that ActivityWatch
+was not on winget, which it is.
 
 The runbook also carried something the plugin did not: the manual steps. Installing the activity
 source, the browser extension, the per-profile title tags, the category rules and the screenshot
@@ -63,16 +63,25 @@ are the ones a person performs by hand either way.
   and surfacing days later.
 - A user with no plugin marketplace access loses the paste-a-prompt route. They run the export
   (`install/install_skill.{sh,ps1}`) from a clone and get the same `setup` skill in it, so the
-  capability survives; what is gone is the zero-clone shortcut, which was the drifting copy.
+  capability survives; what is gone is the zero-clone shortcut, which was the drifting copy. That
+  only holds if they are told it is there — README step 5 names all three exported directories for
+  this reason, having previously named only `billables-daily`.
 - The version has one home. Bumping it is one edit, and `tests/test_distribution.py` fails if the
   changelog disagrees.
+- One step had no other agent-readable home and moved rather than went: scaffolding the workspace.
+  The `setup` skill defers it to the `daily` skill's first run, and `references/setup.md` covered
+  `.context.md` but never the three directories around it — the runbook was the only place that did.
+  It is now §"First-run: the workspace" there.
 - An exported install carries no version marker at all. The issue form asks for the plugin's version
   instead — `/plugin` in Claude Code, or the `Exporting billables v...` line the export prints.
-- `tests/test_distribution.py` guards the deletion: the two files stay gone, and no instruction —
-  README, `AGENTS.md`, any `SKILL.md` or reference, the hooks, the installers, the issue form — may
-  name `llms.txt`, `publish.ps1` or the release skill. `CHANGELOG.md`, `docs/RECOVERY.md`,
-  `docs/adr/` and `TESTING.md` are exempt: they record what happened, and naming a retired thing
-  accurately is their job.
+- `tests/test_distribution.py` guards the deletion: the two files stay gone, and nothing in an
+  enumerated set of instructions — the root documents, `docs/agents/`, every `SKILL.md`, reference
+  and `scripts/` file in every skill, the hooks, the installers, the issue form — may name
+  `llms.txt`, `publish.ps1`, the release skill, or call any of it a runbook. The set is an
+  enumeration and not "the tree minus exclusions", so it is the guard's scope rather than a claim
+  about the rest of the repo: `CHANGELOG.md`, `docs/RECOVERY.md`, `docs/adr/` and `TESTING.md` are
+  outside it because they record what happened, and `tests/` because a test has to write these
+  names down in order to assert on them.
 
 ## Alternatives considered
 

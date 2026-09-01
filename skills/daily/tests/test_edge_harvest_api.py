@@ -683,7 +683,7 @@ def test_by_day_replaces_the_per_entry_rows_rather_than_adding_to_them(live_harv
 
 def test_the_default_listing_is_unchanged_by_the_flag_existing(live_harvest):
     """The pin on the older contract: `harvest_list.py <date>` is what Step 1 of the
-    `daily` skill and the credential check in the install runbook both run."""
+    `daily` skill and `references/setup.md`'s credential check both run."""
     live_harvest(_list_routes([[_entry(101, "2026-08-12", "9:00am", "10:00am")]]))
     r = run_cli(hlist, ["2026-08-12"])
     assert r.code == 0

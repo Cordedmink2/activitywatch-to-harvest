@@ -231,20 +231,37 @@ def test_every_version_marker_agrees():
 
 RETIRED_FILES = ["llms.txt", "skills/daily/VERSION"]
 
-# What a reader is *told to do*, as opposed to what happened. `CHANGELOG.md`,
-# `docs/RECOVERY.md`, `docs/adr/` and `skills/daily/TESTING.md` are records of the past and
-# may name a retired thing accurately; nothing below may, because everything below is an
-# instruction someone will act on.
+
 def instruction_docs() -> list[Path]:
-    docs = [REPO / "README.md", REPO / "AGENTS.md", REPO / "CLAUDE.md"]
+    """Everything scanned below: what a reader is *told to do*, as opposed to what happened.
+
+    An enumeration rather than "the tree minus some exclusions", so read it as the scope
+    and not as a claim about the rest of the repo. `CHANGELOG.md`, `docs/RECOVERY.md`,
+    `docs/adr/` and `skills/daily/TESTING.md` are deliberately outside it — they record the
+    past, and naming a retired thing accurately is their job — but so is everything else
+    not listed, including `tests/`, which has to be able to write these names down in order
+    to assert on them.
+
+    `scripts/` is in scope because that is where the evidence was: retiring the runbook had
+    to correct a comment in `harvest_list.py` and another in the SessionStart hook. A
+    docstring naming a file that no longer exists sends a reader looking for it just as a
+    markdown line does.
+    """
+    docs = [REPO / "README.md", REPO / "AGENTS.md", REPO / "CLAUDE.md",
+            REPO / "CONTEXT.md", REPO / "INTENT.md"]
     docs += sorted((REPO / ".github").rglob("*.yml"))
+    docs += sorted((REPO / "docs" / "agents").glob("*.md"))
     docs += sorted((REPO / "hooks").iterdir()) + sorted((REPO / "install").iterdir())
     for skill in skill_dirs():
-        docs += [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
+        docs += [skill / "SKILL.md", *sorted((skill / "references").glob("*.md")),
+                 *sorted((skill / "scripts").glob("*"))]
     return [p for p in docs if p.is_file()]
 
 
-RETIRED_NAMES = re.compile(r"llms\.txt|publish\.ps1|daily-timesheet-release")
+# `runbook` bare, not just the filename: the surviving references this ticket had to fix
+# called it "the setup runbook" without ever naming `llms.txt`, so a pattern that only
+# matched the filename would have found neither.
+RETIRED_NAMES = re.compile(r"llms\.txt|publish\.ps1|daily-timesheet-release|runbook")
 
 
 @pytest.mark.parametrize("path", RETIRED_FILES)

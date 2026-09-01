@@ -1,6 +1,6 @@
 # Setup — first run per user / per machine
 
-Read this only when a prerequisite check fails (missing `.context.md`, unconfigured credentials or timezone, no screenshot task, unknown AW buckets). Routine runs never need this file.
+Read this only when a prerequisite check fails (no workspace, missing `.context.md`, unconfigured credentials or timezone, no screenshot task, unknown AW buckets). Routine runs never need this file.
 
 **A first install is not this file.** The `setup` skill beside this one walks a person through the parts only they can do — the activity source, the browser extension, the profile tags, the category rules, the screenshot task — and verifies each one before moving on. This file is the mid-run diagnostic: one prerequisite came back wrong on a machine that was already working.
 
@@ -46,13 +46,17 @@ and confirming new PNGs appear for every monitor.
 
 The `setup` skill deliberately does not build this — it covers only what a person has to do by hand, and this is not that. It belongs to this skill's first run, which is where a user arrives with no `Timesheets/` at all.
 
-Ask which folder should be the workspace (the current directory is the usual answer), then from a clone of the repo run `install/setup_workspace.ps1 [-Workspace <path>]` (POSIX: `install/setup_workspace.sh [<path>]`). Without a clone, create the three directories directly — the script does nothing else:
+Ask which folder should be the workspace (the current directory is the usual answer), then from a clone of the repo run `install/setup_workspace.ps1 [-Workspace <path>]` (POSIX: `install/setup_workspace.sh [<path>]`).
+
+**Most users have no clone**, and the script is a convenience rather than a requirement. Without one, do the same two things by hand. Create three directories:
 
 - `Timesheets/` — `.context.md` plus optional per-day markdown audit files.
 - `daily_exports/` — optional historical ActivityWatch dumps, the fallback when the server is unreachable.
 - `.mcp/` — the cached catalogs, refreshed on demand.
 
-It also seeds `Timesheets/.context.md` from `references/context.md.example` without overwriting an existing one. If the workspace is not the folder Claude Code starts in, set `TIMESHEET_WORKSPACE` (`/plugin configure billables`) once it exists — `find_workspace()` accepts a path that isn't there, so a value set before the folder is a value that silently resolves to nothing.
+Then copy this skill's own `references/context.md.example` to `Timesheets/.context.md`, resolving it from where `SKILL.md` was read — and never over an existing one, which is the next section's subject. That is the whole of what the script does.
+
+If the workspace is not the folder Claude Code starts in, set `TIMESHEET_WORKSPACE` (`/plugin configure billables`, or `.env` on an exported install) *after* the folder exists, for the reason §"After a machine reimage or replacement" item 2 gives: the value is returned verbatim with no existence check, so a path that isn't there breaks every catalog lookup while the Harvest-API-only scripts keep working and mask it.
 
 ## First-run: `Timesheets/.context.md`
 
@@ -62,6 +66,8 @@ If `Timesheets/.context.md` doesn't exist:
 2. Walk the user through filling it in — interactively, one section at a time. Ask about: their internal colleagues, the clients they bill, the signal types each client has (Edge profile, codebase, ChatGPT project, etc.), known external contacts, and any personal-browsing patterns to exclude.
 3. Save the result as `Timesheets/.context.md`.
 4. Tell the user they can always edit this file directly — the skill re-reads it every run.
+
+**Leave the Work kinds table until the credentials are in.** It is the one section with no shipped default — it says what *this* user's provider account calls each of the seven neutral work kinds, and no two accounts agree. Once the configuration below is set, refresh the catalogs and read the `task_assignments[]` names out of `.mcp/harvest_assignments.json`, then offer those. Asking the user to type their own task names from memory produces a table that doesn't match their account.
 
 ## First-run: configuration
 

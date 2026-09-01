@@ -15,7 +15,7 @@ So this skill is not a list of instructions. It is a list of instructions **with
 
 It covers only the residue a person has to do. Everything a machine can do belongs elsewhere and is not repeated here:
 
-- **The values** — credentials, timezone, paths — are declared plugin configuration, collected once at install. This skill checks whether they are *present* and routes a gap to `/plugin configure billables`. It never asks for one, and never asks the user to type a token into the conversation, which is written to disk in the session transcript.
+- **The values** — credentials, timezone, paths — are declared plugin configuration, collected once at install. This skill checks whether they are *present* and routes a gap to `/plugin configure billables`. It never asks for one, and never asks the user to type a token into the conversation, which is written to disk in the session transcript. If the user pastes one in anyway, say so at the time and suggest they rotate it before that transcript is shared anywhere — the dialog is the fix going forward, but the token that has already been written down is not fixed by using the dialog next time.
 - **The workspace** — `Timesheets/`, the catalogs, and the `.context.md` describing the user's own clients and conventions — belongs to the `daily` skill's own first run. Point at it at the end; do not build it here.
 
 Five steps, and then a stated finish.
@@ -26,7 +26,7 @@ Step 5 runs a script that ships with the `daily` skill, in a directory beside th
 
 ## Before you start
 
-Three things, in parallel, before step 1:
+Four things, in parallel, before step 1:
 
 1. **Is the configuration set?** Check for `HARVEST_ACCOUNT_ID`, `HARVEST_API_KEY` and `TIMESHEET_TIMEZONE` in the environment. Do not collect them here and do not block on them — steps 1 to 5 need none of them, so carry on and re-check at the finish.
 
@@ -34,7 +34,8 @@ Three things, in parallel, before step 1:
 
    **On an exported install there is no dialog to send them to.** A harness that is not Claude Code has no plugin manifest to hold configuration, so the same keys live in a `.env` beside the sibling skill's `SKILL.md`, and `/plugin configure billables` is a command that does not exist there. Work out which install this is at the same time as resolving the sibling directory below, and route a gap to copying that skill's `.env.example` to `.env` instead. Either way the value is written to a file by the user, not typed into the conversation.
 2. **Which address is the activity source on?** `TIMESHEET_ACTIVITY_URL` if it is set, otherwise `http://localhost:5600`. Use that address everywhere below.
-3. **Is there a working interpreter?** On Windows, prefer `py` over a bare `python`: the bare name is often the Store app-execution alias, a 0-byte stub whose tell is a help message about installing from the Store and exit code 49. Probe it — `py -c "import sys; print(sys.prefix)"` then `py -m pip --version` — rather than trusting that the name resolves. This matters most at step 5, where a broken interpreter and a blocked one look identical.
+3. **Is there a working interpreter?** On Windows, prefer `py` over a bare `python`: the bare name is often the Store app-execution alias, a 0-byte stub whose tell is a help message about installing from the Store and exit code 49. Probe it — `py -c "import sys; print(sys.prefix)"` then `py -m pip --version` — rather than trusting that the name resolves. An interpreter that exists and even imports its stdlib can still be broken: `Could not find platform independent libraries` on stderr is a split install whose `sys.prefix` doesn't resolve, so pip and site-packages are unreachable. Both matter most at step 5, where a broken interpreter and a blocked one look identical, and the first coworker install of this pipeline went to IT over exactly that confusion.
+4. **Is there a shell to run step 5's script in?** A stock Windows box has only Windows PowerShell 5.1, so `pwsh` may not exist. Either have the user install it (`winget install Microsoft.PowerShell`) or substitute `powershell.exe -File ...` — the scripts run under 5.1. Under 5.1, quote home-relative paths as `"$HOME/..."`: a bare `~` is passed through literally to a native command rather than expanded, so the path resolves to a directory named `~` and the failure reads as "file not found".
 
 ## Steps
 

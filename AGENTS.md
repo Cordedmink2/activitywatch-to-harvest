@@ -2,8 +2,9 @@
 
 Steering for agents **working on this repo**. If you are instead helping a user *install* the
 billables plugin on their machine, this is not the file you want: the two `/plugin` commands in
-[`README.md`](./README.md) get it installed, and the plugin's own `setup` skill walks the manual
-steps from there, verifying each one.
+[`README.md`](./README.md) get it installed — or, on a harness that cannot install a plugin,
+`install/install_skill.{sh,ps1}` generates the shared Agent Skills export from a clone. Either way
+the plugin's own `setup` skill walks the manual steps from there, verifying each one.
 
 ## Agent skills
 

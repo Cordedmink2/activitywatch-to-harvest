@@ -66,7 +66,7 @@ Each capture tick writes **one PNG per monitor** (`HH-MM-SS_m1.png`, `_m2.png`, 
 
 ## Prerequisites — check at start of every run
 
-Run in parallel before classifying anything. If any first-run piece is missing (no `.context.md`, unconfigured credentials or timezone, no screenshot task, unknown AW buckets), follow `references/setup.md`.
+Run in parallel before classifying anything. If any first-run piece is missing (no workspace, no `.context.md`, unconfigured credentials or timezone, no screenshot task, unknown AW buckets), follow `references/setup.md` — which is also where the `setup` skill hands over when it says this skill scaffolds the workspace.
 
 1. **`Timesheets/.context.md` — read it, whole, every run.** If missing, run first-run setup; don't classify without it. **Read the entire file into context; never grep it, never read a slice of it, never skim to the section you think you need.** Its facts are cross-cutting — an exclusion in one section decides a block whose client is named in another — so a partial read produces confident wrong answers rather than an obvious gap. The Step 11 size budget exists precisely so this file always fits in one read; if it has grown past budget, fix the budget (Step 11), don't switch to reading part of it.
 2. **ActivityWatch reachable** — `curl -s <activity-url>/api/0/buckets/` returns JSON, where `<activity-url>` is the configured `TIMESHEET_ACTIVITY_URL` or `http://localhost:5600` if unset. Use the configured one: probing localhost on a machine that reads a remote AW reports the instrument dead when the scripts would have worked. If not, fall back to `daily_exports/<date>/compact.jsonl`; if both missing, the day can only be reconstructed from screenshots + user memory — say so explicitly.

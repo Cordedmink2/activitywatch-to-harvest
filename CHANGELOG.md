@@ -126,7 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The old install path is gone: `llms.txt`, the `VERSION` file and the release ritual.** There
   were two ways in — the two `/plugin` commands, and a 225-line runbook you pasted a prompt about
   and an agent followed. Two install paths drift, which is the failure this whole effort exists to
-  remove: the runbook had already spent two releases stating flatly that ActivityWatch was not on
+  remove: through 0.4.4 the runbook stated flatly that ActivityWatch was not on
   winget, which it is. Installing is now the two commands and then `/billables:setup`, which covers
   the same manual ground with a check after every step. `docs/adr/0005-…` records the reasoning.
 
@@ -135,8 +135,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skill runs rather than a second procedure.
 
   Nothing is lost for a user with no marketplace access: `install/install_skill.{sh,ps1}` generates
-  the shared Agent Skills export from a clone, and the `setup` skill is in it. What is gone is the
-  zero-clone shortcut, which was the copy that drifted.
+  the shared Agent Skills export from a clone, and the `setup` skill is in it — README step 5 now
+  names all three exported directories rather than only `billables-daily`, because a capability
+  nobody is told about is not one they have.
+
+  Four things the runbook carried alone moved rather than went. The `setup` skill gained the
+  Windows PowerShell 5.1 checks (`pwsh` may not exist; a bare `~` is not expanded for a native
+  command) and the split-install tell, both of which bite at the one step it calls the most likely
+  to be silently blocked. `references/setup.md` gained the workspace scaffold — the three
+  directories and the `.context.md` seed, with a route for a user who has no clone to run the
+  script from — and the advice to leave the Work kinds table until credentials exist so the task
+  names can be read off the user's own account. README step 9 now says where the two Dataverse
+  values go on a plugin install: ordinary environment variables, not a `.env` inside the plugin
+  folder that the next update overwrites.
 
 - **The version lives only in the plugin manifest.** `skills/daily/VERSION` recorded it a second
   time, and nothing bumped the two together. `export_agent_skills.py` already read the manifest to

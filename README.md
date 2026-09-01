@@ -23,21 +23,8 @@ This repo is a plugin marketplace holding one plugin, `billables`. From inside C
 /plugin install billables@activity-to-timesheet
 ```
 
-That gives you `/billables:daily`, `/billables:reconcile` and `/billables:setup`.
-
-**Then run `/billables:setup`.** It walks you through the parts only a person can do —
-installing ActivityWatch, the browser extension, the browser-profile title tags, the category
-rules and the screenshot task — and *verifies each one before moving on*, which is the
-difference that matters: every one of those steps can look like it worked and have done
-nothing, and the symptom arrives days later as an empty timesheet. It tells you when setup is
-finished, and if endpoint security blocks a step it hands you the exact allow-list request.
-
-The prose walkthrough below covers the same ground for reading rather than running, plus the
-two things the setup skill deliberately leaves alone: scaffolding your workspace
-([step 6](#6-scaffold-your-workspace)) and filling in your `.context.md`
-([step 7](#7-fill-in-your-contextmd)), which the `daily` skill's first run does with you.
-
-The install then asks you for your own details, once:
+That gives you `/billables:daily`, `/billables:reconcile` and `/billables:setup`, and asks you
+for your own details, once:
 
 | | |
 |---|---|
@@ -48,6 +35,26 @@ The install then asks you for your own details, once:
 | **Workspace directory** | Optional. Blank means the folder you run Claude Code from, if it already looks like a workspace (`.mcp/` or `Timesheets/`) — which is the normal case. Set it if you start sessions elsewhere: a plugin is never installed *inside* a workspace, so there is no second place to fall back to. Answer it after step 6, with `/plugin configure billables`. |
 
 To change any of them later: `/plugin configure billables`.
+
+### Then run `/billables:setup`
+
+It walks you through the parts only a person can do — installing ActivityWatch, the browser
+extension, the browser-profile title tags, the category rules and the screenshot task — and
+*verifies each one before moving on*, which is the difference that matters: every one of those
+steps can look like it worked and have done nothing, and the symptom arrives days later as an
+empty timesheet. It tells you when setup is finished.
+
+That is the whole path — you don't need to clone this repo, read the rest of this file, or run a
+script by hand. What is left afterwards is scaffolding your workspace
+([step 6](#6-scaffold-your-workspace)) and filling in your `.context.md`
+([step 7](#7-fill-in-your-contextmd)), which the `daily` skill's first run does with you.
+
+> **Heads-up on antivirus / EDR.** A scheduled task that silently screenshots every few minutes
+> looks like spyware to endpoint security, so it (or `pip install`) may be blocked mid-setup. The
+> `setup` skill catches that where it happens, and hands you a request your security team can
+> action: the `WorkScreenshots` task plus the interpreter and script paths read back off the
+> registered task, never a folder-wide exclusion. It establishes that the step really was blocked
+> before sending you anywhere.
 
 Paths below of the form `$HOME\.agents\skills\billables-daily\…` are where the **exported** copy
 lives — the shared Agent Skills directory, for harnesses that aren't Claude Code (see
@@ -71,21 +78,6 @@ told.
 
 ---
 
-## The short version — let Claude Code set it up for you
-
-Install the plugin with the two commands above, then run **`/billables:setup`** and answer its
-questions. That is the whole path: you don't need to clone this repo, read anything here, or run
-a script by hand.
-
-> **Heads-up on antivirus / EDR.** A scheduled task that silently screenshots every few minutes looks
-> like spyware to endpoint security, so it (or `pip install`) may be blocked mid-setup. The `setup`
-> skill checks each step actually took effect rather than assuming it — and if one is
-> blocked, it stops and hands you a request your security team can action: the `WorkScreenshots` task
-> plus the interpreter and script paths read back off the registered task, never a folder-wide
-> exclusion. It establishes that the step really was blocked before sending you anywhere.
-
----
-
 ## Updating
 
 On a **plugin install**, `/plugin update billables` is the whole story.
@@ -97,14 +89,13 @@ On the **exported copy**, you update by getting the latest repo files and regene
   git pull
   pwsh -File install\install_skill.ps1        # macOS/Linux: ./install/install_skill.sh
   ```
-- **If you have no local clone**, just ask your agent to *"update the billables `daily` skill from
-  the latest activity-to-timesheet repo"* — it'll fetch the current version and regenerate the
-  export.
+- **If you have no local clone**, just ask your agent to *"update the billables skills from the
+  latest activity-to-timesheet repo"* — it'll fetch the current version and regenerate the export.
 
 Regenerating never touches your workspace or your `.context.md`, and your `.env` is kept where it
-is. Everything else in `~/.agents/skills/billables-daily` is **rewritten from the plugin**, so a
-file removed upstream leaves your copy too — there is no stale reference left behind, and nothing
-to clean out before a reinstall.
+is. Everything else in each `~/.agents/skills/billables-*` directory is **rewritten from the
+plugin**, so a file removed upstream leaves your copy too — there is no stale reference left
+behind, and nothing to clean out before a reinstall.
 
 > **Updating from an earlier version?** See [CHANGELOG.md](./CHANGELOG.md) for what changed in
 > each release and whether you need to act.
@@ -219,10 +210,13 @@ pwsh -File install\install_skill.ps1
 `install/export_agent_skills.py`, which is where the export is documented; pass a directory to
 write somewhere other than `~/.agents/skills`.)
 
-That writes `~/.agents/skills/billables-daily` — prefixed, because that directory is flat and a
-bare `daily` among your own skills says nothing about where it came from. It's generated from the
-plugin every time rather than merged into, so re-running it is how you update; your `.env` is the
-one thing kept. A maintainer's `.env` and build artifacts never leave the repo.
+That writes one directory per skill — `billables-daily`, `billables-reconcile` and
+`billables-setup` — prefixed, because that directory is flat and a bare `daily` among your own
+skills says nothing about where it came from. You get the same three skills a plugin install does,
+`setup` included, so the manual walkthrough is available to you too: invoke `billables-setup`
+however your harness names skills. It's generated from the plugin every time rather than merged
+into, so re-running it is how you update; your `.env` is the one thing kept. A maintainer's `.env`
+and build artifacts never leave the repo.
 
 ### 6. Scaffold your workspace
 
@@ -235,6 +229,10 @@ pwsh -File install\setup_workspace.ps1 -Workspace C:\Users\you\Work
 ```
 
 (macOS/Linux: `./install/setup_workspace.sh [path]`.)
+
+**No clone?** The script is a convenience, not a requirement — ask your agent to create the three
+folders below in your chosen workspace and copy `references/context.md.example` out of the
+installed skill to `Timesheets/.context.md`. That is everything the script does.
 
 This creates the folders the skill uses:
 
@@ -299,12 +297,22 @@ never edits it silently.
 ### 9. (Optional) Dataverse ticket catalog
 
 If you create work tickets in a **Dataverse / Dynamics 365** org that sync to Harvest as projects, you
-can enable ticket-number → title lookups. In the same `.env`, set:
+can enable ticket-number → title lookups by setting two values:
 
 ```
 DATAVERSE_URL=https://yourorg.crm6.dynamics.com/
 PAC_AUTH_PROFILE=YourPacAuthProfileName
 ```
+
+These two are deliberately **not** declared plugin configuration: they belong to one org's setup
+rather than to every install, so `/plugin configure billables` never asks for them. Where they go
+depends on which install you have:
+
+- **Plugin install:** set them as ordinary environment variables. Not in a `.env` inside the plugin
+  folder — a `/plugin update` overwrites that folder, and the skill's own diagnostic tells you to
+  delete any `.env` it finds there, because on a plugin install one silently outranks the
+  configuration dialog.
+- **Exported install** (step 5): the skill root's `.env`, alongside the Harvest keys.
 
 The profile must be a **named** one — the refresh selects it with `pac auth select --name`, and
 `pac auth create` without `--name` creates an unnamed profile it can never select. Authenticate with
