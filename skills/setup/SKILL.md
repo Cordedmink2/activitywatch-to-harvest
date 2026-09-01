@@ -81,7 +81,9 @@ Then, in order of how often it is the answer: a bracketed rule against a bare ta
 
 Screenshots are what disambiguate generic activity into the right client, so this is a required step on Windows, not an optional one. On macOS and Linux there is no capture pipeline shipped: say so, and skip to the finish.
 
-**Do** — run the `daily` skill's `scripts/setup_screenshot_pipeline.ps1`, resolved as described above. It installs Pillow and mss if they are missing and registers one scheduled task. If `TIMESHEET_SCREENSHOTS_DIR` is configured, pass the same path as `-ScreenshotsDir`: the task runs outside any session and never sees the configured value, so passing it explicitly is what keeps the reader and the writer pointed at the same folder.
+**Do** — if a `WorkScreenshots` task already exists, read it first: `(Get-ScheduledTask -TaskName WorkScreenshots).Actions.Arguments`. Registration replaces it with one built from the script's own defaults, so any non-default `-StartTime`, `-EndTime`, `-IntervalSeconds` or capture directory in there is the user's and has to be passed through again — nothing carries it for you. Someone migrating from a hand-installed copy is the likely case, and a task silently back on 08:30–20:00 every 2.5 minutes surfaces a fortnight later as a day with no evidence on it.
+
+Then run the `daily` skill's `scripts/setup_screenshot_pipeline.ps1`, resolved as described above. It installs Pillow and mss if they are missing and registers one scheduled task. If `TIMESHEET_SCREENSHOTS_DIR` is configured, pass the same path as `-ScreenshotsDir`: the task runs outside any session and never sees the configured value, so passing it explicitly is what keeps the reader and the writer pointed at the same folder.
 
 **Verify** — three checks, and the second is the one that catches a stale install:
 
