@@ -9,7 +9,7 @@ wait for the user to confirm before moving on.
 ## Hard rules
 
 - **Never invent or guess secrets.** When you need the Harvest Account ID or API key, ask the user to
-  paste them into `/plugin configure` (or, on a copied-in install, into `.env`). Do not fabricate
+  paste them into `/plugin configure` (or, on an exported install, into `.env`). Do not fabricate
   placeholder values into either.
 - **Never commit `.env`** or any secret. It is git-ignored; keep it that way.
 - **Never post to Harvest** as part of setup. Setup ends at "verified credentials work". Actually
@@ -90,16 +90,19 @@ wait for the user to confirm before moving on.
 - The install prompts for the values in step 8. The user can fill them in now or leave the dialog
   and run `/plugin configure billables` after step 6 — the workspace path is easier to answer once
   the workspace exists.
-- Every `~/.claude/skills/daily/...` path later in this runbook is the *copied-in* location below.
-  On a plugin install, substitute the plugin's own skill directory — resolve it from where you read
-  `SKILL.md`, never from a written-down location.
+- Every `~/.agents/skills/billables-daily/...` path later in this runbook is the *exported* location
+  below. On a plugin install, substitute the plugin's own skill directory — resolve it from where you
+  read `SKILL.md`, never from a written-down location.
 
-**Copied-in alternative** (a clone the user wants to edit in place, or a machine with no plugin
-marketplace access):
+**Shared Agent Skills export** (the user is on Codex, OpenCode, Hermes or another Agent Skills
+client, or on a machine with no plugin marketplace access):
 - Windows: `pwsh -File install\install_skill.ps1`
 - POSIX:   `./install/install_skill.sh`
-- This copies `skills/daily` to `~/.claude/skills/daily`, excluding `.env` and `__pycache__`.
-  Safe to re-run.
+- Both hand over to `install/export_agent_skills.py`, which writes `skills/daily` to
+  `~/.agents/skills/billables-daily` — prefixed, with its declared `name:` rewritten to match,
+  because that directory is flat and unnamespaced. Pass a directory to write elsewhere.
+- Generated, not merged: re-running it is the update path, a file removed upstream leaves the export
+  too, and the user's `.env` is the one thing kept across a regeneration.
 - There is no `/plugin configure` for this route: step 8's values go in the skill's `.env` instead.
 
 ### 6. Scaffold the workspace (you run this)
@@ -131,8 +134,8 @@ marketplace access):
   **macOS** only; on Windows and Linux it is `~/.claude/.credentials.json`, a file in their home
   directory. Promising a keychain to a Windows user invites them to treat that directory as safe to
   sync or share.
-- **Copied-in install:** copy `~/.claude/skills/daily/.env.example` to `.env` in the same folder and
-  write the same keys there.
+- **Exported install:** copy `~/.agents/skills/billables-daily/.env.example` to `.env` in the same
+  folder and write the same keys there.
 - What is asked for, and what happens if it is left out:
 
   | Key | Required | If unset |
@@ -153,9 +156,9 @@ marketplace access):
 - `TIMESHEET_TIMEZONE` is an IANA name (`Europe/London`, `Pacific/Auckland`). On Windows, resolving
   one needs the zone database: if a run reports it cannot load the zone, `py -m pip install tzdata`.
 - Verify it runs with no auth error:
-  - Windows: `py "$HOME/.claude/skills/daily/scripts/harvest_list.py" <today> <today>`
+  - Windows: `py "$HOME/.agents/skills/billables-daily/scripts/harvest_list.py" <today> <today>`
     — `py` not `python` (the stub), and `"$HOME/…"` not `~/…` (5.1 passes a bare `~` through literally).
-  - POSIX: `python ~/.claude/skills/daily/scripts/harvest_list.py <today> <today>`
+  - POSIX: `python ~/.agents/skills/billables-daily/scripts/harvest_list.py <today> <today>`
   A day with no entries prints `(no time entries from … to …)` on stderr — exit 0 plus that notice is
   success, not a silent no-op. A 401/403 means the token is wrong — ask the user to regenerate.
 
@@ -177,7 +180,7 @@ marketplace access):
 
 ### 10. Screenshot pipeline (you run this — REQUIRED, Windows)
 - This is a core part of the skill (screenshots disambiguate generic activity into the right client).
-- Run: `pwsh -File "$HOME/.claude/skills/daily/scripts/setup_screenshot_pipeline.ps1"`
+- Run: `pwsh -File "$HOME/.agents/skills/billables-daily/scripts/setup_screenshot_pipeline.ps1"`
 - Installs Pillow + mss if needed and registers the `WorkScreenshots` scheduled task (weekdays
   08:30–20:00, ~every 2.5 min). Params: `-StartTime`, `-EndTime`, `-IntervalSeconds`.
 - The script probes every interpreter candidate with a real import and refuses broken ones (0-byte
@@ -186,7 +189,7 @@ marketplace access):
 - VERIFY it actually works — this is the step most likely to be silently blocked by AV/EDR:
   1. `Get-ScheduledTaskInfo -TaskName WorkScreenshots` returns without error (the task registered).
   2. Fire one capture by hand and confirm PNGs land: run
-     `py "$HOME/.claude/skills/daily/scripts/screenshot_capture.py"`, then check that
+     `py "$HOME/.agents/skills/billables-daily/scripts/screenshot_capture.py"`, then check that
      `$HOME/Pictures/WorkScreenshots/<today>/` now holds `HH-MM-SS_m1.png` files.
   If the task registers but no images ever appear, endpoint security has likely quarantined
   `screenshot_capture.py` or is blocking the silent `pythonw` process — tell the user and ask them to

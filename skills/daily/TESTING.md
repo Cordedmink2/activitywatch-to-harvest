@@ -658,6 +658,16 @@ has to be set. That is correct rather than convenient — the alternative is gue
 no longer a cost the user has to discover: the install asks for the workspace directory as
 a declared optional option — see the next entry.
 
+**Amended 2026-08-31, issue #11: `.agents/` is skipped for the same reason as `.claude/`.**
+The generated export lands in the shared Agent Skills directory, so a workspace-local
+install of it is `<workspace>/.agents/skills/billables-daily` — one level deeper than the
+bare `skills/` shape, exactly like Claude Code's. Left unlisted, a Codex user's workspace
+resolved to nothing while an identically-placed Claude Code install resolved fine, which is
+the same silent-and-delayed failure this entry is about. The two names are now a set
+(`HARNESS_DIRS`) rather than one hardcoded string, so the next harness is a name and not a
+branch. Rung 2: the shape was read off the harnesses' own documentation and pinned in
+`test_config_seam.py`; no user on one of them has been watched running the skill.
+
 ### The configuration surface is declared, and the New Zealand offset is gone
 **Rung 1.** 2026-08-28. Issue #7.
 
@@ -907,6 +917,51 @@ a harness that drops the frontmatter field — that is the failure the flag is f
 reasoned, not observed. Nothing has been posted to a real Harvest account through the flag
 either. The evidence is the argument handling and the recorded request bodies, as
 everywhere else in this file.
+
+### Sharing a prefix is not proof of authorship — `install/export_agent_skills.py`
+**Rung 2.** 2026-09-02. Issue #11, both findings raised by the review on the finished
+change and reproduced against the shipped script before either was fixed.
+
+Rung 2 rather than 1: no user has lost a skill to this. The two reproductions were run
+from the reviews' reasoning, and every rung-1 entry here is a production observation.
+
+The export retires directories that have left the plugin, and picked its candidates by
+name — anything matching `billables-*` that this run had not just written. But the shared
+Agent Skills directory is flat and the prefix is a namespace this plugin *claims*, not one
+it owns: `~/.agents/skills/billables-mine` is a name a user is free to give a skill of
+their own. Reproduced exactly that way, a hand-written skill with a `notes.md` beside it
+was emptied, `rmdir`'d, and reported as `billables-mine (no longer part of this plugin —
+removed)`. Nothing to undo it, and the line reads like housekeeping.
+
+**The guard existed and was pointing the other way.** `refuse_unless_ours()` read "holds a
+`SKILL.md`" as *this is a skill directory, so it is safe to overwrite*; retirement read the
+same fact as *permission to delete*. One signal, two opposite meanings, and ADR-0004 stated
+the stronger of the two ("cannot eat something it did not write") for both. Each export now
+carries a stamp, and only a stamped directory is a retirement candidate. The distinction
+that settles it: **overwriting** happens at a name this run chose anyway and takes the
+weaker signal; **deleting** happens at a name the script did not choose, and takes proof.
+
+**The second finding is the same guard failing closed.** Retiring a skill leaves the
+directory holding nothing but the user's `.env` — deliberately; the credentials are not
+ours to delete. `refuse_unless_ours()` then read that leftover as someone else's
+directory, so a skill that left the plugin and came back — a rename undone, a trial
+reversed — made *every* export from that machine exit `ERROR: … holds files this script did
+not generate` until the user found and deleted a folder the script itself had left. The
+error names a path, which is the only reason it would ever have been diagnosable.
+
+**Why a green suite did not catch either.** The test asserting the blast radius
+(`test_a_regenerated_export_leaves_alone_what_it_did_not_write`) used an *unprefixed*
+fixture, `someone-elses` — a directory retirement was never going to look at. It stated the
+claim it did not exercise, and it passed both before and after the defect. The three cases
+now pinned in `tests/test_install_scripts.py` are the ones that vary: a foreign directory
+inside the prefix survives, a stamped one that left the plugin is retired, and a retired
+skill can be reinstated.
+
+**What was not measured.** No user has been watched running the export over a shared
+directory holding anyone else's skills — the collision is reasoned from the directory being
+flat, which is what ADR-0004 says makes the prefix necessary in the first place. A
+Windows case-only rename upstream is fixed in `prune()` by the same reading and is likewise
+unobserved.
 
 ## Script defects
 

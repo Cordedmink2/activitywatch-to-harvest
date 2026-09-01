@@ -40,9 +40,11 @@ The install then asks you for your own details, once:
 
 To change any of them later: `/plugin configure billables`.
 
-Paths below of the form `$HOME\.claude\skills\daily\…` are where the **copied-in** install puts the
-skill. On a plugin install, substitute the plugin's own skill directory; the skill itself resolves
-this at run time and never needs to be told.
+Paths below of the form `$HOME\.agents\skills\billables-daily\…` are where the **exported** copy
+lives — the shared Agent Skills directory, for harnesses that aren't Claude Code (see
+[step 5](#5-install-the-skill-on-a-harness-that-isnt-claude-code)). On a plugin install, substitute
+the plugin's own skill directory; the skill itself resolves this at run time and never needs to be
+told.
 
 ---
 
@@ -86,22 +88,23 @@ ActivityWatch is reachable, and talk you through the manual browser steps that o
 
 ## Updating
 
-There's no separate updater — the install script is idempotent, so you update by getting the latest
-repo files and re-running it.
+On a **plugin install**, `/plugin update billables` is the whole story.
+
+On the **exported copy**, you update by getting the latest repo files and regenerating it:
 
 - **If you cloned the repo**, from inside your clone:
   ```powershell
   git pull
   pwsh -File install\install_skill.ps1        # macOS/Linux: ./install/install_skill.sh
   ```
-- **If you used the lazy path above** (no local clone), just ask Claude Code to *"update the
+- **If you used the lazy path above** (no local clone), just ask your agent to *"update the
   billables `daily` skill from the latest activity-to-timesheet repo"* — it'll fetch the current
-  version and re-run the installer.
+  version and regenerate the export.
 
-Re-running never touches your `.env`, your workspace, or your `.context.md`. Note it **copies over**
-`~/.claude/skills/daily` rather than mirroring it, so a file *removed* upstream won't be
-deleted from your copy. For a clean reinstall, delete the skill folder first (back up your `.env`),
-then run the install script.
+Regenerating never touches your workspace or your `.context.md`, and your `.env` is kept where it
+is. Everything else in `~/.agents/skills/billables-daily` is **rewritten from the plugin**, so a
+file removed upstream leaves your copy too — there is no stale reference left behind, and nothing
+to clean out before a reinstall.
 
 > **Updating from an earlier version?** See [CHANGELOG.md](./CHANGELOG.md) for what changed in
 > each release and whether you need to act.
@@ -114,7 +117,7 @@ then run the install script.
 > is present. Re-run the screenshot setup once to install it (it also safely re-registers the task):
 >
 > ```powershell
-> pwsh -File "$HOME\.claude\skills\daily\scripts\setup_screenshot_pipeline.ps1"
+> pwsh -File "$HOME\.agents\skills\billables-daily\scripts\setup_screenshot_pipeline.ps1"
 > ```
 
 ---
@@ -198,18 +201,25 @@ a clean signal — both benefit from accurate codes.)
 > bare codes claiming incidental prose, and a regex with spaces inside its alternation that only
 > *looks* like it works.
 
-### 5. Install the skill into Claude Code
+### 5. Install the skill on a harness that isn't Claude Code
 
-From a clone of this repo:
+On Claude Code, the two `/plugin` commands at the top of this README are this step — skip it.
+
+Codex, OpenCode, Hermes and the other Agent Skills clients read `~/.agents/skills/` instead, which
+no plugin can install into. From a clone of this repo, generate the export:
 
 ```powershell
 pwsh -File install\install_skill.ps1
 ```
 
-(macOS/Linux: `./install/install_skill.sh`.)
+(macOS/Linux: `./install/install_skill.sh`. Both hand over to
+`install/export_agent_skills.py`, which is where the export is documented; pass a directory to
+write somewhere other than `~/.agents/skills`.)
 
-This copies the skill to `~/.claude/skills/daily`. It never copies a `.env` or build
-artifacts, and it's safe to re-run to update the skill.
+That writes `~/.agents/skills/billables-daily` — prefixed, because that directory is flat and a
+bare `daily` among your own skills says nothing about where it came from. It's generated from the
+plugin every time rather than merged into, so re-running it is how you update; your `.env` is the
+one thing kept. A maintainer's `.env` and build artifacts never leave the repo.
 
 ### 6. Scaffold your workspace
 
@@ -277,7 +287,7 @@ never edits it silently.
    Entries print one per line; a day with no entries prints `(no time entries from … to …)`.
    Either of those with no auth error is success — a 401/403 means the token is wrong.
 
-> **Copied-in install** (step 5's clone route, rather than `/plugin install`): there's no
+> **Exported install** (step 5's clone route, rather than `/plugin install`): there's no
 > configuration dialog, so the same keys go in a `.env` at the skill root instead — copy
 > `.env.example` beside it and fill in `HARVEST_ACCOUNT_ID`, `HARVEST_API_KEY` and
 > `TIMESHEET_TIMEZONE`. That file grants full access to your Harvest account: it is git-ignored,
@@ -311,7 +321,7 @@ generic activity (a bare browser, a terminal, `XrmToolBox`, an IDE with no works
 into the right client — the window title alone often can't.
 
 ```powershell
-pwsh -File "$HOME\.claude\skills\daily\scripts\setup_screenshot_pipeline.ps1"
+pwsh -File "$HOME\.agents\skills\billables-daily\scripts\setup_screenshot_pipeline.ps1"
 ```
 
 This installs [Pillow](https://pillow.readthedocs.io/) and [mss](https://python-mss.readthedocs.io/)
@@ -366,7 +376,7 @@ uncertain, and asks before posting anything to Harvest.
 
 - **Your Harvest token has full access to your account.** On a plugin install it is declared
   sensitive, so Claude Code holds it in your OS keychain — it is never written into the plugin
-  folder or into `settings.json`. On a copied-in install it lives in a `.env`, which is git-ignored
+  folder or into `settings.json`. On an exported install it lives in a `.env`, which is git-ignored
   at both the repo and skill level: don't commit it, and don't share the skill folder with it inside.
 - The skill **never writes to Harvest without explicit confirmation**, and that is enforced rather
   than only promised: the two scripts that create or amend a time entry write nothing unless passed
@@ -403,7 +413,8 @@ activity-to-timesheet/
 │       ├── skill_config.py       # the one seam every script reads a setting through
 │       └── ...                   # harvest_post/patch/list, refresh_catalogs, screenshot_capture
 ├── tests/                    # guards on the install/setup scripts a new user runs first
-└── install/                  # install_skill + setup_workspace (PowerShell + bash)
+└── install/                  # export_agent_skills.py (the shared-directory export the
+                              #   install_skill wrappers run) + setup_workspace
 ```
 
 ## Reporting a problem

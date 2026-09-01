@@ -1,57 +1,41 @@
-﻿<#
+<#
 .SYNOPSIS
-  Install the billables `daily` skill into your Claude Code skills folder.
+  Generate the shared Agent Skills export from this plugin.
 
 .DESCRIPTION
-  Copies skills\daily from this repo to ~\.claude\skills\daily.
-  Never copies a .env (yours stays local) or __pycache__. Safe to re-run - it
-  refreshes the skill files in place.
+  Finds an interpreter and hands over to export_agent_skills.py, which is where the
+  export and its rules are documented. It does nothing else: the plugin is installed
+  with /plugin install, and a second install path that could drift from it is exactly
+  what the export replaces.
 
 .EXAMPLE
   pwsh -File install\install_skill.ps1
 #>
 [CmdletBinding()]
 param(
-  # Where Claude Code looks for global skills. Override only if yours is non-standard.
-  [string]$SkillsDir = (Join-Path $HOME ".claude\skills")
+  # The shared Agent Skills directory. Blank uses the exporter's own default, ~/.agents/skills.
+  [string]$SkillsDir
 )
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$source   = Join-Path $repoRoot "skills\daily"
-$dest     = Join-Path $SkillsDir "daily"
+$export = Join-Path $PSScriptRoot "export_agent_skills.py"
+$exportArgs = @($export)
+if ($SkillsDir) { $exportArgs += $SkillsDir }
 
-if (-not (Test-Path $source)) {
-  throw "Cannot find skill source at: $source"
+foreach ($candidate in @("py", "python", "python3")) {
+  $found = Get-Command $candidate -ErrorAction SilentlyContinue
+  if (-not $found) { continue }
+  # Probed, not just found. A bare `python` on Windows is often the Store app-execution
+  # alias: a 0-byte stub that prints an install nag and exits 49 without running anything.
+  # Wrapped, because the 0-byte case cannot be launched at all — it raises rather than
+  # exiting non-zero, and under `Stop` that ends the script instead of the candidate.
+  try {
+    & $found.Source -c "import sys" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { continue }
+  } catch { continue }
+  & $found.Source @exportArgs
+  exit $LASTEXITCODE
 }
 
-New-Item -ItemType Directory -Force -Path $SkillsDir | Out-Null
-
-$version = (Get-Content (Join-Path $source "VERSION") -Raw).Trim()
-
-Write-Host "Installing the billables daily skill v$version..." -ForegroundColor Cyan
-Write-Host "  from: $source"
-Write-Host "  to:   $dest"
-
-# robocopy mirrors the tree; /XF .env keeps any local secrets out, /XD skips build
-# and test scratch directories. Exit codes 0-7 are success for robocopy; 8+ are real errors.
-robocopy $source $dest /E /XF .env /XD __pycache__ .pytest_cache | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
-
-Write-Host "Done. daily v$version installed to $dest" -ForegroundColor Green
-
-# The skill used to install under its old name. Left in place it is a second, stale copy
-# of the same skill, and either one can answer.
-$stale = Join-Path $SkillsDir "daily-timesheet"
-if (Test-Path $stale) {
-  Write-Host ""
-  Write-Host "NOTE: an older copy of this skill is still at $stale." -ForegroundColor Yellow
-  Write-Host "      Move any .env you filled in there across, then delete that folder."
-}
-
-Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  1. Scaffold your workspace:  pwsh -File install\setup_workspace.ps1"
-Write-Host "  2. Add your Harvest creds:   copy '$dest\.env.example' to '$dest\.env' and fill it in"
-Write-Host "  3. Set up screenshots:       pwsh -File '$dest\scripts\setup_screenshot_pipeline.ps1'"
+throw "No usable Python on PATH. The export needs Python 3.10 or newer."

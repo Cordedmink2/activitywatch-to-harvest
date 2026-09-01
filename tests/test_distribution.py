@@ -17,6 +17,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -53,14 +54,24 @@ def skill_dirs() -> list[Path]:
     return sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file())
 
 
-def frontmatter_name(skill_md: Path) -> str | None:
-    """The `name:` from the YAML frontmatter, or None if there is no frontmatter."""
+def frontmatter(skill_md: Path) -> dict[str, str]:
+    """The top-level `key: value` pairs of the YAML frontmatter, or {} if there is none.
+
+    Deliberately not a YAML parser: the fields asserted on here are the flat scalars the
+    spec defines, and a dependency-free reader keeps these tests runnable anywhere the
+    plugin is.
+    """
     text = skill_md.read_text(encoding="utf-8")
     if not text.startswith("---"):
-        return None
+        return {}
     head = text.split("---", 2)[1]
-    match = re.search(r"^name:\s*(\S+)\s*$", head, re.M)
-    return match.group(1) if match else None
+    return {m.group(1): m.group(2).strip()
+            for m in re.finditer(r"^([A-Za-z][\w-]*):[ \t]*(.*)$", head, re.M)}
+
+
+def frontmatter_name(skill_md: Path) -> str | None:
+    """The `name:` from the YAML frontmatter, or None if there is no frontmatter."""
+    return frontmatter(skill_md).get("name")
 
 
 # --------------------------------------------------------------------------------------
@@ -207,3 +218,113 @@ def test_every_version_marker_agrees():
         "CHANGELOG.md": released.group(1),
     }
     assert len(set(markers.values())) == 1, f"version markers disagree: {markers}"
+
+
+# --------------------------------------------------------------------------------------
+# The shared Agent Skills export
+# --------------------------------------------------------------------------------------
+#
+# The second artifact this repo ships. `~/.agents/skills/` is where every harness that
+# isn't Claude Code looks, and it is flat and unnamespaced — one directory per skill, no
+# plugin above it to say whose `daily` this is. So the export is prefixed, and the
+# declared name is rewritten to match, because the spec requires the two to agree and the
+# declared name is all a consumer has to go on.
+#
+# It is generated, never hand-edited, which is only true if regenerating it is worth
+# nothing: hence the idempotence assertion below.
+
+EXPORT_SCRIPT = REPO / "install" / "export_agent_skills.py"
+
+# The spec's `name`: 1-64 characters, lowercase alphanumerics and hyphens, no leading,
+# trailing or consecutive hyphen.
+LEGAL_SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def generate_export(dest: Path):
+    res = subprocess.run([sys.executable, str(EXPORT_SCRIPT), str(dest)],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert res.returncode == 0, f"the export failed:\n{res.stdout}{res.stderr}"
+    return res
+
+
+def file_tree(root: Path) -> dict:
+    """Every file under `root`, keyed by its relative path, with its bytes."""
+    return {p.relative_to(root).as_posix(): p.read_bytes()
+            for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+@pytest.fixture(scope="module")
+def exported(tmp_path_factory) -> Path:
+    """One generated export, shared by the assertions below.
+
+    Written to a directory named `skills`, as `~/.agents/skills` is: that name is what
+    tells the platform validator it is looking at components rather than a plugin root.
+    """
+    dest = tmp_path_factory.mktemp("agents") / "skills"
+    generate_export(dest)
+    return dest
+
+
+def exported_dirs(dest: Path) -> list[Path]:
+    return sorted(p for p in dest.iterdir() if p.is_dir())
+
+
+def test_the_export_holds_one_prefixed_directory_per_shipped_skill(exported):
+    """`billables-daily`, not `daily`. A bare `daily` sitting among a user's other skills
+    says nothing about where it came from, and collides with anyone else's."""
+    assert [p.name for p in exported_dirs(exported)] == \
+        [f"{PLUGIN_NAME}-{s.name}" for s in skill_dirs()]
+
+
+@pytest.mark.parametrize("skill", skill_dirs(), ids=lambda p: p.name)
+def test_each_exported_skill_declares_the_name_of_its_directory(exported, skill):
+    """The rename has to reach the frontmatter too. A directory the spec-valid consumers
+    read as `billables-daily` whose `name:` still says `daily` is invalid, and the failure
+    is a skill that never activates rather than one that errors."""
+    exported_skill = exported / f"{PLUGIN_NAME}-{skill.name}"
+    assert frontmatter_name(exported_skill / "SKILL.md") == exported_skill.name
+
+
+@pytest.mark.parametrize("skill", skill_dirs(), ids=lambda p: p.name)
+def test_every_exported_name_is_a_legal_skill_name(exported, skill):
+    name = (exported / f"{PLUGIN_NAME}-{skill.name}").name
+    assert len(name) <= 64 and LEGAL_SKILL_NAME.match(name), \
+        f"{name} is not a legal Agent Skills name"
+
+
+def test_the_export_carries_no_secrets_and_no_scratch(exported):
+    """A maintainer's own `.env` in the working tree must never leave with the export, and
+    test scratch shipped into a user's skills directory is noise they didn't ask for."""
+    offenders = [path for path in file_tree(exported)
+                 if Path(path).name == ".env"
+                 or {"__pycache__", ".pytest_cache"} & set(Path(path).parts)]
+    assert not offenders, f"the export carries files it should not: {offenders}"
+
+
+def test_regenerating_the_export_changes_nothing(exported):
+    """Idempotence is what makes this an artifact rather than a second source of truth:
+    a user can re-run it at any time and a maintainer never has to reason about which of
+    two copies is current."""
+    before = file_tree(exported)
+    generate_export(exported)
+    assert file_tree(exported) == before
+
+
+@pytest.mark.parametrize("skill", skill_dirs(), ids=lambda p: p.name)
+def test_every_shipped_skill_says_what_it_needs_in_order_to_run(skill):
+    """`compatibility` is where the spec puts environment requirements, and a harness that
+    isn't Claude Code has no plugin manifest to read them from — the frontmatter is all it
+    gets. Someone on Codex should learn about the interpreter and the activity source
+    before starting a run, not from a script failing halfway through one."""
+    fields = frontmatter(skill / "SKILL.md")
+    stated = fields.get("compatibility", "")
+    assert stated, f"{skill.name} declares no compatibility"
+    assert len(stated) <= 500, f"{skill.name} compatibility exceeds the spec's 500 characters"
+
+
+@requires_claude
+def test_the_generated_export_validates_strictly(exported):
+    """The same validator the shipped skills go through, over the generated copy — the
+    rewrite is exactly the kind of edit that produces frontmatter nothing will load."""
+    res = validate(exported)
+    assert res.returncode == 0, res.stdout + res.stderr

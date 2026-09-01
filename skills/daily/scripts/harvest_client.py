@@ -69,8 +69,8 @@ def load_creds() -> tuple[str, str]:
         # Two routes, plugin first: it is the one that does not leave a token in this
         # folder. Both fields are declared sensitive, so the harness keeps them in its own
         # credential store and hands them back as environment variables. The `.env` line
-        # stays because the skill is also installable by copying it into
-        # `~/.claude/skills/`, where there is no harness to ask.
+        # stays because the skill is also installable as the shared Agent Skills export,
+        # which has no manifest and so no harness to ask.
         #
         # The "already configured?" line is the one that saves a support round trip: the
         # values arrive through a SessionStart hook, so a user who fills the dialog and
@@ -84,7 +84,7 @@ def load_creds() -> tuple[str, str]:
             "  Already configured them? Start a new session: the values are published at\n"
             "  session start. If a new session still shows this, see references/setup.md\n"
             "  § 'When the configuration does not arrive'.\n"
-            f"  (Copied-in install instead? Copy {skill_config.SKILL_ROOT / '.env.example'}\n"
+            f"  (Exported install instead? Copy {skill_config.SKILL_ROOT / '.env.example'}\n"
             f"   -> {skill_config.ENV_PATH} and put them there.)"
         )
     _CREDS_CACHE = (acct, key)

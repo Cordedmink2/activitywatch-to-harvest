@@ -99,6 +99,22 @@ which are billable.
 **Confidence** — `HIGH` / `MEDIUM` / `LOW`, the rating a block carries into review. `LOW` is
 flagged 🔸 and asked about.
 
+## How it reaches a machine
+
+**Plugin install** — `/plugin install billables`, the Claude Code route. The manifest is what makes
+it one: it declares the configuration, so the harness holds the credentials and there is no secrets
+file for the skill to create.
+
+**Export**, or the **shared Agent Skills export** in full — the copy `install/export_agent_skills.py`
+generates into `~/.agents/skills/`, for the harnesses that read that directory instead. Generated in
+one direction and never hand-edited, so it is an artifact, not a second source of truth. It has no
+manifest and therefore no harness to hold credentials, which is why its settings live in a `.env` at
+the exported skill's root. See ADR-0004.
+
+The old word for the export was **copied-in install**, from when it was a file copy rather than
+something generated. It named the mechanism, and the mechanism is what changed; "export" names the
+thing.
+
 ## Words to avoid
 
 Habits, not prohibitions — the rule above (no account's strings) is the hard one.
@@ -111,6 +127,7 @@ Habits, not prohibitions — the rule above (no account's strings) is the hard o
 | "time chunk", "segment", "slot" | block |
 | "category" for what a block was | work kind (the activity source's own `category` keeps that name) |
 | "ticket" as the general term | work item ("ticket" is fine where the user's backend calls it one) |
+| "copied-in install", "the copied-in route" | the export (of the skill: an exported install) |
 
 So: naming Harvest is right where the subject genuinely *is* Harvest — the `harvest_*.py` scripts,
 their credentials contract, the declared configuration keys, the endpoint documentation, and the

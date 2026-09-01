@@ -139,6 +139,21 @@ def test_find_workspace_does_not_climb_past_the_skills_directory(isolated, tmp_p
     assert skill_config.find_workspace() is None
 
 
+def test_find_workspace_reads_a_shared_agent_skills_install(isolated, tmp_path, monkeypatch):
+    """`<workspace>/.agents/skills/<name>` — the shape the generated export has.
+
+    `~/.agents/skills/` is where every harness that isn't Claude Code looks, and like
+    `.claude/` it sits one level below the directory a workspace-local install would put
+    the skill in. Without the second name here, a Codex user's workspace resolves to
+    nothing and their catalogs have nowhere to go.
+    """
+    ws = tmp_path / "Admin"
+    (ws / "Timesheets").mkdir(parents=True)
+    monkeypatch.setattr(skill_config, "SKILL_ROOT",
+                        ws / ".agents" / "skills" / "billables-daily")
+    assert skill_config.find_workspace() == ws
+
+
 def test_a_plugin_install_never_resolves_to_a_workspace_around_it(isolated, tmp_path,
                                                                  monkeypatch):
     """`<plugin>/skills/<name>` matches the workspace-local shape exactly, and must not
@@ -175,7 +190,7 @@ def test_missing_credentials_name_both_ways_to_supply_them(isolated):
     """The message a first-run user actually sees.
 
     Plugin route first — it is the one that keeps the token out of a file — and the
-    copied-in install's `.env` second, because that install has no harness to ask and its
+    exported install's `.env` second, because that install has no harness to ask and its
     user would otherwise be told to run a command that does not exist for them.
     """
     hc._CREDS_CACHE = None

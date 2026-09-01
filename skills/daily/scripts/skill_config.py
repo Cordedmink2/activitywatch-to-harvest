@@ -45,6 +45,11 @@ from typing import NoReturn
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = SKILL_ROOT / ".env"
 
+# A harness's own directory, which holds its `skills/` one level below where a
+# workspace-local install would put it: `.claude/` is Claude Code's, `.agents/` is the
+# shared Agent Skills location the other harnesses read and where the export lands.
+HARNESS_DIRS = {".claude", ".agents"}
+
 
 def _parse_env_file(path: Path) -> dict:
     out = {}
@@ -108,9 +113,10 @@ def _install_workspace() -> Path | None:
     """The workspace this skill is installed *inside*, if its install shape has one.
 
     Anchored on the shape rather than on a depth. The skill has to sit directly inside a
-    `skills/` directory, and the candidate is that directory's parent — with Claude Code's
-    own `.claude/` skipped, because its skills directory sits one level deeper than a
-    workspace-local one.
+    `skills/` directory, and the candidate is that directory's parent — with the harness
+    directories `.claude/` (Claude Code) and `.agents/` (the shared Agent Skills location
+    every other harness reads) skipped, because their skills directories sit one level
+    deeper than a workspace-local one.
 
     A depth is the thing that must not be guessed here. The walk this replaces took two
     arbitrary ancestors and accepted whichever first looked workspace-shaped, so any
@@ -130,7 +136,7 @@ def _install_workspace() -> Path | None:
     if parent.name != "skills":
         return None
     root = parent.parent
-    if root.name == ".claude":
+    if root.name in HARNESS_DIRS:
         root = root.parent
     if (root / ".claude-plugin").is_dir():
         return None

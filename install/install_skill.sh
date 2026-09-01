@@ -1,65 +1,33 @@
 #!/usr/bin/env bash
-# Install the billables `daily` skill into your Claude Code skills folder.
+# Generate the shared Agent Skills export from this plugin.
 #
-# Copies skills/daily from this repo to ~/.claude/skills/daily.
-# Never copies a .env (yours stays local) or __pycache__. Safe to re-run.
+# This script finds an interpreter and hands over to export_agent_skills.py, which is
+# where the export and its rules are documented. It does nothing else: the plugin is
+# installed with /plugin install, and a second install path that could drift from it is
+# exactly what the export replaces.
 #
-# Usage: ./install/install_skill.sh [SKILLS_DIR]
+# Usage: ./install/install_skill.sh [SKILLS_DIR]     # default: ~/.agents/skills
 set -euo pipefail
 
-SKILLS_DIR="${1:-$HOME/.claude/skills}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-SOURCE="$REPO_ROOT/skills/daily"
-DEST="$SKILLS_DIR/daily"
+EXPORT="$SCRIPT_DIR/export_agent_skills.py"
+# Read once, not passed through as "$@": bash before 4.4 — which is what macOS still
+# ships — treats "$@" as unset under `set -u`, so the documented no-argument invocation
+# would abort. Blank counts as unset, the same as everywhere else in this skill.
+DEST="${1:-}"
 
-if [ ! -d "$SOURCE" ]; then
-  echo "ERROR: cannot find skill source at: $SOURCE" >&2
-  exit 1
-fi
-
-mkdir -p "$SKILLS_DIR"
-
-VERSION="$(cat "$SOURCE/VERSION")"
-
-echo "Installing the billables daily skill v$VERSION..."
-echo "  from: $SOURCE"
-echo "  to:   $DEST"
-
-if command -v rsync >/dev/null 2>&1; then
-  # No --delete: this refreshes files in place, matching the PowerShell installer.
-  rsync -a --exclude='.env' --exclude='__pycache__' --exclude='.pytest_cache' "$SOURCE/" "$DEST/"
-else
-  # cp then prune the bits we never want to ship. The user's own .env lives in
-  # $DEST, so stash it across the copy instead of clearing the directory —
-  # clearing it destroyed the Harvest token they had already filled in.
-  mkdir -p "$DEST"
-  saved_env=""
-  if [ -f "$DEST/.env" ]; then
-    saved_env="$(mktemp)"
-    cp "$DEST/.env" "$saved_env"
+# `py` last: it is the Windows launcher, and this script also runs under Git Bash, where
+# `python` is often a stub the probe below rejects.
+for candidate in python3 python py; do
+  # Probed, not just found: a `python` that exists on PATH and cannot run is the usual
+  # Windows story, and selecting on existence picks it.
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import sys" >/dev/null 2>&1; then
+    if [ -n "$DEST" ]; then
+      exec "$candidate" "$EXPORT" "$DEST"
+    fi
+    exec "$candidate" "$EXPORT"
   fi
-  cp -R "$SOURCE/." "$DEST/"
-  rm -f "$DEST/.env"
-  find "$DEST" -type d \( -name '__pycache__' -o -name '.pytest_cache' \) -prune -exec rm -rf {} +
-  if [ -n "$saved_env" ]; then
-    mv "$saved_env" "$DEST/.env"
-  fi
-fi
+done
 
-echo "Done. daily v$VERSION installed to $DEST"
-
-# The skill used to install under its old name. Left in place it is a second, stale copy
-# of the same skill, and either one can answer.
-if [ -d "$SKILLS_DIR/daily-timesheet" ]; then
-  echo
-  echo "NOTE: an older copy of this skill is still at $SKILLS_DIR/daily-timesheet."
-  echo "      Move any .env you filled in there across, then delete that folder."
-fi
-
-echo
-echo "Next steps:"
-echo "  1. Scaffold your workspace:  ./install/setup_workspace.sh"
-echo "  2. Add your Harvest creds:   cp '$DEST/.env.example' '$DEST/.env' and fill it in"
-echo "  3. (Windows only) screenshots: pwsh -File '$DEST/scripts/setup_screenshot_pipeline.ps1'"
+echo "ERROR: no usable Python on PATH. The export needs Python 3.10 or newer." >&2
+exit 1

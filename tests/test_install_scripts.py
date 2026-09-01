@@ -106,26 +106,30 @@ def test_screenshot_setup_resolves_its_defaults_under_windows_powershell_51(dry_
     assert probe_task_state() == "absent", "a stripped-PATH run registered a scheduled task"
 
 
+EXPORTED = "billables-daily"
+
+
 @requires_bash
 def test_sh_install_preserves_an_existing_env_file(tmp_path):
-    """Re-running the installer must never delete the user's Harvest token.
+    """Regenerating the export must never delete the user's Harvest token.
 
-    Exercises whichever copy path this machine takes (rsync when present, the
-    plain-cp fallback otherwise) — both have to leave `.env` alone.
+    An exported install has no harness to hold credentials, so its `.env` sits at the
+    root of the exported skill — the one piece of user data inside an artifact that is
+    otherwise regenerated wholesale.
     """
     skills = tmp_path / "skills"
     sh = posix(INSTALL / "install_skill.sh")
     first = subprocess.run([BASH, sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert first.returncode == 0, first.stderr
 
-    env_file = skills / "daily" / ".env"
+    env_file = skills / EXPORTED / ".env"
     env_file.write_text("HARVEST_ACCOUNT_ID=1234567\nHARVEST_API_KEY=pat.mine\n", encoding="utf-8")
 
     second = subprocess.run([BASH, sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert second.returncode == 0, second.stderr
     assert env_file.is_file(), "the update deleted the user's .env"
     assert "pat.mine" in env_file.read_text(encoding="utf-8"), "the update overwrote the user's .env"
-    assert (skills / "daily" / "SKILL.md").is_file(), "skill files missing after update"
+    assert (skills / EXPORTED / "SKILL.md").is_file(), "skill files missing after update"
 
 
 @requires_bash
@@ -138,15 +142,193 @@ def test_sh_install_still_excludes_a_source_env(tmp_path):
         skills = tmp_path / "skills"
         subprocess.run([BASH, posix(INSTALL / "install_skill.sh"), posix(skills)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
-        assert not (skills / "daily" / ".env").exists(), "source .env leaked into the install"
+        assert not (skills / EXPORTED / ".env").exists(), "source .env leaked into the install"
     finally:
         os.unlink(source_env)
 
 
-def test_sh_install_does_not_wipe_the_destination():
-    """The fallback path used to `rm -rf "$DEST"`, taking the user's .env with it."""
-    src = (INSTALL / "install_skill.sh").read_text(encoding="utf-8")
-    assert 'rm -rf "$DEST"' not in src, "whole-directory wipe is back; it deletes the user's .env"
+EXPORT_SCRIPT = REPO / "install" / "export_agent_skills.py"
+
+
+def export(dest):
+    return subprocess.run([sys.executable, str(EXPORT_SCRIPT), str(dest)],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+
+def test_a_regenerated_export_drops_a_file_that_left_the_plugin(tmp_path):
+    """The export is regenerated, not merged into: a reference deleted upstream has to
+    leave the user's copy too. The old installer copied over the destination instead, so
+    a retired file stayed readable for as long as the install lived — and a model reading
+    a reference that no longer describes the skill is worse than one that can't find it.
+
+    The user's `.env` is the single exception, and it is asserted here rather than in a
+    separate test because "prunes" and "keeps the credentials" is one behaviour with one
+    way of going wrong.
+    """
+    dest = tmp_path / "skills"
+    assert export(dest).returncode == 0
+    stale = dest / EXPORTED / "references" / "retired.md"
+    stale.write_text("a reference that no longer exists upstream\n", encoding="utf-8")
+    env_file = dest / EXPORTED / ".env"
+    env_file.write_text("HARVEST_API_KEY=pat.mine\n", encoding="utf-8")
+
+    assert export(dest).returncode == 0
+    assert not stale.exists(), "a file that left the plugin survived a regeneration"
+    assert env_file.is_file(), "the regeneration deleted the user's .env"
+
+
+def test_a_regenerated_export_drops_a_skill_that_left_the_plugin(tmp_path):
+    """Pruning inside each exported skill isn't enough: a skill renamed or retired
+    upstream would otherwise sit in the shared directory forever, activating just as
+    readily as the live one — two skills answering the same request, one of them frozen.
+
+    Its `.env` still survives. The skill it belonged to is gone; the user's credentials
+    are not this script's to delete.
+    """
+    dest = tmp_path / "skills"
+    assert export(dest).returncode == 0
+    retired = dest / "billables-retired"
+    shutil.copytree(dest / EXPORTED, retired)
+    env_file = retired / ".env"
+    env_file.write_text("HARVEST_API_KEY=pat.mine\n", encoding="utf-8")
+
+    res = export(dest)
+    assert res.returncode == 0, res.stderr
+    assert not (retired / "SKILL.md").exists(), "a retired skill still activates"
+    assert not (retired / "references").exists(), "a retired skill's files survived"
+    assert env_file.is_file(), "pruning a retired skill deleted the user's credentials"
+
+
+def test_a_regenerated_export_leaves_alone_what_it_did_not_write(tmp_path):
+    """The blast radius of that pruning. The shared directory is the user's, and holds
+    other people's skills — only this plugin's own output is a candidate for removal."""
+    dest = tmp_path / "skills"
+    assert export(dest).returncode == 0
+    theirs = dest / "someone-elses"
+    theirs.mkdir()
+    (theirs / "SKILL.md").write_text("---\nname: someone-elses\n---\n", encoding="utf-8")
+
+    assert export(dest).returncode == 0
+    assert (theirs / "SKILL.md").is_file(), "the export deleted a skill it did not write"
+
+
+def test_retirement_spares_a_users_own_skill_that_shares_the_prefix(tmp_path):
+    """The test above only proves an *unprefixed* directory is safe, which retirement was
+    never going to touch. This is the case that has to hold: `billables-mine` is a name a
+    user is free to give a skill of their own, sitting in a flat directory this plugin
+    does not own, and retirement deletes rather than overwrites. The prefix is where to
+    look, not proof of authorship — the stamp inside is.
+    """
+    dest = tmp_path / "skills"
+    assert export(dest).returncode == 0
+    mine = dest / "billables-mine"
+    mine.mkdir()
+    (mine / "SKILL.md").write_text("---\nname: billables-mine\n---\n", encoding="utf-8")
+    (mine / "notes.md").write_text("a file only the user has\n", encoding="utf-8")
+
+    res = export(dest)
+    assert res.returncode == 0, res.stderr
+    assert (mine / "notes.md").is_file(), \
+        f"a user's own skill was retired for sharing the prefix:\n{res.stdout}"
+    assert (mine / "SKILL.md").is_file(), "a user's own skill was emptied"
+
+
+def test_a_skill_can_be_reinstated_after_it_was_retired(tmp_path):
+    """Retiring leaves a directory holding nothing but the user's `.env`, and the guard
+    against overwriting a directory this script did not write used to read that leftover
+    as someone else's. A skill that left the plugin and came back — a rename undone, a
+    trial reversed — then failed every export from that machine, permanently, until the
+    user found and deleted a folder the script itself had left.
+    """
+    dest = tmp_path / "skills"
+    assert export(dest).returncode == 0
+    shutil.rmtree(dest / EXPORTED)
+    (dest / EXPORTED).mkdir()
+    env_file = dest / EXPORTED / ".env"
+    env_file.write_text("HARVEST_API_KEY=pat.mine\n", encoding="utf-8")
+
+    res = export(dest)
+    assert res.returncode == 0, f"a reinstated skill was refused:\n{res.stderr}"
+    assert (dest / EXPORTED / "SKILL.md").is_file(), "the skill did not come back"
+    assert env_file.is_file(), "reinstating the skill deleted the user's .env"
+
+
+def test_the_export_refuses_a_destination_that_is_not_a_directory(tmp_path):
+    """A typo in the optional destination argument both installers pass through. The
+    error contract says one ERROR: line — a traceback reads as "the tool is broken"
+    rather than "you pointed it somewhere I won't write"."""
+    dest = tmp_path / "skills"
+    dest.write_text("a file, not a directory\n", encoding="utf-8")
+
+    res = export(dest)
+    assert res.returncode != 0, f"a file was accepted as the destination:\n{res.stdout}"
+    assert res.stderr.strip().startswith("ERROR:"), f"not the error contract:\n{res.stderr}"
+    assert "Traceback" not in res.stderr, f"the error contract leaked a traceback:\n{res.stderr}"
+
+
+def test_the_export_reports_an_older_install_it_cannot_clean_up(tmp_path):
+    """Before this release the installers copied the skill in unprefixed, under the
+    harness's own skills directory. That copy still activates, and this script neither
+    writes nor deletes it — so the run that supersedes it has to say so, or the user ends
+    up with two copies answering and no idea why."""
+    dest = tmp_path / "skills"
+    legacy = dest / "daily"
+    legacy.mkdir(parents=True)
+    (legacy / "SKILL.md").write_text("---\nname: daily\n---\n", encoding="utf-8")
+
+    res = export(dest)
+    assert res.returncode == 0, res.stderr
+    assert str(legacy) in res.stdout, f"the older copy is never mentioned:\n{res.stdout}"
+    assert legacy.is_dir(), "the export deleted a copy it did not write"
+
+
+@requires_bash
+def test_sh_install_runs_with_no_arguments(tmp_path):
+    """The documented macOS/Linux invocation. `set -u` plus a bare `"$@"` aborts on
+    bash 3.2 — which is what macOS still ships — precisely when no argument is given,
+    so the default path is the one that has to be exercised."""
+    home = tmp_path / "home"
+    home.mkdir()
+    env = dict(os.environ, HOME=posix(home), USERPROFILE=str(home))
+    res = subprocess.run([BASH, posix(INSTALL / "install_skill.sh")], env=env,
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
+    assert (home / ".agents" / "skills" / EXPORTED / "SKILL.md").is_file(), \
+        f"nothing exported to the default destination:\n{res.stdout}"
+
+
+@requires_winps
+def test_ps_install_falls_past_a_zero_byte_python_stub(tmp_path):
+    """The Windows Store app-execution alias is a 0-byte exe that exists on PATH and
+    cannot be launched at all. Probing it doesn't return non-zero — it raises, which
+    under `$ErrorActionPreference = "Stop"` killed the whole script instead of moving
+    on to the next candidate."""
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    (stubs / "py.exe").touch()
+    skills = tmp_path / "skills"
+    env = dict(os.environ,
+               PATH=f"{stubs};{Path(sys.executable).parent};C:\\Windows\\System32")
+    res = subprocess.run(
+        [WINPS, "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"),
+         "-SkillsDir", str(skills)],
+        env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert res.returncode == 0, f"a 0-byte stub aborted the install:\n{res.stdout}{res.stderr}"
+    assert (skills / EXPORTED / "SKILL.md").is_file(), "nothing exported"
+
+
+def test_the_export_refuses_a_directory_that_is_not_one_of_its_own(tmp_path):
+    """It prunes, so it has to be sure of what it is pruning. A user who points it at a
+    directory holding something else gets an error, not a deletion."""
+    dest = tmp_path / "skills"
+    (dest / EXPORTED).mkdir(parents=True)
+    theirs = dest / EXPORTED / "notes.md"
+    theirs.write_text("not a generated export\n", encoding="utf-8")
+
+    res = export(dest)
+    assert res.returncode != 0, f"the export overwrote a directory it did not make:\n{res.stdout}"
+    assert res.stderr.strip().startswith("ERROR:"), f"not the error contract:\n{res.stderr}"
+    assert theirs.is_file(), "the export deleted a file it did not write"
 
 
 def test_readme_states_which_powershell_is_needed():
@@ -365,12 +547,20 @@ def installed(request, tmp_path_factory):
                  "-SkillsDir", str(skills)])
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode == 0, f"{shell} installer exited {res.returncode}:\n{res.stdout}{res.stderr}"
-    return res, skills / "daily"
+    return res, skills / EXPORTED
 
 
-def test_install_copies_the_skill(installed):
+def test_install_generates_the_export(installed):
     _, dest = installed
     assert (dest / "SKILL.md").is_file(), "skill files missing after install"
+
+
+def test_install_generates_the_export_and_nothing_else(installed):
+    """Both installers now do one thing: run the generator. Anything else in the
+    destination — an unprefixed `daily/` from the copy they used to do — is the second
+    install path growing back, which is the drift this whole change removes."""
+    _, dest = installed
+    assert sorted(p.name for p in dest.parent.iterdir()) == [EXPORTED]
 
 
 def test_install_excludes_pytest_cache(installed):
@@ -453,6 +643,7 @@ def test_no_shipped_instruction_hardcodes_a_harness_skills_directory(doc):
     """
     text = doc.read_text(encoding="utf-8")
     offenders = [line.strip() for line in text.splitlines()
-                 if ".claude/skills" in line or ".claude\\skills" in line]
+                 if any(p in line for p in (".claude/skills", ".claude\\skills",
+                                            ".agents/skills", ".agents\\skills"))]
     assert not offenders, (
         f"{doc.name} hardcodes a harness-specific skills path:\n  " + "\n  ".join(offenders))

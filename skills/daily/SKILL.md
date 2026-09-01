@@ -1,6 +1,7 @@
 ---
 name: daily
 description: Fill in, review, regenerate, or backfill a daily timesheet from ActivityWatch data and log the time to Harvest. User-invoked.
+compatibility: Runs bundled Python scripts, so it needs Python 3.10+ on the PATH and a harness that can execute local commands. Reads a running ActivityWatch server (default http://localhost:5600) or a daily_exports/ dump of one. Logging time needs Harvest credentials. Screenshot capture is Windows-only.
 disable-model-invocation: true
 ---
 
@@ -16,7 +17,7 @@ This skill is **shareable** — sort every fact by who it applies to. Don't use 
 
 - **Generic mechanism** (any user) → `SKILL.md` / `references/` / `scripts/`: classification, blocking, posting, reusable heuristics, API quirks.
 - **One user's facts** → `Timesheets/.context.md` (in the user's workspace, not the skill folder): clients, colleagues, signals, billing-convention *overrides*, machine specifics, CRM URLs / account GUIDs, pac profiles, prefix→client map. Read every run. Size-budgeted — see Step 11.
-- **This machine and account** → declared plugin configuration, set once at install and changed with `/plugin configure billables`: Harvest credentials, `TIMESHEET_TIMEZONE`, and the optional `TIMESHEET_ACTIVITY_URL` / `TIMESHEET_SCREENSHOTS_DIR` / `TIMESHEET_WORKSPACE`. The credentials are declared sensitive, so the harness holds them in its own credential store (the OS keychain on macOS, `~/.claude/.credentials.json` elsewhere) — there is no secrets file for this skill to create, read or share. A copied-in install (no harness to ask) puts the same keys in `.env` at the skill root, gitignored; share `.env.example`, never `.env`.
+- **This machine and account** → declared plugin configuration, set once at install and changed with `/plugin configure billables`: Harvest credentials, `TIMESHEET_TIMEZONE`, and the optional `TIMESHEET_ACTIVITY_URL` / `TIMESHEET_SCREENSHOTS_DIR` / `TIMESHEET_WORKSPACE`. The credentials are declared sensitive, so the harness holds them in its own credential store (the OS keychain on macOS, `~/.claude/.credentials.json` elsewhere) — there is no secrets file for this skill to create, read or share. An exported install (no manifest, so no harness to ask) puts the same keys in `.env` at the skill root, gitignored; share `.env.example`, never `.env`.
 
 When the same setting is available from more than one of those, a per-command flag wins, then `.env`, then the process environment (where the harness's values arrive), then the script's own default; blank counts as unset. `scripts/skill_config.py` carries the reasoning and is where every script resolves a setting — read it there rather than inferring the order from a script.
 

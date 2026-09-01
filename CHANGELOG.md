@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The skills are generated into the shared Agent Skills directory, so harnesses that aren't Claude
+  Code get them too.** `install/export_agent_skills.py` writes `skills/` out to `~/.agents/skills/`
+  — where Codex, OpenCode, Hermes and the other Agent Skills clients look — one prefixed directory
+  per skill: `billables-daily`, with its declared `name:` rewritten to match, because that directory
+  is flat and unnamespaced and a bare `daily` among your own skills is both anonymous and a
+  collision. The export is an artifact and not a second source of truth: it is generated from the
+  plugin in one direction, running it twice leaves the tree byte-identical, and whatever has left the
+  plugin leaves your copy too — a file, or a whole skill that was renamed or retired and would
+  otherwise keep answering alongside the live one. Your `.env` is the one thing kept across a
+  regeneration, since an exported install has no harness to hold credentials.
+  `docs/adr/0004-…` records the reasoning.
+
+  Retiring a skill deletes, so it takes proof rather than a guess: each exported directory carries
+  a stamp, and only a stamped one is ever removed. A skill of your own named `billables-something`
+  is left exactly where it is — the shared directory is flat, the prefix is where this export
+  *looks*, and being in the neighbourhood is not evidence that it wrote the thing.
+
+  `install/install_skill.ps1` and `install_skill.sh` now do this and nothing else — they find an
+  interpreter and hand over. They used to copy the skill into `~/.claude/skills/daily`, and that is
+  the copy that is going away: if you installed that way, the plugin (`/plugin install`) or this
+  export replaces it, and the old folder should be deleted once your `.env` has moved across. The
+  export won't delete it for you — it may be holding the credentials you filled in — but every run
+  that finds one now names the path and says so.
+
+  Two smaller pieces come with it. `SKILL.md` declares a `compatibility:` line — the interpreter, the
+  activity source, the credentials and the Windows-only screenshot capture — because a harness with
+  no plugin manifest to read has only the frontmatter to learn that from. And workspace resolution
+  now knows `.agents/`, so a skill installed at `<workspace>/.agents/skills/billables-daily` resolves
+  the workspace around it exactly as the `.claude/` shape already did.
+
 ### Changed
 - **The rules decide a work kind; your workspace names the task.** The classification rubric used to
   map a block's activity straight onto the literal task names of one Harvest account —
