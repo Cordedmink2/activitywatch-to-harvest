@@ -77,11 +77,13 @@ def print_by_day(entries: list[dict], dates: list[str]) -> None:
     totals: dict[str, float] = {d: 0.0 for d in dates}
     counts: dict[str, int] = {d: 0 for d in dates}
     codes: dict[str, list[str]] = {d: [] for d in dates}
+    unplaced: list = []
     for e in entries:
         # `.get`, not `[...]`: this mode reads a whole month, and one entry missing the
         # field it is grouped by would take the sweep down before a single row printed.
         d = e.get("spent_date")
-        if d not in totals:                  # the API answered outside the range asked for
+        if d not in totals:                  # outside the range, or carrying no date at all
+            unplaced.append(e.get("id", "?"))
             continue
         totals[d] += e.get("hours") or 0.0
         counts[d] += 1
@@ -95,6 +97,12 @@ def print_by_day(entries: list[dict], dates: list[str]) -> None:
         # date that reads "1 entry".
         unit = "entry  " if counts[d] == 1 else "entries"
         print(f"{d}  {weekday}  {totals[d]:>6.2f}h  {counts[d]:>2} {unit}  {shown}")
+    if unplaced:
+        # On stderr, beside the "(no time entries…)" notice, and never silent: a dropped
+        # entry subtracts from a date's total, and a date whose total reads 0.00h is read
+        # downstream as a day nobody billed. Being told to bill a day twice is the cost.
+        print(f"(skipped {len(unplaced)} with no date inside the range: "
+              f"{', '.join(str(i) for i in unplaced)})", file=sys.stderr)
 
 
 def main() -> None:

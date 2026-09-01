@@ -31,6 +31,8 @@ The month listing needs the configured Harvest credentials and the day skeletons
 
 Resolve the month first. "August", "last month", "this month" convert using today's date in the user's timezone. The range is the first of the month to the last, **and it stops at yesterday** — today is in progress, so its billed total is not short, it is unfinished, and sweeping it produces a worklist row for a day that is still being worked. Where today falls inside the month asked for, say so in one line at the end rather than putting it in the table.
 
+**On the first of a month there is no range left.** "This month", asked on the 1st, ends the day before it starts; so does a month that has not begun. Say there is nothing in it to reconcile yet and offer the month before — do not hand the reversed range to the listing, which refuses it with an error that reads like a broken install.
+
 Then two reads, in parallel, and nothing else:
 
 1. **What is already billed**, one row per date:
@@ -44,7 +46,9 @@ Then two reads, in parallel, and nothing else:
    ```
    `daily_exports/` carries the same index where it exists and is the fallback when the capture directory is absent.
 
-**The index is a proxy, and a narrow one.** It answers "was this machine used" only for the hours the capture task runs — weekdays, roughly 08:30 to 20:00, on Windows. It is silent, not negative, about a weekend, an evening, a second machine, and every macOS and Linux install, where no capture pipeline ships at all. So a date the index does not list is a date with *no evidence either way*, never a date nobody worked. Where the index is silent for a whole month, say so and ask the user which dates were leave, holiday or otherwise not worked — **before** Step 3 dispatches anything, because without an index every unbilled weekday is a candidate.
+**The index is a proxy, and a narrow one.** It answers "was this machine used" only for the hours the capture task runs — weekdays, roughly 08:30 to 20:00, on Windows. It is silent, not negative, about a weekend, an evening, a second machine, and every macOS and Linux install, where no capture pipeline ships at all. So a date the index does not list is a date with *no evidence either way*, never a date nobody worked.
+
+**Where the index is silent for the whole month** — a non-Windows install, or every date after the capture task died — say so and ask the user **which dates they worked**. Ask it that way round, not "which were leave": the sort below promotes a date on evidence that it *was* worked, so a list of days off leaves every remaining date unexplained and nothing gets investigated. A date the user names is treated exactly as an indexed one from here on. Ask **before** Step 3 dispatches anything.
 
 The authority on whether a given date holds activity is the activity source, one `afk_blocks.py` run per date. That is the right answer for a date the user disputes and the wrong one for a whole month, which is why neither read above touches it. Open no day here.
 
@@ -56,9 +60,9 @@ Every date in the range gets one of five verdicts, decided from the two reads al
 |---|---|---|
 | at or above the floor | either | **Billed** — out of scope. Not investigated, not dispatched, not mentioned again except in the count |
 | any | date named by the user as leave, a holiday or a day off | **Not worked** — out of scope, for the reason the user gave |
-| none | lists the date | **Gap** — investigate |
-| under the floor | lists the date | **Short** — investigate |
-| none or under the floor | silent about the date | **Unexplained** — one line in the worklist, not a dispatch |
+| none | lists the date, or the user says they worked it | **Gap** — investigate |
+| under the floor | lists the date, or the user says they worked it | **Short** — investigate |
+| none or under the floor | silent, and unnamed either way | **Unexplained** — one line in the worklist, not a dispatch |
 
 **Unexplained is a real verdict, not a rounding error.** It is where a weekend, an evening, a second machine and every non-Windows install land, and there is nothing to investigate on it because there is no evidence that anything happened. Never fold it into "not worked": the index being silent is not the machine being idle. List those dates in one line and let the user answer — a "yes, I worked that Saturday" turns one of them into a gap, and *then* it is worth a subagent. The counts have to add up to the days in the range, which is what stops a date falling between the rows.
 

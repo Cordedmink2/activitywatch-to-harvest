@@ -530,6 +530,28 @@ def test_by_day_survives_an_entry_with_no_date_on_it(live_harvest):
     assert "Traceback" not in r.err
 
 
+def test_by_day_says_when_it_could_not_place_an_entry(live_harvest):
+    """Surviving it is half the job. An entry dropped from the totals subtracts from a
+    date, and a date reading `0.00h` is read downstream as a day nobody billed — which is
+    a worklist row telling the user to bill a day that is already billed. The row cannot
+    carry the caveat, so stderr does, beside the "(no time entries…)" notice."""
+    entry = _entry(101, "2026-08-12", "9:00am", "10:00am")
+    del entry["spent_date"]
+    live_harvest(_list_routes([[entry]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert "skipped 1" in r.err and "101" in r.err
+
+
+def test_by_day_says_nothing_when_every_entry_was_placed(live_harvest):
+    """The notice has to mean something. Printed on a clean month it is noise the caller
+    learns to skip, and then it is not there on the month that needed it."""
+    live_harvest(_list_routes([[_entry(101, "2026-08-12", "9:00am", "10:00am")]]))
+    r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
+    assert r.code == 0
+    assert "skipped" not in r.err
+
+
 def test_by_day_says_one_entry_rather_than_one_entries(live_harvest):
     live_harvest(_list_routes([[_entry(101, "2026-08-12", "9:00am", "10:00am")]]))
     r = run_cli(hlist, ["2026-08-12", "2026-08-12", "--by-day"])
