@@ -1,7 +1,15 @@
 # activity-to-timesheet — setup runbook for an AI coding agent
 
 You are helping a user install and configure the **billables** Claude Code plugin's `daily` skill
-from this repo. This file is the authoritative, ordered runbook. Follow it top to bottom. Do the steps you
+from this repo.
+
+> **The plugin's own `setup` skill owns the manual steps now** — the activity source, the browser
+> extension, the profile tags, the category rules and the screenshot task, each with a check that has
+> to come back before the next step starts. Steps 1–4 and 10 below are the same ground without the
+> checks. Once the plugin is installed (step 5), invoke `/billables:setup` and follow that instead;
+> this file remains for getting to that point, and for an install with no plugin marketplace access.
+
+This file is the ordered runbook for those outer steps. Follow it top to bottom. Do the steps you
 *can* do (run scripts, create files, verify services); for steps only a human can do (installing
 desktop apps, clicking through browser-extension options), give clear, copy-pasteable instructions and
 wait for the user to confirm before moving on.
@@ -24,7 +32,9 @@ wait for the user to confirm before moving on.
   `screenshot_capture.py` file quarantined; `pip install` can also be blocked by a proxy/AV. After
   each install or registration step, VERIFY it actually took effect (see the per-step checks below)
   rather than trusting a clean-looking exit. If something was blocked, stop and tell the user exactly
-  what to allow-list (the skill's `scripts/` folder, `pythonw.exe`, the `WorkScreenshots` task) — do
+  what to allow-list — the `WorkScreenshots` task plus the interpreter and `screenshot_capture.py`
+  paths read back off the registered task, never a folder-wide exclusion; the `setup` skill's
+  `references/endpoint-security.md` owns the wording. Do
   not silently retry or carry on as if it worked. Prove the block before escalating, though: name the
   installer log line, quarantine entry or denied registration you actually read. The first coworker
   install sent its user to IT for an EDR allow-list when the real fault was a split Python install

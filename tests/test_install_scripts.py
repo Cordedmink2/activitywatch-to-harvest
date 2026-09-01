@@ -18,6 +18,17 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 INSTALL = REPO / "install"
 SKILL = REPO / "skills" / "daily"
+PLUGIN_NAME = "billables"
+
+
+def shipped_skills() -> list[Path]:
+    """Every skill directory the plugin ships. Globbed rather than listed, because a
+    hand-maintained list leaves the next skill added silently unguarded while the suite
+    still reports green."""
+    return sorted(p for p in (REPO / "skills").iterdir() if (p / "SKILL.md").is_file())
+
+
+
 PS_SCRIPTS = [
     INSTALL / "install_skill.ps1",
     INSTALL / "setup_workspace.ps1",
@@ -558,11 +569,18 @@ def test_install_generates_the_export(installed):
 def test_install_generates_the_export_and_nothing_else(installed):
     """Both installers now do one thing: run the generator. Anything else in the
     destination — an unprefixed `daily/` from the copy they used to do — is the second
-    install path growing back, which is the drift this whole change removes."""
+    install path growing back, which is the drift this whole change removes.
+
+    Asserted as "everything here is prefixed, and the one we name is among them" rather
+    than as a list derived from `skills/`: deriving it would mirror the export script's own
+    idea of which directories are skills, and a bug in that idea would then satisfy both
+    sides at once. The literal is what keeps this falsifiable.
+    """
     _, dest = installed
-    expected = sorted(f"billables-{skill.name}" for skill in (REPO / "skills").iterdir()
-                      if (skill / "SKILL.md").is_file())
-    assert sorted(p.name for p in dest.parent.iterdir()) == expected
+    names = sorted(p.name for p in dest.parent.iterdir())
+    assert EXPORTED in names, f"the export the installer names is not there: {names}"
+    unprefixed = [n for n in names if not n.startswith(f"{PLUGIN_NAME}-")]
+    assert not unprefixed, f"the second install path is growing back: {unprefixed}"
 
 
 def test_install_excludes_pytest_cache(installed):
@@ -635,7 +653,7 @@ def test_skill_says_where_the_script_paths_resolve_from():
 # what ships, and the plugin ships more than one skill — scoping it to a named directory
 # left the next skill added uncovered, which is exactly the moment it stops holding.
 INSTRUCTIONS = sorted(
-    p for skill in (REPO / "skills").iterdir() if (skill / "SKILL.md").is_file()
+    p for skill in shipped_skills()
     for p in [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
 )
 

@@ -92,11 +92,18 @@ def test_every_step_says_what_to_do_when_the_check_fails(step):
 # screenshot setup script, not here, so renaming either there is what this catches — the
 # skill would go on naming a task that no longer exists, in a request nobody can action.
 def screenshot_setup_defaults() -> dict[str, str]:
+    """Read off the two defaults the setup script binds, not off its prose.
+
+    The capture script is matched at its `$CaptureScript` default rather than as the first
+    `.py` token anywhere in the file — the docstring at the top of that script names it
+    too, so a looser match would keep passing after the registered default was renamed,
+    which is the whole failure this is here to catch.
+    """
     src = SCREENSHOT_SETUP.read_text(encoding="utf-8-sig")
     task = re.search(r"\$TaskName\s*=\s*[\"']([^\"']+)[\"']", src)
     assert task, "no default -TaskName in the screenshot setup script"
-    capture = re.search(r"([A-Za-z0-9_]+\.py)", src)
-    assert capture, "the screenshot setup script names no capture script"
+    capture = re.search(r"\$CaptureScript\s*=\s*Join-Path[^\r\n]*?[\"']([^\"']+\.py)[\"']", src)
+    assert capture, "the screenshot setup script binds no default capture script"
     return {"task": task.group(1), "capture": capture.group(1)}
 
 
@@ -112,13 +119,25 @@ def test_the_allow_list_ask_names_what_the_setup_script_actually_registers(field
 
 def test_a_block_has_to_be_evidenced_before_it_is_escalated():
     """The first coworker install sent its user to IT for an EDR allow-list when the real
-    fault was a split Python install that needed no ticket at all. Naming the log line,
-    quarantine entry or denied registration actually read is what separates the two."""
-    text = shipped_text().lower()
-    assert "quarantine" in text, "nothing tells the run how to evidence a block"
-    assert re.search(r"before (you |)(ask|escalat|rais)", text), (
-        "the skill never says to prove the block before sending the user to their "
-        "security team")
+    fault was a split Python install that needed no ticket at all.
+
+    Asserted as a section rather than a phrase: the guidance has to be somewhere a run
+    lands on its own, and a heading survives the rewording that a grep for prose does not.
+    Ordering matters as much as presence — evidence comes before the ask, so the section
+    that establishes the block has to precede the section that makes the request.
+    """
+    reference = SETUP / "references" / "endpoint-security.md"
+    assert reference.is_file(), "the allow-list guidance has nowhere to live"
+    headings = re.findall(r"^## (.+)$", reference.read_text(encoding="utf-8"), re.M)
+    evidence = next((i for i, h in enumerate(headings)
+                     if re.search(r"\b(prove|proof|evidence)", h, re.I)), None)
+    ask = next((i for i, h in enumerate(headings)
+                if re.search(r"what to ask", h, re.I)), None)
+    assert evidence is not None, f"no section on establishing the block: {headings}"
+    assert ask is not None, f"no section on what to ask for: {headings}"
+    assert evidence < ask, (
+        "the allow-list request comes before the section that says to prove the block, "
+        "which is the order that produced a wrongly-raised ticket")
 
 
 # The skill has to reach the screenshot setup script, which lives in the `daily` skill
