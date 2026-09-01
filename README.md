@@ -111,6 +111,56 @@ behind, and nothing to clean out before a reinstall.
 > pwsh -File "$HOME\.agents\skills\billables-daily\scripts\setup_screenshot_pipeline.ps1"
 > ```
 
+### Coming from a hand-installed copy
+
+There used to be one way in: clone the repo and run `install/install_skill.ps1`, which copied the
+skill to `~\.claude\skills\daily-timesheet`. If that folder is on your machine, that is what you
+have — and the instruction it came with, *update by re-running the installer*, no longer reaches
+it. Re-running the installer today generates the shared Agent Skills export described above and
+leaves your copy exactly where it is: still loading, still answering, permanently at the version
+you installed. Moving to the plugin is how you get current.
+
+**Almost nothing you care about is in that folder.** Your workspace is elsewhere — `Timesheets/`
+with your `.context.md` and your per-day audit files, `daily_exports/`, and the `.mcp/` catalogs —
+and none of it is touched by any of this. Your screenshots stay in `~\Pictures\WorkScreenshots`.
+What *is* in the folder is the `.env` you filled in, and one setting you have been passing on the
+command line:
+
+| In the hand-installed copy | Where it lives now |
+|---|---|
+| `HARVEST_ACCOUNT_ID`, `HARVEST_API_KEY` in `.env` | `/plugin configure billables`. Both are declared sensitive, so they go to Claude Code's credential store instead of a file in the skill folder. |
+| `--utc-offset 12` (13 in daylight saving) on every command | **Your timezone**, asked for as an IANA name — `Pacific/Auckland`, not `12`. This is a change of kind, not a rename: the offset is derived per date, so the twice-yearly edit stops being yours to remember. There is no default, and no conversion from your old number — say where you are. |
+| `TIMESHEET_WORKSPACE` in `.env` | **Workspace directory** in `/plugin configure billables`. Leave it blank if you start sessions in the workspace, which is the normal case. |
+| `TIMESHEET_SCREENSHOTS_DIR` in `.env` | **Screenshot directory** in `/plugin configure billables`. Blank still means `~\Pictures\WorkScreenshots`. |
+| `DATAVERSE_URL`, `PAC_AUTH_PROFILE` in `.env` | Ordinary environment variables — [step 9](#9-optional-dataverse-ticket-catalog). They belong to one org rather than to every install, so the configuration dialog never asks for them. Do **not** put them in a `.env` inside the plugin folder. |
+
+Then, in order:
+
+1. **Install the plugin** ([more at the top of this README](#install)):
+   ```
+   /plugin marketplace add Cordedmink2/activity-to-timesheet
+   /plugin install billables@activity-to-timesheet
+   ```
+2. **`/plugin configure billables`**, with the old `.env` open beside you, and fill in the
+   right-hand column. Start a new session afterwards: the values reach the scripts at session
+   start.
+3. **Run `/billables:setup`.** The step you specifically need is the screenshot task: it was
+   registered against the capture script *inside the old skill folder*, so it keeps running that
+   script until it is re-registered, and then fails silently into `capture.log` once the folder is
+   gone. `setup` reads the registered action back and re-registers it against the plugin's copy,
+   which is the check that catches this.
+4. **Bill a day you have already billed** — `/billables:daily` on a recent date — and compare what
+   it proposes against what is in Harvest. That is the confirmation that your credentials, your
+   timezone and your workspace all arrived.
+5. **Delete `~\.claude\skills\daily-timesheet`.** Not optional and not cosmetic: until it is gone
+   you have two skills that both answer *"do my timesheet"*, and no way to tell from the answer
+   which one did. Delete the whole folder, `.env` included — everything in it now lives somewhere
+   your next update can't overwrite.
+
+Your `.context.md` needs no edit for any of this. The one line worth revisiting is any note in it
+recording your UTC offset: the timezone is plugin configuration now, and a stale offset written
+down beside your preferences is something a future run may read as current.
+
 ---
 
 ## Prerequisites

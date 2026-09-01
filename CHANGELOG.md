@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading
+- **If you installed by hand, you are not on this release and re-running the installer will not
+  put you on it.** The old path copied the skill to `~\.claude\skills\daily-timesheet`; the
+  installer now generates the shared Agent Skills export instead and leaves that folder alone —
+  still loading, still answering, frozen at whatever version you copied. The export itself says so
+  when it finds one.
+
+  README § *Updating* → *"Coming from a hand-installed copy"* is the route across: install the
+  plugin, move the `.env` values into `/plugin configure billables`, re-register the screenshot
+  task with `/billables:setup` (it points at a script inside the folder you are about to delete),
+  then delete the folder. Your workspace, your timesheets and your `.context.md` are outside it and
+  are not touched.
+
+  One setting changes shape rather than moving. `--utc-offset 12` becomes a timezone asked for as
+  an IANA name, so daylight saving is derived per date rather than being a number you edit twice a
+  year. There is no conversion from the old number and no default: it decides where your day starts
+  and ends, and a guess mis-dates a timesheet without anything appearing to fail.
+
 ### Added
 - **A `reconcile` skill that asks one question of a month: which days were worked but never
   billed, or billed short — and what was happening on them.** The answer is a worklist, not a

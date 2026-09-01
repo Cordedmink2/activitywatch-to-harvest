@@ -281,7 +281,13 @@ def test_the_export_reports_an_older_install_it_cannot_clean_up(tmp_path):
     """Before this release the installers copied the skill in unprefixed, under the
     harness's own skills directory. That copy still activates, and this script neither
     writes nor deletes it — so the run that supersedes it has to say so, or the user ends
-    up with two copies answering and no idea why."""
+    up with two copies answering and no idea why.
+
+    Saying so is not enough on its own, which is what this run is for someone still on the
+    retired install path: they were told to update by re-running the installer, and this is
+    the installer, and it has just finished successfully without touching their copy. So
+    the note also has to name where the way out is written down.
+    """
     dest = tmp_path / "skills"
     legacy = dest / "daily"
     legacy.mkdir(parents=True)
@@ -291,6 +297,22 @@ def test_the_export_reports_an_older_install_it_cannot_clean_up(tmp_path):
     assert res.returncode == 0, res.stderr
     assert str(legacy) in res.stdout, f"the older copy is never mentioned:\n{res.stdout}"
     assert legacy.is_dir(), "the export deleted a copy it did not write"
+    assert "README" in res.stdout and "Coming from a hand-installed copy" in res.stdout, (
+        f"the note reports the older copy and never says how to leave it:\n{res.stdout}")
+
+
+def test_the_migration_section_the_export_names_is_the_one_in_the_readme():
+    """The note above quotes a heading, and a quoted heading is a link with nothing
+    checking it. Renaming the section in the README would leave the export sending people
+    to a place that no longer exists — silently, because the export never reads it."""
+    named = re.findall(r'"(Coming from [^"]+)"',
+                       EXPORT_SCRIPT.read_text(encoding="utf-8"))
+    assert named, "the export no longer names a migration section"
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    for heading in named:
+        assert f"### {heading}" in readme, (
+            f"the export sends the reader to README.md § \"{heading}\", which is not a "
+            "heading in README.md")
 
 
 @requires_bash

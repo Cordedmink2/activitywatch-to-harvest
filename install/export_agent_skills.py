@@ -240,8 +240,11 @@ def main(argv: list[str]) -> int:
     for legacy in legacy_installs(dest):
         print()
         print(f"NOTE: an older, unprefixed copy of this skill is still at {legacy}.")
-        print("      It activates too, and this script does not write or delete it.")
-        print("      Move any .env you filled in there across, then delete that folder.")
+        print("      It activates too, and this script does not write or delete it, so")
+        print("      this run has not updated it and nothing here will. Move any .env you")
+        print("      filled in there across, then delete that folder — or move to the")
+        print("      plugin, which is where that copy's settings live now:")
+        print('      README.md, "Coming from a hand-installed copy".')
     print("An exported install has no harness to hold credentials: copy the exported")
     print("skill's `.env.example` to `.env` beside it and fill it in. That file is kept")
     print("across regenerations; everything else in the export is rewritten.")

@@ -119,3 +119,8 @@ Bump `version` in `.claude-plugin/plugin.json` and add the matching `## [x.y.z]`
 `tests/test_distribution.py` fails when they disagree. A user on the shared Agent Skills
 export re-runs the export to update; it is generated from this plugin every time, so their
 copy cannot be a stale fork of it.
+
+Add an `### Upgrading` section to that changelog entry whenever the update alone is not
+enough — a setting that has to move, a script to re-run, a scheduled task pointing at a path
+the change invalidates. An update installs itself; anything a user has to do by hand is
+invisible until the run that needed it fails, and by then the release notes are weeks back.
