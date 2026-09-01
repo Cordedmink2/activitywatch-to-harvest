@@ -49,6 +49,13 @@ PLUGIN_MANIFEST = REPO / ".claude-plugin" / "plugin.json"
 SKILLS = REPO / "skills"
 DEFAULT_DEST = Path.home() / ".agents" / "skills"
 
+# Claude Code's own global skills directory — where the retired installer put the skill,
+# and not somewhere this script writes. A leftover found *there* belongs to a hand install
+# whose settings are declared plugin configuration now, so its way forward is the plugin;
+# one found in the export destination belongs to an export, whose way forward is this
+# script. Same leftover, two different people, two different next steps.
+HARNESS_SKILLS = Path.home() / ".claude" / "skills"
+
 # Never leaves the plugin: a maintainer's own credentials sitting in their working tree,
 # and the scratch pytest and CPython drop into the skill folder when its tests run.
 EXCLUDED_DIRS = {"__pycache__", ".pytest_cache"}
@@ -201,7 +208,7 @@ def retire_departed_skills(dest: Path, prefix: str, current: set[str]) -> list[s
 
 def legacy_installs(dest: Path) -> list[Path]:
     """Older, unprefixed copies of this skill that are still live on this machine."""
-    roots = {dest, Path.home() / ".claude" / "skills"}
+    roots = {dest, HARNESS_SKILLS}
     return sorted(root / name for root in roots for name in LEGACY_NAMES
                   if (root / name / "SKILL.md").is_file())
 
@@ -240,11 +247,14 @@ def main(argv: list[str]) -> int:
     for legacy in legacy_installs(dest):
         print()
         print(f"NOTE: an older, unprefixed copy of this skill is still at {legacy}.")
-        print("      It activates too, and this script does not write or delete it, so")
-        print("      this run has not updated it and nothing here will. Move any .env you")
-        print("      filled in there across, then delete that folder — or move to the")
-        print("      plugin, which is where that copy's settings live now:")
-        print('      README.md, "Coming from a hand-installed copy".')
+        print("      It activates too, and this script neither writes nor deletes it — so")
+        print("      this run has not updated it, and no run of this script ever will.")
+        if legacy.parent == HARNESS_SKILLS:
+            print("      That copy was hand-installed, and the settings it holds are")
+            print("      declared plugin configuration now. The way off it is the plugin,")
+            print('      not this export: README.md, "Coming from a hand-installed copy".')
+        else:
+            print("      Move any .env you filled in there across, then delete that folder.")
     print("An exported install has no harness to hold credentials: copy the exported")
     print("skill's `.env.example` to `.env` beside it and fill it in. That file is kept")
     print("across regenerations; everything else in the export is rewritten.")

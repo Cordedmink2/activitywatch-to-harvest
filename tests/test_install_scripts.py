@@ -41,6 +41,20 @@ WINPS = shutil.which("powershell.exe") if sys.platform == "win32" else None
 requires_winps = pytest.mark.skipif(not WINPS, reason="Windows PowerShell 5.1 not available")
 
 
+def winps() -> str:
+    """The interpreter path, for a test `requires_winps` has already let through. The
+    lookup is optional and the argument list it goes into is not, so the guarantee the
+    mark carries is stated once here rather than at every call below."""
+    assert WINPS, "requires_winps should have skipped this test"
+    return WINPS
+
+
+def bash() -> str:
+    """Likewise for `requires_bash`."""
+    assert BASH, "requires_bash should have skipped this test"
+    return BASH
+
+
 def find_bash():
     """On Windows, Git Bash specifically — System32\\bash.exe is the WSL launcher,
     which mounts the drive at /mnt/c and can't open the /c/... paths used here."""
@@ -79,7 +93,7 @@ def test_ps_script_parses_under_windows_powershell_51(script):
         f"[System.Management.Automation.Language.Parser]::ParseFile('{script}', [ref]$null, [ref]$errs) | Out-Null; "
         "if ($errs) { $errs | ForEach-Object { [Console]::Error.WriteLine($_.Message) }; exit 1 }"
     )
-    res = subprocess.run([WINPS, "-NoProfile", "-Command", probe],
+    res = subprocess.run([winps(), "-NoProfile", "-Command", probe],
                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode == 0, f"{script.name} fails to parse under 5.1:\n{res.stderr}"
 
@@ -89,7 +103,7 @@ def test_setup_workspace_runs_under_windows_powershell_51(tmp_path):
     """The scaffold script must actually run on 5.1, not just parse."""
     ws = tmp_path / "ws"
     res = subprocess.run(
-        [WINPS, "-NoProfile", "-File", str(INSTALL / "setup_workspace.ps1"), "-Workspace", str(ws)],
+        [winps(), "-NoProfile", "-File", str(INSTALL / "setup_workspace.ps1"), "-Workspace", str(ws)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
@@ -130,13 +144,13 @@ def test_sh_install_preserves_an_existing_env_file(tmp_path):
     """
     skills = tmp_path / "skills"
     sh = posix(INSTALL / "install_skill.sh")
-    first = subprocess.run([BASH, sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    first = subprocess.run([bash(), sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert first.returncode == 0, first.stderr
 
     env_file = skills / EXPORTED / ".env"
     env_file.write_text("HARVEST_ACCOUNT_ID=1234567\nHARVEST_API_KEY=pat.mine\n", encoding="utf-8")
 
-    second = subprocess.run([BASH, sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    second = subprocess.run([bash(), sh, posix(skills)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert second.returncode == 0, second.stderr
     assert env_file.is_file(), "the update deleted the user's .env"
     assert "pat.mine" in env_file.read_text(encoding="utf-8"), "the update overwrote the user's .env"
@@ -151,7 +165,7 @@ def test_sh_install_still_excludes_a_source_env(tmp_path):
     source_env.write_text("HARVEST_API_KEY=pat.maintainer\n", encoding="utf-8")
     try:
         skills = tmp_path / "skills"
-        subprocess.run([BASH, posix(INSTALL / "install_skill.sh"), posix(skills)],
+        subprocess.run([bash(), posix(INSTALL / "install_skill.sh"), posix(skills)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
         assert not (skills / EXPORTED / ".env").exists(), "source .env leaked into the install"
     finally:
@@ -161,8 +175,12 @@ def test_sh_install_still_excludes_a_source_env(tmp_path):
 EXPORT_SCRIPT = REPO / "install" / "export_agent_skills.py"
 
 
-def export(dest):
-    return subprocess.run([sys.executable, str(EXPORT_SCRIPT), str(dest)],
+def export(dest, home=None):
+    """Run the export. `home` relocates `~`, which is how a test can reach the branch that
+    looks in the harness's own skills directory without depending on — or reporting on —
+    whatever the machine running the suite happens to have installed there."""
+    env = dict(os.environ, HOME=str(home), USERPROFILE=str(home)) if home else None
+    return subprocess.run([sys.executable, str(EXPORT_SCRIPT), str(dest)], env=env,
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
@@ -278,27 +296,48 @@ def test_the_export_refuses_a_destination_that_is_not_a_directory(tmp_path):
 
 
 def test_the_export_reports_an_older_install_it_cannot_clean_up(tmp_path):
-    """Before this release the installers copied the skill in unprefixed, under the
-    harness's own skills directory. That copy still activates, and this script neither
-    writes nor deletes it — so the run that supersedes it has to say so, or the user ends
-    up with two copies answering and no idea why.
+    """Before this release the installers copied the skill in unprefixed. That copy still
+    activates, and this script neither writes nor deletes it — so the run that supersedes
+    it has to say so, or the user ends up with two copies answering and no idea why.
 
-    Saying so is not enough on its own, which is what this run is for someone still on the
-    retired install path: they were told to update by re-running the installer, and this is
-    the installer, and it has just finished successfully without touching their copy. So
-    the note also has to name where the way out is written down.
+    This one is an older *export*, sitting in the destination. Its owner has no harness
+    holding configuration, so their `.env` is still the mechanism and moving it across is
+    the whole job.
     """
     dest = tmp_path / "skills"
     legacy = dest / "daily"
     legacy.mkdir(parents=True)
     (legacy / "SKILL.md").write_text("---\nname: daily\n---\n", encoding="utf-8")
 
-    res = export(dest)
+    res = export(dest, home=tmp_path / "home")
     assert res.returncode == 0, res.stderr
     assert str(legacy) in res.stdout, f"the older copy is never mentioned:\n{res.stdout}"
     assert legacy.is_dir(), "the export deleted a copy it did not write"
-    assert "README" in res.stdout and "Coming from a hand-installed copy" in res.stdout, (
-        f"the note reports the older copy and never says how to leave it:\n{res.stdout}")
+    assert ".env" in res.stdout, f"the note never says to rescue the credentials:\n{res.stdout}"
+
+
+def test_the_export_sends_a_hand_installed_copy_to_the_plugin_not_to_itself(tmp_path):
+    """The same leftover, found under the harness's own skills directory, belongs to a
+    different person: someone who cloned the repo and ran the installer back when that
+    copied the skill to `~/.claude/skills/daily-timesheet`.
+
+    They are the likeliest reader of this note, because that install path was Claude Code's
+    alone — and the advice the other branch gives them is wrong. Their credentials do not
+    go into a `.env` beside an export; they go into the plugin's configuration. Telling
+    them to move the file across would land them on the same dead copy by another route.
+    """
+    home = tmp_path / "home"
+    legacy = home / ".claude" / "skills" / "daily-timesheet"
+    legacy.mkdir(parents=True)
+    (legacy / "SKILL.md").write_text("---\nname: daily-timesheet\n---\n", encoding="utf-8")
+
+    res = export(tmp_path / "skills", home=home)
+    assert res.returncode == 0, res.stderr
+    assert str(legacy) in res.stdout, f"the hand-installed copy is never mentioned:\n{res.stdout}"
+    assert "Coming from a hand-installed copy" in res.stdout, (
+        f"the note never names where the way out is written down:\n{res.stdout}")
+    assert "Move any .env" not in res.stdout, (
+        f"a hand install was told to rescue a .env the plugin does not read:\n{res.stdout}")
 
 
 def test_the_migration_section_the_export_names_is_the_one_in_the_readme():
@@ -323,7 +362,7 @@ def test_sh_install_runs_with_no_arguments(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     env = dict(os.environ, HOME=posix(home), USERPROFILE=str(home))
-    res = subprocess.run([BASH, posix(INSTALL / "install_skill.sh")], env=env,
+    res = subprocess.run([bash(), posix(INSTALL / "install_skill.sh")], env=env,
                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode == 0, f"exit {res.returncode}:\n{res.stdout}{res.stderr}"
     assert (home / ".agents" / "skills" / EXPORTED / "SKILL.md").is_file(), \
@@ -343,7 +382,7 @@ def test_ps_install_falls_past_a_zero_byte_python_stub(tmp_path):
     env = dict(os.environ,
                PATH=f"{stubs};{Path(sys.executable).parent};C:\\Windows\\System32")
     res = subprocess.run(
-        [WINPS, "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"),
+        [winps(), "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"),
          "-SkillsDir", str(skills)],
         env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode == 0, f"a 0-byte stub aborted the install:\n{res.stdout}{res.stderr}"
@@ -398,7 +437,7 @@ DRY_RUN_TASK = "DailyTimesheetDryRunProbe"
 
 def probe_task_state():
     res = subprocess.run(
-        [WINPS, "-NoProfile", "-Command",
+        [winps(), "-NoProfile", "-Command",
          f"if (Get-ScheduledTask -TaskName '{DRY_RUN_TASK}' -ErrorAction SilentlyContinue) "
          "{ 'REGISTERED' } else { 'absent' }"],
         capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -415,13 +454,13 @@ def dry_run_setup():
     """
     def run(*args, env=None):
         return subprocess.run(
-            [WINPS, "-NoProfile", "-File", str(SCREENSHOT_SETUP), "-DryRun",
+            [winps(), "-NoProfile", "-File", str(SCREENSHOT_SETUP), "-DryRun",
              "-TaskName", DRY_RUN_TASK, *args],
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
 
     yield run
     subprocess.run(
-        [WINPS, "-NoProfile", "-Command",
+        [winps(), "-NoProfile", "-Command",
          f"Unregister-ScheduledTask -TaskName '{DRY_RUN_TASK}' -Confirm:$false "
          "-ErrorAction SilentlyContinue"],
         capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -575,8 +614,8 @@ def installed(request, tmp_path_factory):
 
     ensure_pytest_cache()
     skills = tmp_path_factory.mktemp(f"skills_{shell}")
-    cmd = ([BASH, posix(INSTALL / "install_skill.sh"), posix(skills)] if shell == "sh"
-           else [WINPS, "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"),
+    cmd = ([bash(), posix(INSTALL / "install_skill.sh"), posix(skills)] if shell == "sh"
+           else [winps(), "-NoProfile", "-File", str(INSTALL / "install_skill.ps1"),
                  "-SkillsDir", str(skills)])
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode == 0, f"{shell} installer exited {res.returncode}:\n{res.stdout}{res.stderr}"

@@ -18,7 +18,7 @@ is what is specific to *this* skill.
 | Test records, settled decisions, rejected options, evidence rungs | `TESTING.md` |
 | The vocabulary a rule is written in, and which words to avoid | the repo root's `CONTEXT.md` |
 | Why the code is shaped the way it is | the repo root's `docs/adr/` |
-| Releasing a change | `.claude-plugin/plugin.json` `version` + `CHANGELOG.md` — see §Releasing |
+| Releasing a change | `.claude-plugin/plugin.json` `version` + `CHANGELOG.md`, then a tag — see §Releasing |
 
 `SKILL.md`'s "What lives where" section governs the first two rows at *run* time — it is
 what Step 11 sorts proposals against. This table is the maintainer's view of the same
@@ -115,8 +115,8 @@ change ships by being committed here — nothing to propagate, no second leg to 
 no marker inside the skill to keep in step.
 
 Bump `version` in `.claude-plugin/plugin.json` and add the matching `## [x.y.z]` heading to
-`CHANGELOG.md` in the same change. Those two are the whole release, and
-`tests/test_distribution.py` fails when they disagree. A user on the shared Agent Skills
+`CHANGELOG.md` in the same change — those two are what `tests/test_distribution.py` holds
+together, and it fails when they disagree. A user on the shared Agent Skills
 export re-runs the export to update; it is generated from this plugin every time, so their
 copy cannot be a stale fork of it.
 
