@@ -124,3 +124,13 @@ Add an `### Upgrading` section to that changelog entry whenever the update alone
 enough — a setting that has to move, a script to re-run, a scheduled task pointing at a path
 the change invalidates. An update installs itself; anything a user has to do by hand is
 invisible until the run that needed it fails, and by then the release notes are weeks back.
+
+Then tag it, so the version is a commit somebody can check out and not only a heading:
+
+```
+git tag -a vX.Y.Z -m "X.Y.Z — one line"
+git push origin vX.Y.Z
+```
+
+`git push` does not carry tags, which is why the second line is there. Tag the last commit
+of that version rather than the one that bumped the manifest, if cleanup followed it.
