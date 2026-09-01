@@ -64,6 +64,7 @@ def test_an_afk_run_of_exactly_the_threshold_is_a_break_and_one_second_less_is_n
                    ev("10:00", afk_seconds, "afk"),
                    ev("10:17:30", 2400, "not-afk"))
         b = ab.work_bounds(sp)
+        assert b is not None
         return ab.find_breaks(sp, b["work_start"], b["work_end"], ab.DEFAULT_THRESHOLD)
 
     assert [(hms(s), hms(e)) for s, e, _ in breaks_for(1050)] == [("10:00:00", "10:17:30")]
@@ -76,8 +77,10 @@ def test_a_not_afk_run_of_exactly_two_minutes_counts_as_substantive_activity():
     nothing in the day qualifies as solid, `last_solid_end` falls back to `work_end`, the
     blip flag goes quiet — and the final block is stretched two hours to the flicker."""
     def bounds_for(solid_seconds):
-        return ab.work_bounds(spans(ev("09:00", solid_seconds, "not-afk"),
-                                    ev("11:00", 1, "not-afk")))       # the flicker
+        b = ab.work_bounds(spans(ev("09:00", solid_seconds, "not-afk"),
+                                 ev("11:00", 1, "not-afk")))          # the flicker
+        assert b is not None
+        return b
 
     solid = bounds_for(120)
     assert hms(solid["last_solid_end"]) == "09:02:00"
@@ -94,8 +97,10 @@ def test_a_gap_of_exactly_ten_minutes_after_solid_activity_makes_work_end_a_blip
     and ten minutes of nothing get billed. Same solid anchor in both — this pins the gap
     comparison alone."""
     def bounds_for(flicker_at):
-        return ab.work_bounds(spans(ev("09:00", 600, "not-afk"),
-                                    ev(flicker_at, 1, "not-afk")))
+        b = ab.work_bounds(spans(ev("09:00", 600, "not-afk"),
+                                 ev(flicker_at, 1, "not-afk")))
+        assert b is not None
+        return b
 
     wide = bounds_for("09:19:59")                     # flicker ends 09:20:00 -> gap 600
     assert hms(wide["last_solid_end"]) == "09:10:00"
@@ -139,6 +144,7 @@ def test_a_day_of_nothing_but_flickers_falls_back_to_work_end_and_never_flags_a_
     no warning attached — the sub-0.4 `active_ratio` checks in Step 3, not this flag, are
     what stop eight hours of twitching from being billed as eight hours of work."""
     b = ab.work_bounds(spans(*(ev(f"{h}:00", 60, "not-afk") for h in (9, 11, 13, 15, 17))))
+    assert b is not None
     assert hms(b["work_start"]) == "09:00:00"
     assert b["last_solid_end"] == b["work_end"] == at("17:01")
     assert b["blip"] is False
@@ -151,6 +157,7 @@ def test_a_single_instantaneous_event_gives_a_day_that_starts_and_ends_at_one_mo
     the script failed to find and which is therefore open-ended."""
     sp = spans(ev("09:00", 0, "not-afk"))
     b = ab.work_bounds(sp)
+    assert b is not None
     assert b["work_start"] == b["work_end"] == at("09:00")
     assert b["last_solid_end"] == b["work_end"]
     assert b["blip"] is False

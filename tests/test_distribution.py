@@ -35,9 +35,16 @@ CLAUDE = shutil.which("claude")
 requires_claude = pytest.mark.skipif(not CLAUDE, reason="the claude CLI is not on PATH")
 
 
+def claude() -> str:
+    """The CLI path, for a test `requires_claude` has already let through — the lookup is
+    optional and the argument list it goes into is not."""
+    assert CLAUDE, "requires_claude should have skipped this test"
+    return CLAUDE
+
+
 def validate(target: Path):
     """`claude plugin validate --strict <target>` — returncode plus combined output."""
-    return subprocess.run([CLAUDE, "plugin", "validate", "--strict", str(target)],
+    return subprocess.run([claude(), "plugin", "validate", "--strict", str(target)],
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
@@ -193,6 +200,7 @@ def test_the_documented_slug_resolves_on_github():
     rather than failed when the network or `gh` auth is unavailable, so it is evidence when
     it runs and never a false alarm when it can't.
     """
+    assert GH, "the skipif above should have skipped this test"
     res = subprocess.run([GH, "repo", "view", SLUG, "--json", "nameWithOwner"],
                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if res.returncode != 0:

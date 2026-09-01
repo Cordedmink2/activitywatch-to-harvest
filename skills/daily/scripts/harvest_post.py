@@ -20,16 +20,15 @@ Success: prints `OK <entry_id>` and exits 0.
 Preview: prints `WOULD POST <body>` and exits 0 — no entry exists.
 Failure: prints `ERR <status> <body[:200]>` to stderr and exits 1.
 """
+import io
 import json
 import os
 import sys
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
-for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream lacks reconfigure
-    try:
+for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream is not one of these
+    if isinstance(_s, io.TextIOWrapper):
         _s.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
 
 from harvest_client import parse_time_to_minutes, request
 

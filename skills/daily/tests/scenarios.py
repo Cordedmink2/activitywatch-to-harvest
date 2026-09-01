@@ -33,12 +33,25 @@ NZ = "Pacific/Auckland"
 class Scenario:
     """One day plus the probes the skill would run against it."""
     name: str
-    doc: str
     build: Callable[[], Day]
     cover: str | None = None            # --cover argument for afk_blocks
     windows: tuple[str, ...] = ()       # --window probes for afk_blocks
     zoom: str | None = None             # --window zoom for activity_timeline
     extra_args: tuple[str, ...] = field(default_factory=tuple)
+    doc: str = field(init=False)        # the builder's docstring — see __post_init__
+
+    def __post_init__(self):
+        """A scenario's prose is its builder's docstring, read here rather than passed in.
+
+        It used to be both: every entry below named the same function twice, once to build
+        the day and once for `.__doc__`. Reading it from the builder makes the two
+        impossible to mismatch, and makes a builder with no docstring an error at import
+        rather than a scenario that silently describes nothing.
+        """
+        if self.build.__doc__ is None:
+            raise ValueError(f"{self.build.__name__} needs a docstring — it is what "
+                             f"describes the '{self.name}' scenario")
+        self.doc = self.build.__doc__
 
 
 # --------------------------------------------------------------------------------------
@@ -268,7 +281,6 @@ def _fall_back_repeated_hour_day() -> Day:
 SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
         name="locked-screen-day",
-        doc=_locked_screen_day.__doc__,
         build=_locked_screen_day,
         cover="08:12-08:30,08:30-10:57,11:45-13:26,13:48-18:02",
         windows=("10:57-11:45", "11:45-13:26", "13:48-18:02", "18:02-18:53"),
@@ -276,14 +288,12 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         name="blip-and-tail-day",
-        doc=_blip_and_tail_day.__doc__,
         build=_blip_and_tail_day,
         cover="08:00-12:15,13:10-17:20",
         windows=("08:00-12:15", "17:20-19:31"),
     ),
     Scenario(
         name="interleaved-clients-day",
-        doc=_interleaved_clients_day.__doc__,
         build=_interleaved_clients_day,
         cover="08:20-11:50,12:35-16:45",
         windows=("08:20-11:50", "12:35-16:45"),
@@ -291,29 +301,25 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         name="no-break-day",
-        doc=_no_break_day.__doc__,
         build=_no_break_day,
         cover="08:15-17:30",
         windows=("08:15-17:30", "10:30-11:00", "13:00-13:35", "15:40-16:10"),
     ),
     Scenario(
         name="overnight-day",
-        doc=_overnight_day.__doc__,
         build=_overnight_day,
         cover="19:30-22:40,23:05-23:59",
         windows=("19:30-22:40",),
     ),
-    Scenario(name="idle-day", doc=_idle_day.__doc__, build=_idle_day),
+    Scenario(name="idle-day", build=_idle_day),
     Scenario(
         name="daylight-saving-day",
-        doc=_daylight_saving_day.__doc__,
         build=_daylight_saving_day,
         cover="08:30-12:00,12:45-17:15",
         windows=("08:30-12:00",),
     ),
     Scenario(
         name="daylight-saving-transition-day",
-        doc=_daylight_saving_transition_day.__doc__,
         build=_daylight_saving_transition_day,
         cover="00:40-01:45,09:15-12:30,13:20-17:00",
         windows=("00:40-01:45", "09:15-12:30"),
@@ -324,7 +330,6 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         name="fall-back-repeated-hour-day",
-        doc=_fall_back_repeated_hour_day.__doc__,
         build=_fall_back_repeated_hour_day,
         # Written with the marker the scripts print, so a green run is evidence that a
         # block read out of one script's output resolves to the same hour when handed

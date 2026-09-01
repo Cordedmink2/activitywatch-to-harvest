@@ -189,7 +189,12 @@ def clock_reads(local_date, local_time, zone):
     skipped one.
     """
     moment = dt.datetime.combine(local_date, local_time, tzinfo=zone)
-    shift = moment.replace(fold=1).utcoffset() - moment.replace(fold=0).utcoffset()
+    # How far apart in real time the two passes sit. Measured by converting each to UTC
+    # rather than by subtracting the two `utcoffset()`s, which is the same quantity —
+    # an instant is its clock reading minus its offset, so the offsets cancel the other
+    # way round — but is not typed as possibly absent the way an offset is.
+    shift = (moment.replace(fold=0).astimezone(dt.timezone.utc)
+             - moment.replace(fold=1).astimezone(dt.timezone.utc))
     if shift < dt.timedelta(0):
         return READS_TWICE
     if shift > dt.timedelta(0):

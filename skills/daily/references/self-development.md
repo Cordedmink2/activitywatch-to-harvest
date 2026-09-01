@@ -54,6 +54,22 @@ python -m pytest -q tests skills/daily/tests
 - A `.context.md` under the Step 11 size budget after any change that proposes writing
   to one.
 
+A code edit has a second gate, also run from the repo root:
+
+```
+pyright
+```
+
+`pyrightconfig.json` there is what makes it — and an editor's language server — read *this*
+repo. Pyright walks up from the working directory looking for that file, so a checkout
+nested inside another project inherits that project's root and type-checks the neighbouring
+tree instead; the config existed for a while as nothing but a boundary. It also pins
+`pythonVersion` to the 3.10 floor `README.md` states as a prerequisite, so a stdlib or
+syntax feature added later fails here rather than on a user's machine, and it declares the
+`sys.path` entries `skills/daily/tests/conftest.py` adds at run time, which pyright does not
+execute. The tree is at zero errors; keep it there rather than relaxing a rule to get back
+to it.
+
 ## Rules with more than one copy
 
 Duplication here is mostly deliberate — a guard restated in the pre-post checklist
@@ -79,6 +95,7 @@ to have in front of you.
 | Check the other monitors before trusting one | `classification-rules.md` §"Focused window ≠ active attention" | `SKILL.md` folder mechanics + Step 5 subagent brief, `classification-rules.md` long-agent-CLI and browser-row paragraphs, interleaved-days probe step |
 | Setting precedence: flag, then `.env`, then the process environment, then the script default; blank counts as unset | `scripts/skill_config.py` docstring | `SKILL.md` "What lives where", `references/setup.md` §"First-run: configuration", the `refresh_catalogs.py` and `screenshot_capture.py` module docstrings |
 | The declared configuration surface: which keys exist, which are required, which are sensitive | `.claude-plugin/plugin.json` `userConfig` | `tests/test_plugin_config.py`, `references/setup.md` §"First-run: configuration" table, `README.md`'s install table |
+| The Python the scripts must run on: 3.10 | `README.md` §Prerequisites | `pyrightconfig.json` `pythonVersion`, which is what enforces it |
 | No assumed timezone: an unconfigured run refuses rather than guessing an offset | `scripts/aw_client.py` `resolve_zone()` docstring | `SKILL.md` "Timezone", `references/activitywatch.md` §"Time zones", both scripts' module docstrings |
 | A day is bounded by its zone at each end, not by one offset — so the day the clocks change is 23 or 25 hours long | `scripts/aw_client.py` `utc_bounds()` docstring | `references/activitywatch.md` §"Time zones", `SKILL.md` "Timezone", `tests/scenarios.py` `daylight-saving-transition-day` |
 | The second pass over the hour a fall-back repeats is suffixed `*`, and reads back as the same instant | `scripts/aw_client.py` — `local_clock()` writes the marker, `parse_local_time()` / `to_utc()` read it back and refuse it wherever the clock does not read twice | `references/activitywatch.md` §"Time zones", `references/output-format.md` §Conventions, `SKILL.md` "Timezone", `tests/README.md` §"Dating a day", `tests/scenarios.py` `fall-back-repeated-hour-day`, `TESTING.md` §"Two instants an hour apart printed the same clock time", `CHANGELOG.md` |

@@ -1,0 +1,12 @@
+{
+  "include": ["skills", "tests", "install", "hooks"],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "standard",
+  "executionEnvironments": [
+    { "root": "skills/daily/tests", "extraPaths": ["skills/daily/scripts", "skills/daily/tests"] },
+    { "root": "skills/daily/scripts" },
+    { "root": "tests" },
+    { "root": "install" },
+    { "root": "hooks" }
+  ]
+}
