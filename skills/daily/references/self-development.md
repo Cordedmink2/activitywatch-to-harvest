@@ -63,14 +63,12 @@ pyright
 `pyrightconfig.json` there is what makes it — and an editor's language server — read *this*
 repo. Pyright walks up from the working directory looking for that file, so a checkout
 nested inside another project inherits that project's root and type-checks the neighbouring
-tree instead: the file is worth keeping even if every setting in it were a default, because
-drawing the boundary is most of its job. It also pins `pythonVersion` to the 3.10 floor
-`README.md` §Prerequisites states, so a stdlib or syntax feature added later fails here
-rather than on a user's machine, and it declares the `sys.path` entries
-`skills/daily/tests/conftest.py` adds at run time, which pyright does not execute.
-
-The gate is zero errors. Reach it by fixing what is reported — a rule turned off to get
-back to green takes the rest of its file's coverage with it.
+tree instead; the config existed for a while as nothing but a boundary. It also pins
+`pythonVersion` to the 3.10 floor `README.md` states as a prerequisite, so a stdlib or
+syntax feature added later fails here rather than on a user's machine, and it declares the
+`sys.path` entries `skills/daily/tests/conftest.py` adds at run time, which pyright does not
+execute. The tree is at zero errors; keep it there rather than relaxing a rule to get back
+to it.
 
 ## Rules with more than one copy
 
