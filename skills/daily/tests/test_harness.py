@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import urllib.error
+import urllib.request
 
 import pytest
 
@@ -16,7 +17,7 @@ import afk_blocks as ab
 import aw_client
 import harvest_client
 import skill_config
-from support import day, run_cli
+from support import NO_BODY, day, harvest_server, run_cli
 
 
 # --------------------------------------------------------------------------------------
@@ -104,6 +105,54 @@ def test_the_slicing_builders_refuse_a_marked_time(builder):
     d = day(dt.date(2026, 4, 5), zone="Pacific/Auckland")
     with pytest.raises(ValueError, match="cannot write the second pass"):
         getattr(d, builder)("02:00*", "03:00")
+
+
+def test_a_single_event_is_written_at_second_resolution():
+    """The edge suites need one second either side of a threshold — 1049 against 1050 —
+    and used to hand-roll their own builders to get it, each with its own timestamp
+    spelling. The DSL's own clock parser already read seconds; this is the builder that
+    lets a test say so."""
+    ev = day(offset=0).event("10:17:29", seconds=1049, status="afk")
+    assert ev == {"timestamp": "2026-05-28T10:17:29Z", "duration": 1049,
+                  "data": {"status": "afk"}}
+
+
+def test_a_single_event_can_sit_in_the_second_pass_over_a_repeated_hour():
+    """Auckland's clocks fall back at 03:00 on 2026-04-05, so 02:30 happens twice. The
+    marker picks the second one, and the two events an hour apart must be an hour apart
+    on the wire — the whole point of writing a day that straddles the change."""
+    d = day(dt.date(2026, 4, 5), zone="Pacific/Auckland")
+    first = aw_client.parse_ts(d.event("02:30", minutes=1, status="afk")["timestamp"])
+    second = aw_client.parse_ts(d.event("02:30*", minutes=1, status="afk")["timestamp"])
+    assert second - first == dt.timedelta(hours=1)
+
+
+@pytest.mark.parametrize("spelling", [{"minutes": 1, "seconds": 60}, {}],
+                         ids=["two-durations", "no-duration"])
+def test_a_single_event_takes_exactly_one_duration(spelling):
+    """`seconds=` and `minutes=` are two spellings of one fact; both can disagree and
+    neither is a zero-length event nobody meant."""
+    with pytest.raises(ValueError, match="exactly one of"):
+        day().event("09:00", status="afk", **spelling)
+
+
+def test_a_single_event_takes_its_payload_one_way():
+    """`data=` exists for the shapes a watcher would never emit; given alongside keyword
+    fields, one of the two would be silently dropped."""
+    with pytest.raises(ValueError, match="either data= or keyword fields"):
+        day().event("09:00", seconds=60, data={"title": "x"}, status="afk")
+
+
+def test_the_fake_provider_can_answer_with_no_body_at_all():
+    """Harvest answers a DELETE with `200` and zero bytes. `json.dumps` has no output for
+    that — `None` becomes the four bytes `null` — so one test used to carry a second HTTP
+    server, thread and shutdown and all, to send nothing. `NO_BODY` sends nothing."""
+    with harvest_server({("DELETE", "/time_entries/1"): (200, NO_BODY)}) as srv:
+        req = urllib.request.Request(f"{srv.base}/v2/time_entries/1", method="DELETE")
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            assert resp.headers["Content-Length"] == "0"
+            assert resp.read() == b""
 
 
 # --------------------------------------------------------------------------------------

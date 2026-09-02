@@ -29,9 +29,10 @@ import json
 import os
 import re
 import subprocess
-from pathlib import Path
 
 import pytest
+
+from shipped import REPO
 
 # The wrapper is a POSIX shell script, so driving it needs a shell that can run one.
 # Imported from the sibling suite rather than copied: `find_bash()` there picks Git Bash
@@ -40,7 +41,6 @@ import pytest
 # is a second thing to get wrong.
 from test_install_scripts import bash, posix, requires_bash  # noqa: E402
 
-REPO = Path(__file__).resolve().parents[1]
 PLUGIN_MANIFEST = REPO / ".claude-plugin" / "plugin.json"
 HOOKS = REPO / "hooks"
 README = REPO / "README.md"

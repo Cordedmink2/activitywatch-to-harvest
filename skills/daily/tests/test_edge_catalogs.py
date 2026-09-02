@@ -18,36 +18,7 @@ import pytest
 import harvest_lookup as hl
 import refresh_catalogs as rc
 import skill_config
-from support import run_cli
-
-ASSIGNMENTS = ("GET", "/users/me/project_assignments")
-
-
-# --------------------------------------------------------------------------------------
-# Fake-catalog helpers
-# --------------------------------------------------------------------------------------
-
-def _project(pid, code, name="Some project", tasks=()):
-    return {"project": {"id": pid, "code": code, "name": name},
-            "task_assignments": list(tasks)}
-
-
-def _page(number, last, rows=()):
-    """One `/users/me/project_assignments` page, with Harvest's `next_page` wiring."""
-    return {"project_assignments": list(rows),
-            "page": number,
-            "total_entries": 7,
-            "next_page": None if number >= last else number + 1}
-
-
-def _paged(pages, fail_on=None):
-    """Serve `pages[n-1]` for `?page=n`; return a 500 for page `fail_on` instead."""
-    def route(query, body):
-        n = int(query.get("page", 1))
-        if n == fail_on:
-            return 500, {"error": "read replica unavailable"}
-        return 200, pages[n - 1]
-    return {ASSIGNMENTS: route}
+from support import assignments_page, paged_assignments, project, run_cli, write_catalog
 
 
 def _snapshot(directory: Path):
@@ -55,12 +26,8 @@ def _snapshot(directory: Path):
 
 
 def _write(directory: Path, name: str, text: str):
+    """A file that is not a catalog page — an unrelated neighbour, or a truncated one."""
     (directory / name).write_text(text, encoding="utf-8")
-
-
-def _write_pages(directory: Path, pages: dict):
-    for name, payload in pages.items():
-        _write(directory, name, json.dumps(payload))
 
 
 # --------------------------------------------------------------------------------------
@@ -76,15 +43,15 @@ def test_a_failure_on_page_two_leaves_every_existing_catalog_file_byte_for_byte_
     stale catalog is recoverable; a half-deleted one is not.
     """
     mcp = workspace / ".mcp"
-    _write_pages(mcp, {
-        "harvest_assignments.json": _page(1, 2, [_project(1, "OLD-1", "Kept page one")]),
-        "harvest_assignments_p2.json": _page(2, 2, [_project(2, "OLD-2", "Kept page two")]),
+    write_catalog(mcp, {
+        "harvest_assignments.json": assignments_page(1, 2, [project(1, "OLD-1", "Kept page one")]),
+        "harvest_assignments_p2.json": assignments_page(2, 2, [project(2, "OLD-2", "Kept page two")]),
     })
     _write(mcp, "dv_active_incidents.txt", "unrelated catalog\n")
     before = _snapshot(mcp)
 
-    live_harvest(_paged([_page(1, 2, [_project(9, "NEW-9")]),
-                         _page(2, 2, [_project(10, "NEW-10")])], fail_on=2))
+    live_harvest(paged_assignments([assignments_page(1, 2, [project(9, "NEW-9")]),
+                         assignments_page(2, 2, [project(10, "NEW-10")])], fail_on=2))
     r = run_cli(rc, ["--harvest-only"])
 
     assert r.code != 0
@@ -100,13 +67,13 @@ def test_a_refresh_returning_fewer_pages_deletes_the_leftover_page_files(workspa
     task ids that have since moved, presented exactly like live ones.
     """
     mcp = workspace / ".mcp"
-    _write_pages(mcp, {
-        "harvest_assignments.json": _page(1, 3, [_project(1, "OLD-1")]),
-        "harvest_assignments_p2.json": _page(2, 3, [_project(2, "OLD-2")]),
-        "harvest_assignments_p3.json": _page(3, 3, [_project(3, "OLD-3")]),
+    write_catalog(mcp, {
+        "harvest_assignments.json": assignments_page(1, 3, [project(1, "OLD-1")]),
+        "harvest_assignments_p2.json": assignments_page(2, 3, [project(2, "OLD-2")]),
+        "harvest_assignments_p3.json": assignments_page(3, 3, [project(3, "OLD-3")]),
     })
 
-    live_harvest(_paged([_page(1, 1, [_project(9, "NEW-9")])]))
+    live_harvest(paged_assignments([assignments_page(1, 1, [project(9, "NEW-9")])]))
     r = run_cli(rc, ["--harvest-only"])
 
     assert r.code == 0
@@ -122,11 +89,11 @@ def test_page_one_is_unsuffixed_and_later_pages_each_hold_their_own_payload(work
     project after the first hundred, or reports page one's tasks for all of them.
     """
     mcp = workspace / ".mcp"
-    pages = [_page(1, 3, [_project(1, "P1-A"), _project(2, "P1-B")]),
-             _page(2, 3, [_project(3, "P2-A")]),
-             _page(3, 3, [_project(4, "P3-A")])]
+    pages = [assignments_page(1, 3, [project(1, "P1-A"), project(2, "P1-B")]),
+             assignments_page(2, 3, [project(3, "P2-A")]),
+             assignments_page(3, 3, [project(4, "P3-A")])]
 
-    live_harvest(_paged(pages))
+    live_harvest(paged_assignments(pages))
     r = run_cli(rc, ["--harvest-only"])
 
     assert r.code == 0
@@ -158,8 +125,8 @@ def test_wait_for_project_returns_the_assignment_from_whichever_page_holds_the_c
     """
     slept = []
     monkeypatch.setattr(time, "sleep", slept.append)
-    live_harvest(_paged([_page(1, 2, [_project(1, "OTHER-1")]),
-                         _page(2, 2, [_project(2, "ACM-CR900", "Brand new case")])]))
+    live_harvest(paged_assignments([assignments_page(1, 2, [project(1, "OTHER-1")]),
+                         assignments_page(2, 2, [project(2, "ACM-CR900", "Brand new case")])]))
 
     pa = rc.wait_for_project("ACM-CR900", attempts=3, delay=15)
 
@@ -175,7 +142,7 @@ def test_wait_for_project_returns_none_once_its_attempts_are_exhausted(workspace
     """
     slept = []
     monkeypatch.setattr(time, "sleep", slept.append)
-    live_harvest(_paged([_page(1, 1, [_project(1, "OTHER-1")])]))
+    live_harvest(paged_assignments([assignments_page(1, 1, [project(1, "OTHER-1")])]))
 
     assert rc.wait_for_project("NEVER-1", attempts=3, delay=15) is None
     assert slept == [15, 15]    # waits between attempts, not after the last one
@@ -191,8 +158,8 @@ def test_a_page_of_unparseable_json_is_skipped_instead_of_aborting_the_whole_loo
     outright and sending the user off to debug the tool.
     """
     _write(tmp_path, "harvest_assignments.json", '{"project_assignments": [{"proj')
-    _write_pages(tmp_path, {"harvest_assignments_p2.json":
-                            _page(2, 2, [_project(2, "GOOD-2", "Survivor")])})
+    write_catalog(tmp_path, {"harvest_assignments_p2.json":
+                            assignments_page(2, 2, [project(2, "GOOD-2", "Survivor")])})
 
     rows = list(hl.iter_assignments(str(tmp_path)))
 
@@ -204,8 +171,8 @@ def test_a_page_stored_as_a_bare_json_list_is_read_like_a_wrapped_one(tmp_path):
     assignments. Ignoring that shape reports "no project matching" for a catalog the
     user can see the project sitting in.
     """
-    _write_pages(tmp_path, {"harvest_assignments.json":
-                            [_project(1, "BARE-1", "Written as a list")]})
+    write_catalog(tmp_path, {"harvest_assignments.json":
+                            [project(1, "BARE-1", "Written as a list")]})
 
     rows = list(hl.iter_assignments(str(tmp_path)))
 
@@ -216,8 +183,8 @@ def test_a_page_keyed_on_assignments_is_read_like_one_keyed_on_project_assignmen
     """Both spellings exist in the wild. Accepting only Harvest's own key makes a
     perfectly valid catalog look empty.
     """
-    _write_pages(tmp_path, {"harvest_assignments.json":
-                            {"assignments": [_project(1, "ALT-1", "Short key")]}})
+    write_catalog(tmp_path, {"harvest_assignments.json":
+                            {"assignments": [project(1, "ALT-1", "Short key")]}})
 
     rows = list(hl.iter_assignments(str(tmp_path)))
 
@@ -229,13 +196,13 @@ def test_a_project_appearing_on_several_pages_is_yielded_once_from_the_first_pag
     being fetched. Yielding both makes the same project appear twice in a lookup, and
     the model picks whichever copy it read last — possibly the one with no tasks.
     """
-    _write_pages(tmp_path, {
-        "harvest_assignments.json": _page(1, 2, [
-            _project(48084036, "ACM-CR202", "Full row, with tasks",
+    write_catalog(tmp_path, {
+        "harvest_assignments.json": assignments_page(1, 2, [
+            project(48084036, "ACM-CR202", "Full row, with tasks",
                      [{"billable": True, "task": {"id": 7, "name": "Gen - Development"}}])]),
-        "harvest_assignments_p2.json": _page(2, 2, [
-            _project(48084036, "ACM-CR202", "Duplicate row, no tasks"),
-            _project(37122824, "NWC-001", "Admin")]),
+        "harvest_assignments_p2.json": assignments_page(2, 2, [
+            project(48084036, "ACM-CR202", "Duplicate row, no tasks"),
+            project(37122824, "NWC-001", "Admin")]),
     })
 
     rows = list(hl.iter_assignments(str(tmp_path)))
@@ -255,13 +222,13 @@ def test_an_exact_code_match_sorts_ahead_of_the_substring_matches(tmp_path):
     code that merely *contains* the query can outrank the code the user typed verbatim,
     which puts the hours on the wrong project.
     """
-    _write_pages(tmp_path, {"harvest_assignments.json": _page(1, 1, [
+    write_catalog(tmp_path, {"harvest_assignments.json": assignments_page(1, 1, [
         # "ACON-1" sorts before "CON" alphabetically, so this only passes if the
         # exact-match key is doing the work.
-        _project(1, "ACON-1", "Alpha consulting"),
-        _project(2, "CON-2", "Consulting, part two"),
-        _project(3, "CON", "Consulting"),
-        _project(4, "ZZZ-9", "Nothing to do with the query"),
+        project(1, "ACON-1", "Alpha consulting"),
+        project(2, "CON-2", "Consulting, part two"),
+        project(3, "CON", "Consulting"),
+        project(4, "ZZZ-9", "Nothing to do with the query"),
     ])})
 
     matches = hl.lookup("CON", str(tmp_path))
@@ -274,8 +241,8 @@ def test_the_task_filter_is_a_case_insensitive_substring_of_the_task_name(tmp_pa
     Case- or prefix-sensitivity here shows an empty task list for a project that plainly
     has the task, and the entry gets posted against the wrong task id.
     """
-    _write_pages(tmp_path, {"harvest_assignments.json": _page(1, 1, [
-        _project(1, "CON-1", "Consulting", [
+    write_catalog(tmp_path, {"harvest_assignments.json": assignments_page(1, 1, [
+        project(1, "CON-1", "Consulting", [
             {"billable": True, "task": {"id": 10, "name": "Gen - Development/Configuration"}},
             {"billable": False, "task": {"id": 11, "name": "Meeting - Standup Meetings"}}])])})
 
@@ -289,8 +256,8 @@ def test_billable_comes_from_the_task_assignments_own_flag_not_from_the_task_nam
     assignment carries the real flag. Reading the name instead misreports billability,
     and billability is the field an invoice is built from.
     """
-    _write_pages(tmp_path, {"harvest_assignments.json": _page(1, 1, [
-        _project(1, "CON-1", "Consulting", [
+    write_catalog(tmp_path, {"harvest_assignments.json": assignments_page(1, 1, [
+        project(1, "CON-1", "Consulting", [
             # Name says non-billable, flag says billable — and the reverse.
             {"billable": True, "task": {"id": 10, "name": "Gen - Development (NB)"}},
             {"billable": False, "task": {"id": 11, "name": "Billable Development"}}])])})
@@ -305,7 +272,7 @@ def test_a_project_with_no_task_assignments_returns_an_empty_task_list(tmp_path)
     assignment being set up). The lookup has to still report the project and its id — a
     crash here takes out every other match in the same run.
     """
-    _write_pages(tmp_path, {"harvest_assignments.json": _page(1, 1, [
+    write_catalog(tmp_path, {"harvest_assignments.json": assignments_page(1, 1, [
         {"project": {"id": 1, "code": "BARE-1", "name": "No tasks yet"}}])})
 
     matches = hl.lookup("BARE-1", str(tmp_path))

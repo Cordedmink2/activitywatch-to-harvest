@@ -16,24 +16,10 @@ import pytest
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "scripts")
 sys.path.insert(0, SCRIPTS)
 import afk_blocks as ab
-from support import fixed
+from support import day, fixed
 
 DAY = dt.date(2026, 5, 28)
-
-
-def ev(hhmm, minutes, status):
-    """One AW afk event: starts at UTC hh:mm on DAY, runs `minutes` long."""
-    h, m = hhmm.split(":")
-    return {
-        "timestamp": f"{DAY.isoformat()}T{h}:{m}:00+00:00",
-        "duration": minutes * 60,
-        "data": {"status": status},
-    }
-
-
-def at(hhmm):
-    h, m = (int(x) for x in hhmm.split(":"))
-    return dt.datetime.combine(DAY, dt.time(h, m), tzinfo=dt.timezone.utc)
+D = day(offset=0)
 
 
 def hhmm(d):
@@ -42,25 +28,27 @@ def hhmm(d):
 
 def test_dedupe_heartbeats_keeps_the_longest_duration_per_timestamp():
     """AW re-emits an ongoing event at the same timestamp with a growing duration."""
-    events = [ev("09:00", 5, "not-afk"), ev("09:00", 40, "not-afk"), ev("09:00", 20, "not-afk")]
+    events = [D.event("09:00", minutes=5, status="not-afk"),
+              D.event("09:00", minutes=40, status="not-afk"),
+              D.event("09:00", minutes=20, status="not-afk")]
     kept = ab.dedupe_heartbeats(events)
     assert len(kept) == 1
     assert kept[0]["duration"] == 40 * 60
 
 
 def test_to_spans_gives_start_end_status_and_duration():
-    spans = ab.to_spans([ev("09:00", 30, "not-afk")])
+    spans = ab.to_spans([D.event("09:00", minutes=30, status="not-afk")])
     start, end, status, dur = spans[0]
     assert (hhmm(start), hhmm(end), status, dur) == ("09:00", "09:30", "not-afk", 1800)
 
 
 def test_work_bounds_runs_first_to_last_not_afk():
     spans = ab.to_spans([
-        ev("08:00", 60, "afk"),        # not at work yet
-        ev("09:00", 90, "not-afk"),
-        ev("10:30", 30, "afk"),
-        ev("11:00", 60, "not-afk"),
-        ev("12:00", 300, "afk"),       # done for the day
+        D.event("08:00", minutes=60, status="afk"),        # not at work yet
+        D.event("09:00", minutes=90, status="not-afk"),
+        D.event("10:30", minutes=30, status="afk"),
+        D.event("11:00", minutes=60, status="not-afk"),
+        D.event("12:00", minutes=300, status="afk"),       # done for the day
     ])
     bounds = ab.work_bounds(spans)
     assert bounds is not None
@@ -71,9 +59,9 @@ def test_work_bounds_runs_first_to_last_not_afk():
 def test_work_bounds_flags_a_late_flicker_as_a_blip():
     """A one-minute mouse nudge hours after real work must not stretch the day."""
     spans = ab.to_spans([
-        ev("09:00", 120, "not-afk"),
-        ev("11:00", 180, "afk"),
-        ev("14:00", 1, "not-afk"),     # the flicker
+        D.event("09:00", minutes=120, status="not-afk"),
+        D.event("11:00", minutes=180, status="afk"),
+        D.event("14:00", minutes=1, status="not-afk"),     # the flicker
     ])
     bounds = ab.work_bounds(spans)
     assert bounds is not None
@@ -83,31 +71,32 @@ def test_work_bounds_flags_a_late_flicker_as_a_blip():
 
 
 def test_work_bounds_returns_none_for_a_day_with_no_activity():
-    assert ab.work_bounds(ab.to_spans([ev("09:00", 480, "afk")])) is None
+    assert ab.work_bounds(ab.to_spans([D.event("09:00", minutes=480, status="afk")])) is None
 
 
 def test_work_bounds_reports_only_bounds():
     """The whole-day activity total is not a bound - it belongs to its own function,
     where it gets tested rather than riding along untested inside this struct."""
-    bounds = ab.work_bounds(ab.to_spans([ev("09:00", 60, "not-afk")]))
+    bounds = ab.work_bounds(ab.to_spans([D.event("09:00", minutes=60, status="not-afk")]))
     assert bounds is not None
     assert set(bounds) == {"work_start", "work_end", "last_solid_end", "blip"}
 
 
 def test_total_active_seconds_sums_only_not_afk_time():
-    spans = ab.to_spans([ev("09:00", 60, "not-afk"), ev("10:00", 30, "afk"),
-                         ev("10:30", 45, "not-afk")])
+    spans = ab.to_spans([D.event("09:00", minutes=60, status="not-afk"),
+                         D.event("10:00", minutes=30, status="afk"),
+                         D.event("10:30", minutes=45, status="not-afk")])
     assert ab.total_active_seconds(spans) == (60 + 45) * 60
 
 
 def test_find_breaks_ignores_afk_outside_the_workday():
     """The long afk before the first and after the last activity isn't a break."""
     spans = ab.to_spans([
-        ev("06:00", 180, "afk"),       # before work
-        ev("09:00", 60, "not-afk"),
-        ev("10:00", 30, "afk"),        # a real break
-        ev("10:30", 60, "not-afk"),
-        ev("11:30", 300, "afk"),       # after work
+        D.event("06:00", minutes=180, status="afk"),       # before work
+        D.event("09:00", minutes=60, status="not-afk"),
+        D.event("10:00", minutes=30, status="afk"),        # a real break
+        D.event("10:30", minutes=60, status="not-afk"),
+        D.event("11:30", minutes=300, status="afk"),       # after work
     ])
     bounds = ab.work_bounds(spans)
     assert bounds is not None
@@ -117,9 +106,9 @@ def test_find_breaks_ignores_afk_outside_the_workday():
 
 def test_find_breaks_ignores_afk_shorter_than_the_threshold():
     spans = ab.to_spans([
-        ev("09:00", 60, "not-afk"),
-        ev("10:00", 10, "afk"),        # 10 min < 17.5 min threshold
-        ev("10:10", 60, "not-afk"),
+        D.event("09:00", minutes=60, status="not-afk"),
+        D.event("10:00", minutes=10, status="afk"),        # 10 min < 17.5 min threshold
+        D.event("10:10", minutes=60, status="not-afk"),
     ])
     bounds = ab.work_bounds(spans)
     assert bounds is not None
@@ -128,11 +117,11 @@ def test_find_breaks_ignores_afk_shorter_than_the_threshold():
 
 def test_active_spans_folds_short_afk_in_and_splits_on_a_real_break():
     spans = ab.to_spans([
-        ev("09:00", 60, "not-afk"),
-        ev("10:00", 5, "afk"),         # short: folded in
-        ev("10:05", 55, "not-afk"),
-        ev("11:00", 40, "afk"),        # real break: splits
-        ev("11:40", 60, "not-afk"),
+        D.event("09:00", minutes=60, status="not-afk"),
+        D.event("10:00", minutes=5, status="afk"),         # short: folded in
+        D.event("10:05", minutes=55, status="not-afk"),
+        D.event("11:00", minutes=40, status="afk"),        # real break: splits
+        D.event("11:40", minutes=60, status="not-afk"),
     ])
     assert [(hhmm(s), hhmm(e)) for s, e in ab.active_spans(spans, ab.DEFAULT_THRESHOLD)] == [
         ("09:00", "11:00"), ("11:40", "12:40"),
@@ -140,21 +129,22 @@ def test_active_spans_folds_short_afk_in_and_splits_on_a_real_break():
 
 
 def test_active_seconds_clips_to_the_requested_window():
-    spans = ab.to_spans([ev("09:00", 60, "not-afk"), ev("10:30", 60, "not-afk")])
+    spans = ab.to_spans([D.event("09:00", minutes=60, status="not-afk"),
+                         D.event("10:30", minutes=60, status="not-afk")])
     # 09:30-11:00 catches the tail of the first span (30 min) and half the second (30 min).
-    assert ab.active_seconds(spans, at("09:30"), at("11:00")) == 60 * 60
+    assert ab.active_seconds(spans, D.at("09:30"), D.at("11:00")) == 60 * 60
 
 
 def test_active_seconds_ignores_afk_time():
-    spans = ab.to_spans([ev("09:00", 60, "afk")])
-    assert ab.active_seconds(spans, at("09:00"), at("10:00")) == 0
+    spans = ab.to_spans([D.event("09:00", minutes=60, status="afk")])
+    assert ab.active_seconds(spans, D.at("09:00"), D.at("10:00")) == 0
 
 
 def test_uncovered_segments_reports_active_time_the_proposed_blocks_miss():
     """The under-billing guard: an hour of real work left out of the blocks."""
-    spans = ab.to_spans([ev("09:00", 180, "not-afk")])          # 09:00-12:00 active
+    spans = ab.to_spans([D.event("09:00", minutes=180, status="not-afk")])  # 09:00-12:00 active
     active = ab.active_spans(spans, ab.DEFAULT_THRESHOLD)
-    proposed = [(at("09:00"), at("11:00"))]                     # 11:00-12:00 unbilled
+    proposed = [(D.at("09:00"), D.at("11:00"))]                     # 11:00-12:00 unbilled
     gaps = ab.uncovered_segments(spans, active, proposed)
     assert [(hhmm(s), hhmm(e)) for s, e, _ in gaps] == [("11:00", "12:00")]
     assert gaps[0][2] == 60 * 60
@@ -162,16 +152,17 @@ def test_uncovered_segments_reports_active_time_the_proposed_blocks_miss():
 
 def test_uncovered_segments_ignores_slivers_under_fifteen_minutes():
     """Rounding a block to the nearest quarter hour shouldn't raise a flag."""
-    spans = ab.to_spans([ev("09:00", 130, "not-afk")])          # 09:00-11:10
+    spans = ab.to_spans([D.event("09:00", minutes=130, status="not-afk")])          # 09:00-11:10
     active = ab.active_spans(spans, ab.DEFAULT_THRESHOLD)
-    proposed = [(at("09:00"), at("11:00"))]                     # 10 min left over
+    proposed = [(D.at("09:00"), D.at("11:00"))]                     # 10 min left over
     assert ab.uncovered_segments(spans, active, proposed) == []
 
 
 def test_uncovered_segments_is_empty_when_the_blocks_cover_everything():
-    spans = ab.to_spans([ev("09:00", 60, "not-afk"), ev("11:00", 60, "not-afk")])
+    spans = ab.to_spans([D.event("09:00", minutes=60, status="not-afk"),
+                         D.event("11:00", minutes=60, status="not-afk")])
     active = ab.active_spans(spans, ab.DEFAULT_THRESHOLD)
-    proposed = [(at("09:00"), at("10:00")), (at("11:00"), at("12:00"))]
+    proposed = [(D.at("09:00"), D.at("10:00")), (D.at("11:00"), D.at("12:00"))]
     assert ab.uncovered_segments(spans, active, proposed) == []
 
 
@@ -234,11 +225,11 @@ def test_data_hole_with_no_events_is_reported_as_a_break():
     find_breaks() cannot see it. Real 2026-08-18 day: a 47-min lunch produced no event
     at all and the skeleton reported `breaks: (none)`."""
     spans = ab.insert_data_gaps(ab.to_spans([
-        ev("09:00", 120, "not-afk"),   # 09:00-11:00
+        D.event("09:00", minutes=120, status="not-afk"),   # 09:00-11:00
         # watcher stops entirely: no events at all 11:00-12:00
-        ev("12:00", 60, "not-afk"),    # 12:00-13:00
+        D.event("12:00", minutes=60, status="not-afk"),    # 12:00-13:00
     ]), ab.DEFAULT_THRESHOLD)
-    breaks = ab.find_breaks(spans, at("09:00"), at("13:00"), ab.DEFAULT_THRESHOLD)
+    breaks = ab.find_breaks(spans, D.at("09:00"), D.at("13:00"), ab.DEFAULT_THRESHOLD)
     assert [(hhmm(s), hhmm(e)) for s, e, _ in breaks] == [("11:00", "12:00")]
 
 
@@ -246,8 +237,8 @@ def test_data_hole_splits_the_active_span_rather_than_merging_across_it():
     """Without this the two work runs merge into one 09:00-13:00 span and the day reads
     as four unbroken hours of activity."""
     spans = ab.insert_data_gaps(ab.to_spans([
-        ev("09:00", 120, "not-afk"),
-        ev("12:00", 60, "not-afk"),
+        D.event("09:00", minutes=120, status="not-afk"),
+        D.event("12:00", minutes=60, status="not-afk"),
     ]), ab.DEFAULT_THRESHOLD)
     got = ab.active_spans(spans, ab.DEFAULT_THRESHOLD)
     assert [(hhmm(s), hhmm(e)) for s, e in got] == [("09:00", "11:00"), ("12:00", "13:00")]
@@ -256,10 +247,10 @@ def test_data_hole_splits_the_active_span_rather_than_merging_across_it():
 def test_short_data_hole_is_not_a_break():
     """A brief hole is the watcher's own cadence, not an absence - fold it in."""
     spans = ab.insert_data_gaps(ab.to_spans([
-        ev("09:00", 120, "not-afk"),
-        ev("11:05", 55, "not-afk"),    # 5-min hole, well under threshold
+        D.event("09:00", minutes=120, status="not-afk"),
+        D.event("11:05", minutes=55, status="not-afk"),    # 5-min hole, well under threshold
     ]), ab.DEFAULT_THRESHOLD)
-    assert ab.find_breaks(spans, at("09:00"), at("12:00"), ab.DEFAULT_THRESHOLD) == []
+    assert ab.find_breaks(spans, D.at("09:00"), D.at("12:00"), ab.DEFAULT_THRESHOLD) == []
     assert len(ab.active_spans(spans, ab.DEFAULT_THRESHOLD)) == 1
 
 
@@ -267,12 +258,13 @@ def test_a_break_from_a_data_hole_is_distinguishable_from_a_recorded_afk_break()
     """Both are breaks, but only a recorded afk proves the user was at the desk and idle.
     A watcher outage must not be presented as an observed break."""
     spans = ab.insert_data_gaps(ab.to_spans([
-        ev("09:00", 60, "not-afk"),
-        ev("10:00", 30, "afk"),        # recorded: user idle at the desk
-        ev("10:30", 30, "not-afk"),
+        D.event("09:00", minutes=60, status="not-afk"),
+        D.event("10:00", minutes=30, status="afk"),        # recorded: user idle at the desk
+        D.event("10:30", minutes=30, status="not-afk"),
         # hole 11:00-12:00: watcher stopped entirely
-        ev("12:00", 60, "not-afk"),
+        D.event("12:00", minutes=60, status="not-afk"),
     ]), ab.DEFAULT_THRESHOLD)
     kinds = {(hhmm(s), hhmm(e)): ab.break_kind(spans, s, e)
-             for s, e, _ in ab.find_breaks(spans, at("09:00"), at("13:00"), ab.DEFAULT_THRESHOLD)}
+             for s, e, _ in ab.find_breaks(
+                 spans, D.at("09:00"), D.at("13:00"), ab.DEFAULT_THRESHOLD)}
     assert kinds == {("10:00", "10:30"): "afk", ("11:00", "12:00"): "gap"}

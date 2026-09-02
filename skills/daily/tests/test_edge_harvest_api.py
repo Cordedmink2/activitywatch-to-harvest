@@ -16,13 +16,8 @@ would pass whether or not the guard it names still exists. The gate's own contra
 """
 from __future__ import annotations
 
-import contextlib
 import datetime as dt
-import gc
 import re
-import threading
-import warnings
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -33,12 +28,11 @@ import harvest_list as hlist
 import harvest_patch as hp
 import harvest_post as hpost
 import skill_config
-from support import run_cli
+from support import CREATE_ARGS, NO_BODY, resource_warnings_from, run_cli
 
-POST_ARGS = ["48084036", "20753151", "2026-08-12", "09:00", "10:30", "Wrote the edge tests",
-             "--confirm"]
-ENTRY_ID = "2988748904"
 CONFIRM = "--confirm"
+POST_ARGS = [*CREATE_ARGS, CONFIRM]
+ENTRY_ID = "2988748904"
 
 
 # ======================================================================================
@@ -69,7 +63,7 @@ def test_post_always_sends_started_and_ended_time_and_never_a_bare_hours_field(l
         "spent_date": "2026-08-12",
         "started_time": "09:00",
         "ended_time": "10:30",
-        "notes": "Wrote the edge tests",
+        "notes": "Drafted the spec",
     }
 
 
@@ -261,13 +255,11 @@ def test_a_failed_request_does_not_leak_its_error_response(live_harvest):
     """
     live_harvest({("POST", "/time_entries"): (422, {"message": "Task is not assigned"})})
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    def attempt():
         with pytest.raises(RuntimeError):
             hc.request("POST", "/time_entries", body={"project_id": 1})
-        gc.collect()
 
-    assert [w for w in caught if issubclass(w.category, ResourceWarning)] == []
+    assert resource_warnings_from(attempt) == []
 
 
 def test_a_huge_error_body_is_capped_at_300_characters(live_harvest):
@@ -284,17 +276,12 @@ def test_a_huge_error_body_is_capped_at_300_characters(live_harvest):
     assert "TAIL-SENTINEL" not in message
 
 
-def test_an_empty_response_body_reads_as_an_empty_dict(monkeypatch):
+def test_an_empty_response_body_reads_as_an_empty_dict(live_harvest):
     """Harvest answers a DELETE with `200` and zero bytes. `json.loads("")` raises, so an
     unguarded parse turns a successful call into a traceback from inside the client.
-
-    `support.FakeServer` always `json.dumps` its payload and so can never send an empty
-    body; this is the one case that needs a raw server.
-    """
-    with _raw_http(200, b"") as base:
-        monkeypatch.setattr(hc, "API_BASE", f"{base}/v2")
-        monkeypatch.setattr(hc, "_CREDS_CACHE", ("test-account", "test-key"))
-        assert hc.request("DELETE", "/time_entries/1") == {}
+    `NO_BODY` is the fake sending nothing — not `null`, which is four bytes of JSON."""
+    live_harvest({("DELETE", "/time_entries/1"): (200, NO_BODY)})
+    assert hc.request("DELETE", "/time_entries/1") == {}
 
 
 def test_every_request_carries_the_account_bearer_and_user_agent_headers(live_harvest):
@@ -776,43 +763,3 @@ def test_the_default_listing_is_unchanged_by_the_flag_existing(live_harvest):
     r = run_cli(hlist, ["2026-08-12"])
     assert r.code == 0
     assert r.lines[0].split()[0] == "101"
-
-
-# ======================================================================================
-# A raw HTTP server, for the one response shape FakeServer cannot express
-# ======================================================================================
-
-@contextlib.contextmanager
-def _raw_http(status: int, raw: bytes):
-    """Serve one fixed byte string to every request; yield the base URL.
-
-    `support.FakeServer` renders its payload with `json.dumps`, which has no output for
-    "no body at all" — `None` becomes the four bytes `null`. Only a handler writing
-    `Content-Length: 0` produces the empty response Harvest sends for a DELETE.
-    """
-    class _H(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-
-        def log_message(self, format, *args):
-            pass
-
-        def _run(self):
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(raw)))
-            self.end_headers()
-            if raw:
-                self.wfile.write(raw)
-
-        do_GET = do_POST = do_PATCH = do_DELETE = _run
-
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _H)
-    thread = threading.Thread(target=srv.serve_forever,
-                              kwargs={"poll_interval": 0.01}, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{srv.server_address[1]}"
-    finally:
-        srv.shutdown()
-        srv.server_close()
-        thread.join(timeout=5)

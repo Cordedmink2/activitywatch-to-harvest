@@ -21,11 +21,8 @@ kinds the rules name are checked against the glossary in `CONTEXT.md`, which is 
 makes the glossary load-bearing rather than decorative.
 """
 
-import re
-from pathlib import Path
+from shipped import CONTEXT_MD, REPO, SKILLS, skill_dirs, table_cells
 
-REPO = Path(__file__).resolve().parents[1]
-SKILLS = REPO / "skills"
 SKILL = SKILLS / "daily"
 
 # The literal task names of the one account the rules used to be written against.
@@ -56,8 +53,13 @@ def shipped_rules():
 
     Every shipped skill, discovered rather than listed: a skill added to the plugin and
     left out of this walk would be the one place the old vocabulary could come back.
+
+    Narrower than `shipped.shipped_text()`, deliberately. That one joins every markdown
+    file under a skill; this one names `SKILL.md`, `references/` and `scripts/` — and
+    yields paths rather than text, because an offender has to be reported with a file and
+    a line number or nobody can find it.
     """
-    for skill in sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file()):
+    for skill in skill_dirs():
         yield skill / "SKILL.md"
         yield from sorted((skill / "references").glob("*.md"))
         yield from sorted((skill / "scripts").glob("*.py"))
@@ -79,32 +81,8 @@ def test_no_provider_task_name_appears_in_the_shipped_rules():
 
 # --- the work kinds the rules name are the ones the glossary defines --------------------
 
-CODE = re.compile(r"`([^`]+)`")
-
-
-def table_cells(text: str, header: str, column: int) -> list[str]:
-    """Every backticked cell in one column of the markdown table whose header row is
-    `header`. Keyed on the header text rather than a line number so either document can
-    be re-ordered without silently emptying the check."""
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        if line.strip() == header:
-            break
-    else:
-        raise AssertionError(f"no table headed {header!r} — the check has nothing to read")
-    found = []
-    for line in lines[i + 2:]:                       # skip the `|---|---|` separator
-        if not line.strip().startswith("|"):
-            break
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if column < len(cells):
-            found += CODE.findall(cells[column])
-    assert found, f"the table headed {header!r} parsed to nothing"
-    return found
-
-
 def glossary_work_kinds() -> list[str]:
-    return table_cells((REPO / "CONTEXT.md").read_text(encoding="utf-8"),
+    return table_cells(CONTEXT_MD.read_text(encoding="utf-8"),
                        "| Work kind | The block was |", 0)
 
 

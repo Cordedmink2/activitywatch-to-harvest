@@ -68,6 +68,15 @@ no second date. `.locked()` and `.thin()` exist because those two shapes — a l
 break detector cannot see, and real work whose ratio reads idle — are what the skill gets
 wrong, and they should cost one line to write.
 
+A test that calls a function directly, with a list of events rather than a served day,
+builds each one with `.event()` on the same day — `d.event("10:17:29", seconds=1049,
+status="afk")`, or `minutes=` when that is the unit the test reasons in. The clock
+takes seconds and the second-pass marker like everything else on a `Day`, so a boundary
+one second either side of a threshold, or an event inside a repeated hour, is written the
+same way as the rest of the suite rather than with a builder of the file's own. Every
+timestamp comes out in one spelling, which matters: `dedupe_heartbeats` sorts on the raw
+string.
+
 ### Dating a day: `offset=` or `zone=`, never both
 
 A day is written at a fixed `offset` (default UTC+12) unless you pass `zone=` an IANA name:
@@ -115,6 +124,19 @@ localhost, not mocks of the code under test — so `main()` gets exercised end t
 including URL construction, bucket discovery and the unreachable-server path. Both record
 every request, which is how the "`harvest_post` must never send a bare `hours` field"
 invariant is pinned: assert on the body that was sent, not on what the script printed.
+
+A route's payload is JSON-serialised, so a route that must answer with no body at all —
+Harvest's reply to a DELETE — returns `support.NO_BODY` rather than `None`, which would go
+out as the four bytes `null`. The provider's project catalog has builders of its own:
+`project()` / `task()` / `assignments_page()` shape the rows as the API returns them,
+`paged_assignments()` turns a list of pages into routes for the fake (with an optional
+page that fails), and `write_catalog()` writes pages to disk the way `refresh_catalogs`
+leaves them, for tests of the read path.
+
+`support.CREATE_ARGS` is the one well-formed create, without the gate; append `--confirm`
+to post. `support.resource_warnings_from(fn)` is how a leaked response is asserted closed:
+the warning fires from a destructor at collection time, so left to chance it fails
+whichever unrelated test the collector interrupts.
 
 ## Marking a defect
 

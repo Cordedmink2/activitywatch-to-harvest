@@ -13,21 +13,20 @@ somewhere else in the tree — which is the only kind of prose worth a test.
 """
 
 import re
-from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
-SKILLS = REPO / "skills"
+import shipped
+from shipped import REPO, SKILLS
+
 SETUP = SKILLS / "setup"
 SETUP_MD = SETUP / "SKILL.md"
 SCREENSHOT_SETUP = SKILLS / "daily" / "scripts" / "setup_screenshot_pipeline.ps1"
 
 
-def setup_text() -> str:
-    """Empty when the skill is absent, so that reads as one failed test rather than a
-    collection error that takes the rest of this module down with it."""
-    return SETUP_MD.read_text(encoding="utf-8") if SETUP_MD.is_file() else ""
+def skill_text() -> str:
+    """This skill's own `SKILL.md`."""
+    return shipped.skill_md_text(SETUP)
 
 
 def shipped_text() -> str:
@@ -36,15 +35,12 @@ def shipped_text() -> str:
     Which file a given sentence lives in is an editorial decision that should stay free to
     change; that it is somewhere in the skill is the promise.
     """
-    parts = [setup_text()]
-    parts += [p.read_text(encoding="utf-8") for p in sorted(SETUP.rglob("*.md"))
-              if p != SETUP_MD]
-    return "\n".join(parts)
+    return shipped.shipped_text(SETUP)
 
 
 def steps() -> list[tuple[str, str]]:
     """Each `### ` step under `## Steps`, as (heading, body)."""
-    text = setup_text()
+    text = skill_text()
     if "## Steps" not in text:
         return []
     section = text.split("## Steps", 1)[1].split("\n## ", 1)[0]
@@ -140,20 +136,13 @@ def test_a_block_has_to_be_evidenced_before_it_is_escalated():
         "which is the order that produced a wrongly-raised ticket")
 
 
-# The skill has to reach the screenshot setup script, which lives in the `daily` skill
-# beside it. Both names are real: a plugin install keeps the directory name, and the
-# shared Agent Skills export prefixes it, because that directory is flat.
-@pytest.mark.parametrize("sibling", ["daily", "billables-daily"])
-def test_it_can_find_its_sibling_skill_on_either_install_shape(sibling):
-    assert re.search(rf"(?<![\w-]){re.escape(sibling)}(?![\w-])", shipped_text()), (
-        f"the skill never mentions a sibling directory named {sibling}, so one of the two "
-        "install shapes cannot resolve the screenshot setup script")
+# Resolving the `daily` sibling on either install shape is guarded in `test_install_shapes.py`.
 
 
 def test_it_states_when_setup_is_finished():
     """The line between "installed" and "ready to use". Without it the user is left
     guessing whether the silence means done or stuck."""
-    text = setup_text()
+    text = skill_text()
     assert re.search(r"^## .*\b(done|finished|complete)\b", text, re.M | re.I), (
         "SKILL.md has no section that says setup is over")
 
@@ -297,7 +286,7 @@ def test_the_configuration_probe_is_prescribed_rather_than_left_to_the_run():
     setup finished on *three* configured values. A probe that quietly stopped covering the
     timezone would leave the third one asserted in prose and checked by nothing.
     """
-    text = setup_text()
+    text = skill_text()
     # Indented, because the probe sits inside a numbered list item.
     blocks = re.findall(r"^[ \t]*```[a-z]*\n(.*?)^[ \t]*```", text, re.M | re.S)
     probes = [b for b in blocks if all(k in b for k in PROBE_KEYS)]

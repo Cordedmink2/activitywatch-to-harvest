@@ -15,14 +15,12 @@ model ever gets to see.
 from __future__ import annotations
 
 import datetime as dt
-import gc
 import re
-import warnings
 
 import pytest
 
 import activity_timeline as at
-from support import day, run_cli
+from support import day, resource_warnings_from, run_cli
 
 # --------------------------------------------------------------------------------------
 # Fixtures-in-miniature for the pure functions
@@ -32,19 +30,10 @@ ACME_FIRST = [("ACME", re.compile("ACME", re.IGNORECASE)),
               ("BETA", re.compile("BETA", re.IGNORECASE))]
 BETA_FIRST = list(reversed(ACME_FIRST))
 
-_EPOCH = dt.datetime(2026, 6, 19, tzinfo=dt.timezone.utc)
-
-
-def _ev(offset_s: float, duration: float, app: str = "Code.exe", title: str = "",
-        data: dict | None = None) -> dict:
-    """One AW window event, `offset_s` after an arbitrary UTC epoch.
-
-    One fixed timestamp format throughout: `dedupe_heartbeats` sorts on the raw string,
-    so mixing `Z` and `+00:00` suffixes would silently reorder the stream.
-    """
-    ts = (_EPOCH + dt.timedelta(seconds=offset_s)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-    return {"timestamp": ts, "duration": duration,
-            "data": {"app": app, "title": title} if data is None else data}
+# The day the pure-function events are written on, in UTC. Its `event()` renders every
+# timestamp in one spelling, which matters here: `dedupe_heartbeats` sorts on the raw
+# string, so a stream mixing `Z` and `+00:00` suffixes would silently reorder.
+D = day(dt.date(2026, 6, 19), offset=0)
 
 
 def _loaded(live_aw, classes: list[dict], **kw):
@@ -73,7 +62,8 @@ def test_an_event_of_exactly_five_seconds_is_kept_as_activity():
     """`NOISE_FLOOR` is a `<` test, so five seconds is the shortest thing that counts.
     Were it a `<=`, every glance at a client's window that lasted exactly the floor would
     vanish, and the day would read as if that client had never been opened at all."""
-    spans = at.build_window_spans([_ev(0, 5, "Code.exe", "CMS - ACME")], ACME_FIRST)
+    spans = at.build_window_spans([D.event("00:00", seconds=5, app="Code.exe", title="CMS - ACME")],
+                                  ACME_FIRST)
     assert len(spans) == 1
     assert spans[0]["category"] == "ACME"
 
@@ -82,15 +72,16 @@ def test_an_event_just_under_five_seconds_is_dropped_as_tab_switch_noise():
     """A tab flicked through on the way somewhere else must not open a span. If it did,
     passing through a client's tab would plant that client's name in the middle of another
     client's block, which is the misattribution the noise floor exists to prevent."""
-    assert at.build_window_spans([_ev(0, 4.9, "Code.exe", "CMS - ACME")], ACME_FIRST) == []
+    assert at.build_window_spans([D.event("00:00", seconds=4.9, app="Code.exe", title="CMS - ACME")],
+                                 ACME_FIRST) == []
 
 
 def test_a_gap_of_exactly_sixty_seconds_breaks_a_span_in_two():
     """`GAP_FOLD` is a `<` test: a full minute away from the keyboard ends the span. The
     two halves stay separately timestamped, so a reader can see the minute of nothing
     rather than being shown one continuous stretch that was never continuous."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
-           _ev(120, 60, "Code.exe", "CMS - ACME")]      # ends 60s, next starts 120s
+    evs = [D.event("00:00", seconds=60, app="Code.exe", title="CMS - ACME"),
+           D.event("00:02", seconds=60, app="Code.exe", title="CMS - ACME")]  # ends 60s, next starts 120s
     spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 2
     assert [s["category"] for s in spans] == ["ACME", "ACME"]
@@ -100,8 +91,8 @@ def test_a_gap_of_fifty_nine_seconds_folds_into_one_span():
     """Below the fold the same-category halves become one span. Without this the timeline
     would shatter every real hour of work into dozens of rows, and the substantive blocks
     the skill is looking for would be buried under its own noise."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
-           _ev(119, 60, "Code.exe", "CMS - ACME")]      # ends 60s, next starts 119s
+    evs = [D.event("00:00", seconds=60, app="Code.exe", title="CMS - ACME"),
+           D.event("00:01:59", seconds=60, app="Code.exe", title="CMS - ACME")]  # ends 60s, next starts 119s
     spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 1
     assert (spans[0]["end"] - spans[0]["start"]).total_seconds() == 179
@@ -111,8 +102,8 @@ def test_two_touching_events_with_different_categories_stay_two_spans():
     """Zero gap is not a reason to merge. Switching straight from one client's window to
     another's is the commonest boundary in a real day, and folding it would hand the
     second client's minutes to the first under the first client's name."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
-           _ev(60, 60, "Code.exe", "Portal - BETA")]
+    evs = [D.event("00:00", seconds=60, app="Code.exe", title="CMS - ACME"),
+           D.event("00:01", seconds=60, app="Code.exe", title="Portal - BETA")]
     spans = at.build_window_spans(evs, ACME_FIRST)
     assert [s["category"] for s in spans] == ["ACME", "BETA"]
     assert spans[0]["end"] == spans[1]["start"], "the two spans must abut, not overlap"
@@ -126,7 +117,7 @@ def test_an_event_with_no_app_key_is_categorised_from_its_title():
     """Some watcher builds omit `app` entirely. The script must fall back rather than
     raise: a `KeyError` here kills the whole timeline, so one malformed event costs the
     skill its view of the entire day and it falls back to guessing from memory."""
-    evs = [_ev(0, 60, data={"title": "CMS Board - ACME"})]
+    evs = [D.event("00:00", seconds=60, data={"title": "CMS Board - ACME"})]
     spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 1
     assert spans[0]["category"] == "ACME"
@@ -138,7 +129,7 @@ def test_an_event_with_a_missing_or_null_title_still_produces_a_span(data):
     """A titleless window is not a broken one — it is a splash screen, or an app that has
     not painted yet. It has to land as an uncategorized span the reader can see and ask
     about, not disappear and not take the timeline down with it."""
-    spans = at.build_window_spans([_ev(0, 60, data=data)], ACME_FIRST)
+    spans = at.build_window_spans([D.event("00:00", seconds=60, data=data)], ACME_FIRST)
     assert len(spans) == 1
     assert spans[0]["category"] == "uncategorized"
 
@@ -147,8 +138,8 @@ def test_a_locked_windows_screen_logs_as_unknown_and_lands_uncategorized():
     """Windows records a locked screen as app `unknown` with an empty title. That stretch
     is the user being *away*; it must read as uncategorized so the skill treats it as time
     to question, never inherit the client of the window that happened to precede it."""
-    evs = [_ev(0, 600, "Code.exe", "CMS - ACME"),
-           _ev(600, 1800, "unknown", "")]
+    evs = [D.event("00:00", seconds=600, app="Code.exe", title="CMS - ACME"),
+           D.event("00:10", seconds=1800, app="unknown", title="")]
     spans = at.build_window_spans(evs, ACME_FIRST)
     assert [s["category"] for s in spans] == ["ACME", "uncategorized"]
     assert spans[1]["categories"] == set()
@@ -179,11 +170,11 @@ def test_an_unavailable_settings_endpoint_does_not_leak_the_error_response(live_
     """
     d = day()
     live_aw(d, settings_status=404)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+
+    def attempt():
         assert at.load_classes() == []
-        gc.collect()
-    assert [w for w in caught if issubclass(w.category, ResourceWarning)] == []
+
+    assert resource_warnings_from(attempt) == []
 
 
 def test_a_timeline_with_no_classes_still_reports_every_span(live_aw):
@@ -251,7 +242,7 @@ def test_the_primary_category_is_the_first_matching_class_in_settings_order():
     """When two clients' rules both match, the winner is decided by AW's own ordering and
     nothing else. Pinned in both directions, because a stable tie-break is the only reason
     the same day categorises the same way twice — and `!MULTI` is what says "check me"."""
-    evs = [_ev(0, 60, "msedge.exe", "ACME board vs BETA migration")]
+    evs = [D.event("00:00", seconds=60, app="msedge.exe", title="ACME board vs BETA migration")]
     assert at.build_window_spans(evs, ACME_FIRST)[0]["category"] == "ACME"
     assert at.build_window_spans(evs, BETA_FIRST)[0]["category"] == "BETA"
 
@@ -273,7 +264,7 @@ def test_the_rollup_gives_an_ambiguous_event_wholly_to_its_primary_category():
     about how the minutes actually divided, so any split would be invented precision — a
     plausible wrong number in place of a flagged one.
     """
-    evs = [_ev(0, 600, "msedge.exe", "ACME board vs BETA migration")]
+    evs = [D.event("00:00", seconds=600, app="msedge.exe", title="ACME board vs BETA migration")]
 
     assert at.category_rollup(evs, ACME_FIRST) == {"ACME": 10.0}
     assert at.category_rollup(evs, BETA_FIRST) == {"BETA": 10.0}
@@ -287,8 +278,8 @@ def test_a_span_accumulates_every_category_matched_by_the_events_merged_into_it(
     """`category` names one client; `categories` is the honest list. Merging is what makes
     them diverge, and if the second client's name were dropped at the merge the span would
     look like a clean single-client block that nobody ever thinks to check."""
-    evs = [_ev(0, 60, "Code.exe", "CMS - ACME"),
-           _ev(60, 60, "msedge.exe", "ACME board vs BETA migration")]
+    evs = [D.event("00:00", seconds=60, app="Code.exe", title="CMS - ACME"),
+           D.event("00:01", seconds=60, app="msedge.exe", title="ACME board vs BETA migration")]
     spans = at.build_window_spans(evs, ACME_FIRST)
     assert len(spans) == 1
     assert sorted(spans[0]["categories"]) == ["ACME", "BETA"]
@@ -298,8 +289,8 @@ def test_multi_stays_set_for_the_whole_span_once_any_event_matched_two_clients()
     """The flag is sticky by design: a single ambiguous window contaminates everything
     folded around it. If a later single-client event cleared it, the span would print
     without `!MULTI` and the one thing the skill must never bill unreviewed sails through."""
-    ambiguous = _ev(0, 60, "msedge.exe", "ACME board vs BETA migration")
-    single = _ev(60, 60, "Code.exe", "CMS - ACME")
+    ambiguous = D.event("00:00", seconds=60, app="msedge.exe", title="ACME board vs BETA migration")
+    single = D.event("00:01", seconds=60, app="Code.exe", title="CMS - ACME")
     for order in ([ambiguous, single], [single, ambiguous]):
         spans = at.build_window_spans(order, ACME_FIRST)
         assert len(spans) == 1, "same primary, no gap — these must merge"
@@ -310,11 +301,11 @@ def test_the_rollup_totals_the_event_durations_that_fed_the_spans():
     """The rollup counts *events*, while a span's width counts wall-clock including the
     sub-minute gaps folded inside it. The rollup is the number a day's split between
     clients is argued from, so it has to reconcile against the events, not the spans."""
-    evs = [_ev(0, 600, "Code.exe", "CMS - ACME"),          # 10 min ACME
-           _ev(630, 600, "Code.exe", "CMS - ACME"),        # 10 min ACME, gap folds
-           _ev(1800, 300, "msedge.exe", "Portal - BETA"),   # 5 min BETA
-           _ev(2400, 60, "explorer.exe", "Downloads"),     # 1 min uncategorized
-           _ev(2500, 4, "explorer.exe", "Downloads")]      # noise, counted nowhere
+    evs = [D.event("00:00", seconds=600, app="Code.exe", title="CMS - ACME"),       # 10 min ACME
+           D.event("00:10:30", seconds=600, app="Code.exe", title="CMS - ACME"),    # 10 min ACME, gap folds
+           D.event("00:30", seconds=300, app="msedge.exe", title="Portal - BETA"),  # 5 min BETA
+           D.event("00:40", seconds=60, app="explorer.exe", title="Downloads"),     # 1 min uncategorized
+           D.event("00:41:40", seconds=4, app="explorer.exe", title="Downloads")]   # noise, counted nowhere
     assert at.category_rollup(evs, ACME_FIRST) == {
         "ACME": 20.0, "BETA": 5.0, "uncategorized": 1.0}
     # ...and the merged span is wider than the events inside it, which is why the two

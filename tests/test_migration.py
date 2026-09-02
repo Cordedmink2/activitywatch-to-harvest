@@ -18,11 +18,11 @@ not do is go silent about a key that still exists in someone's `.env`.
 """
 
 import re
-from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
+from shipped import REPO
+
 README = REPO / "README.md"
 
 # Where the retired installer put the skill. Named here rather than guarded against,

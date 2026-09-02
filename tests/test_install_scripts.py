@@ -15,19 +15,11 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
+from shipped import REPO, SKILLS, released_version, skill_dirs
+
 INSTALL = REPO / "install"
-SKILL = REPO / "skills" / "daily"
+SKILL = SKILLS / "daily"
 PLUGIN_NAME = "billables"
-
-
-def shipped_skills() -> list[Path]:
-    """Every skill directory the plugin ships. Globbed rather than listed, because a
-    hand-maintained list leaves the next skill added silently unguarded while the suite
-    still reports green."""
-    return sorted(p for p in (REPO / "skills").iterdir() if (p / "SKILL.md").is_file())
-
-
 
 PS_SCRIPTS = [
     INSTALL / "install_skill.ps1",
@@ -157,19 +149,41 @@ def test_sh_install_preserves_an_existing_env_file(tmp_path):
     assert (skills / EXPORTED / "SKILL.md").is_file(), "skill files missing after update"
 
 
+def clone_source_tree(dest: Path) -> Path:
+    """A copy of the three directories the installer reads, as a source tree of its own.
+
+    `install_skill.sh` resolves the generator from its own location and the generator
+    resolves the plugin from its, so relocating the whole shape is what gives a test a
+    source tree it may write into — the scripts themselves keep the paths they ship with.
+
+    `__pycache__`, `.pytest_cache` and `.env` are left behind: the first two are scratch
+    that would only slow the copy, and the third is the maintainer's real credentials,
+    which have no business being duplicated anywhere. A test that wants a source `.env`
+    writes its own.
+    """
+    ignore = shutil.ignore_patterns("__pycache__", ".pytest_cache", ".env")
+    for part in ("install", "skills", ".claude-plugin"):
+        shutil.copytree(REPO / part, dest / part, ignore=ignore)
+    return dest
+
+
 @requires_bash
 def test_sh_install_still_excludes_a_source_env(tmp_path):
-    """A maintainer's own `.env` sitting in the clone must not ship to anyone."""
-    source_env = SKILL / ".env"
-    assert not source_env.exists(), "test would clobber a real .env in the working tree"
-    source_env.write_text("HARVEST_API_KEY=pat.maintainer\n", encoding="utf-8")
-    try:
-        skills = tmp_path / "skills"
-        subprocess.run([bash(), posix(INSTALL / "install_skill.sh"), posix(skills)],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
-        assert not (skills / EXPORTED / ".env").exists(), "source .env leaked into the install"
-    finally:
-        os.unlink(source_env)
+    """A maintainer's own `.env` sitting in the clone must not ship to anyone.
+
+    Run against a copy of the source tree rather than the working tree. The `.env` this
+    needs is the very file nothing else may touch: two runs of the suite at once would
+    each write it and each delete it, and whichever finished first would take the other's
+    source file away mid-install.
+    """
+    clone = clone_source_tree(tmp_path / "clone")
+    (clone / "skills" / "daily" / ".env").write_text(
+        "HARVEST_API_KEY=pat.maintainer\n", encoding="utf-8")
+
+    skills = tmp_path / "skills"
+    subprocess.run([bash(), posix(clone / "install" / "install_skill.sh"), posix(skills)],
+                   capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+    assert not (skills / EXPORTED / ".env").exists(), "source .env leaked into the install"
 
 
 EXPORT_SCRIPT = REPO / "install" / "export_agent_skills.py"
@@ -656,15 +670,8 @@ def test_install_excludes_pytest_cache(installed):
 
 def test_install_reports_the_version_it_installed(installed):
     res, _ = installed
-    assert latest_changelog_version() in res.stdout, \
+    assert released_version() in res.stdout, \
         f"installer never says which version it installed:\n{res.stdout}"
-
-
-def latest_changelog_version() -> str:
-    changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
-    match = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.M)
-    assert match, "no released version heading in CHANGELOG.md"
-    return match.group(1)
 
 
 # The skill used to ship its own `VERSION` file, checked against the changelog here. It is
@@ -712,7 +719,7 @@ def test_skill_says_where_the_script_paths_resolve_from():
 # what ships, and the plugin ships more than one skill — scoping it to a named directory
 # left the next skill added uncovered, which is exactly the moment it stops holding.
 INSTRUCTIONS = sorted(
-    p for skill in shipped_skills()
+    p for skill in skill_dirs()
     for p in [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
 )
 

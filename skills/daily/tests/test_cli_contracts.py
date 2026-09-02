@@ -15,15 +15,11 @@ Each test here was written against the failing behaviour first.
 """
 from __future__ import annotations
 
-import ast
 import datetime as dt
-import gc
 import importlib
 import io
 import json
 import sys
-import warnings
-from pathlib import Path
 
 import pytest
 
@@ -33,24 +29,7 @@ import aw_client
 import harvest_client
 import harvest_patch as hp
 import harvest_post as hpost
-from support import day, run_cli
-
-SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-
-
-def resource_warnings_from(fn) -> list:
-    """Run `fn`, force a collection, and return any ResourceWarning it left behind.
-
-    The warning we are hunting is emitted from a destructor during garbage collection,
-    so it has no stack relationship to the code that leaked — which is why it surfaces
-    as an unraisable exception blamed on whichever test happened to be running when the
-    collector fired. Forcing the collection here pins it to its real cause.
-    """
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        fn()
-        gc.collect()
-    return [w for w in caught if issubclass(w.category, ResourceWarning)]
+from support import CREATE_ARGS, day, resource_warnings_from, run_cli
 
 
 # --------------------------------------------------------------------------------------
@@ -226,17 +205,23 @@ def test_the_encoding_fix_is_applied_by_every_cli_that_needs_it(name, monkeypatc
 
 
 @pytest.mark.parametrize("name", UTF8_INLINE)
-def test_the_scripts_that_spawn_nothing_still_fix_their_own_streams(name):
-    """The other half, which has no helper to spy on. Asserted on the source: the
-    reconfigure has to be inside `main()` — at module scope it is the import side effect
-    that issue #21 removed, and absent altogether it is the crash above."""
-    tree = ast.parse((SCRIPTS / f"{name}.py").read_text(encoding="utf-8"))
-    main = next((n for n in tree.body
-                 if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
-    assert main is not None, f"{name} has no main()"
-    reconfigures = [n for n in ast.walk(main) if isinstance(n, ast.Attribute)
-                    and n.attr == "reconfigure"]
-    assert reconfigures, (
+def test_the_scripts_that_spawn_nothing_still_fix_their_own_streams(name, monkeypatch):
+    """The other half, which has no helper to spy on. Asserted on the streams themselves:
+    `main()` is handed real text wrappers on a legacy codepage — what a Windows console
+    is — and has to have made them UTF-8 by the time it prints anything. Inside `main()`,
+    because at module scope it is the import side effect issue #21 removed.
+
+    Not through `run_cli`, which swaps in a `StringIO` that the fix rightly ignores; that
+    is why the sibling test above has to spy on the helper instead."""
+    module = importlib.import_module(name)
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    monkeypatch.setattr(sys, "argv", [name, "--help"])
+    with pytest.raises(SystemExit):
+        module.main()
+    assert (out.encoding, err.encoding) == ("utf-8", "utf-8"), (
         f"{name}.main() never reconfigures its streams, so a non-ASCII character raises "
         "UnicodeEncodeError on a Windows codepage")
 
@@ -251,7 +236,6 @@ def test_the_scripts_that_spawn_nothing_still_fix_their_own_streams(name):
 # the whole gate: a script reached by a model that was never told to bill still writes
 # nothing. So these are tests about a promise the frontmatter cannot keep everywhere.
 
-POST_ARGS = ["48084036", "20753151", "2026-08-12", "09:00", "10:30", "Drafted the spec"]
 PATCH_ARGS = ["2988748904", "--notes", "Reworded for the client"]
 
 
@@ -267,7 +251,7 @@ def test_post_writes_nothing_without_the_confirmation_flag(live_harvest):
     nobody asked for. Asserted against the recorded requests rather than the exit code,
     because a script that posted and *then* printed a preview would pass on the latter."""
     srv = live_harvest({("POST", "/time_entries"): (201, {"id": 4001})})
-    r = run_cli(hpost, POST_ARGS)
+    r = run_cli(hpost, CREATE_ARGS)
 
     assert srv.sent("POST", "/time_entries") == [], "no flag, no write"
     assert r.code == 0, "a missing confirmation is the normal case, not a failure"
@@ -282,8 +266,8 @@ def test_a_post_preview_is_exactly_the_body_a_confirmed_run_sends(live_harvest):
     """
     srv = live_harvest({("POST", "/time_entries"): (201, {"id": 4002})})
 
-    preview = run_cli(hpost, POST_ARGS)
-    confirmed = run_cli(hpost, POST_ARGS + ["--confirm"])
+    preview = run_cli(hpost, CREATE_ARGS)
+    confirmed = run_cli(hpost, CREATE_ARGS + ["--confirm"])
 
     assert preview.code == 0
     assert confirmed.lines == ["OK 4002"], "the flag leaves the success contract alone"
@@ -297,7 +281,7 @@ def test_a_post_preview_cannot_be_read_as_a_posted_entry(live_harvest):
     created; the preview says so in words instead, and names the flag that would post it.
     """
     live_harvest({("POST", "/time_entries"): (201, {"id": 4003})})
-    r = run_cli(hpost, POST_ARGS)
+    r = run_cli(hpost, CREATE_ARGS)
 
     assert not r.out.startswith("OK ")
     assert "--confirm" in r.out

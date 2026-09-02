@@ -25,11 +25,13 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import gc
 import io
 import json
 import sys
 import threading
 import urllib.parse
+import warnings
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -262,6 +264,30 @@ class Day:
 
     # -- rendering ---------------------------------------------------------------------
 
+    def event(self, start: str, *, seconds: float | None = None,
+              minutes: float | None = None, data: dict | None = None, **fields) -> dict:
+        """One rendered AW event on this day, not added to it — for a test that hands a
+        list straight to a function instead of serving a whole day.
+
+            d.event("10:17:29", seconds=1049, status="afk")
+            d.event("09:00", minutes=90, status="not-afk")
+
+        The duration is given in whichever unit the test reasons in, because that is
+        the unit a reader checks it in: a threshold one second either side of 1050 is
+        unreadable in minutes, and a 90-minute block is unreadable in seconds. `start`
+        takes everything `at()` does — seconds, hours past 24, and the marker for the
+        second pass over a repeated hour — which is what the edge suites used to hand-roll
+        their own builders for. The payload is the keyword arguments, or `data=` when the
+        test needs a shape a watcher would never emit.
+        """
+        if (seconds is None) == (minutes is None):
+            raise ValueError("event() takes exactly one of seconds= or minutes=")
+        if data is not None and fields:
+            raise ValueError("event() takes either data= or keyword fields, not both")
+        duration = seconds if seconds is not None else cast(float, minutes) * 60
+        return {"timestamp": iso_z(self.at(start)), "duration": duration,
+                "data": data if data is not None else fields}
+
     def _events(self, rows, data_for) -> list[dict]:
         out = []
         for row in rows:
@@ -327,6 +353,11 @@ def with_heartbeats(events: list[dict], steps: int = 3) -> list[dict]:
 
 Handler = Callable[[str, str, dict, dict | None], tuple[int, object]]
 
+# A response with no body at all — zero bytes, `Content-Length: 0`. Harvest answers a
+# DELETE this way. `json.dumps` cannot say it: `None` comes out as the four bytes `null`,
+# which is a body, and a JSON one. Return this as the payload instead.
+NO_BODY = object()
+
 # What a route in `harvest_server(routes=...)` may be worth. A route value is declared
 # `object` because a bare body is allowed to be anything, which leaves `callable()` as the
 # only way to tell a function route from a body that happens to be one — a runtime question
@@ -367,7 +398,7 @@ class FakeServer:
                     status, payload = outer.handler(method, parsed.path, query, body)
                 except Exception as exc:      # a broken fake must not hang the client
                     status, payload = 500, {"error": repr(exc)}
-                data = json.dumps(payload).encode("utf-8")
+                data = b"" if payload is NO_BODY else json.dumps(payload).encode("utf-8")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
@@ -480,6 +511,87 @@ def harvest_server(routes: dict[tuple[str, str], object] | None = None,
         return 200, payload                         # a bare body means 200
 
     return FakeServer(handler or default_handler)
+
+
+# --------------------------------------------------------------------------------------
+# The provider's project catalog, as the fake serves it and as the scripts cache it
+# --------------------------------------------------------------------------------------
+
+ASSIGNMENTS = ("GET", "/users/me/project_assignments")
+
+
+def task(tid: int, name: str, billable: bool) -> dict:
+    """One task assignment row. `billable` is the assignment's own flag, which is the
+    field an invoice is built from — the "(NB)" in a task's name is a human hint."""
+    return {"billable": billable, "task": {"id": tid, "name": name}}
+
+
+def project(pid: int, code: str, name: str = "Some project", tasks=(),
+            client: str | None = None) -> dict:
+    """One project assignment row, shaped as `/users/me/project_assignments` returns it.
+    `client` is the client's name, which `harvest_lookup` matches on as well as the code
+    and the name; a row without one is what most fixtures need."""
+    row: dict = {"project": {"id": pid, "code": code, "name": name},
+                 "task_assignments": list(tasks)}
+    if client is not None:
+        row["client"] = {"name": client}
+    return row
+
+
+def assignments_page(number: int, last: int, rows=()) -> dict:
+    """One page of the catalog, with Harvest's `next_page` wiring: `None` on the last
+    page, the next number otherwise. `refresh_catalogs` follows that chain, and a fixture
+    that got it wrong would either stop a page early or never stop."""
+    return {"project_assignments": list(rows),
+            "page": number,
+            "total_entries": 7,
+            "next_page": None if number >= last else number + 1}
+
+
+def paged_assignments(pages: list[dict], fail_on: int | None = None) -> dict:
+    """Routes for `harvest_server`: serve `pages[n-1]` for `?page=n`, or a 500 for page
+    `fail_on` — the mid-refresh outage the catalog write path has to survive intact."""
+    def route(query, body):
+        n = int(query.get("page", 1))
+        if n == fail_on:
+            return 500, {"error": "read replica unavailable"}
+        return 200, pages[n - 1]
+    return {ASSIGNMENTS: route}
+
+
+def write_catalog(directory, files: dict[str, object]) -> None:
+    """Write cached catalog pages the way `refresh_catalogs` leaves them on disk: one JSON
+    file per page, `harvest_assignments.json` then `harvest_assignments_p<n>.json`. A test
+    of the read path starts from these rather than from a refresh."""
+    for name, payload in files.items():
+        Path(directory, name).write_text(json.dumps(payload), encoding="utf-8")
+
+
+# --------------------------------------------------------------------------------------
+# Shared fixtures for the write scripts
+# --------------------------------------------------------------------------------------
+
+# A well-formed create, without the confirmation gate: project, task, date, start, end,
+# notes. A test appends `--confirm` when it means to post. One copy, because a test that
+# asserts on the body sent reads its expectation off these values.
+CREATE_ARGS = ["48084036", "20753151", "2026-08-12", "09:00", "10:30", "Drafted the spec"]
+
+
+def resource_warnings_from(fn) -> list:
+    """Run `fn`, force a collection, and return any `ResourceWarning` it left behind.
+
+    The warning being hunted is emitted from a destructor during garbage collection, so it
+    has no stack relationship to the code that leaked — under this suite's
+    `filterwarnings = error` it surfaces as an unraisable exception blamed on whichever
+    test happened to be running when the collector fired. Three independent agents hit
+    exactly that and each blamed a different test. Forcing the collection here pins the
+    warning to its real cause, in the test that owns it.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fn()
+        gc.collect()
+    return [w for w in caught if issubclass(w.category, ResourceWarning)]
 
 
 # --------------------------------------------------------------------------------------

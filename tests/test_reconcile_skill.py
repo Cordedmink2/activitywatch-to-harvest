@@ -23,21 +23,20 @@ the glossary's own table — so an edit over there is what fails here.
 """
 
 import re
-from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
-SKILLS = REPO / "skills"
+import shipped
+from shipped import CONTEXT_MD, QUOTED, SKILLS, table_cells
+
 RECONCILE = SKILLS / "reconcile"
 RECONCILE_MD = RECONCILE / "SKILL.md"
 DAILY_SCRIPTS = SKILLS / "daily" / "scripts"
 
 
 def skill_text() -> str:
-    """Empty when the skill is absent, so that reads as one failed test rather than a
-    collection error that takes the rest of this module down with it."""
-    return RECONCILE_MD.read_text(encoding="utf-8") if RECONCILE_MD.is_file() else ""
+    """This skill's own `SKILL.md`."""
+    return shipped.skill_md_text(RECONCILE)
 
 
 def shipped_text() -> str:
@@ -47,10 +46,7 @@ def shipped_text() -> str:
     file a given sentence ends up in is an editorial decision that should stay free to
     change.
     """
-    parts = [skill_text()]
-    parts += [p.read_text(encoding="utf-8") for p in sorted(RECONCILE.rglob("*.md"))
-              if p != RECONCILE_MD]
-    return "\n".join(parts)
+    return shipped.shipped_text(RECONCILE)
 
 
 def headings() -> list[str]:
@@ -58,12 +54,8 @@ def headings() -> list[str]:
 
 
 def frontmatter() -> dict[str, str]:
-    text = skill_text()
-    if not text.startswith("---"):
-        return {}
-    head = text.split("---", 2)[1]
-    return {m.group(1): m.group(2).strip()
-            for m in re.finditer(r"^([A-Za-z][\w-]*):[ \t]*(.*)$", head, re.M)}
+    """This skill's declared frontmatter, {} when the skill is absent."""
+    return shipped.frontmatter(skill_text())
 
 
 def test_the_reconcile_skill_ships():
@@ -124,14 +116,7 @@ def test_the_days_already_billed_are_dropped_before_anything_is_dispatched():
         "investigates the whole month to find the two days that needed it")
 
 
-# The skill runs the `daily` skill's scripts, so it has to resolve a sibling directory.
-# Both names are real: a plugin install keeps the directory name, and the shared Agent
-# Skills export prefixes it, because that directory is flat.
-@pytest.mark.parametrize("sibling", ["daily", "billables-daily"])
-def test_it_can_find_its_sibling_skill_on_either_install_shape(sibling):
-    assert re.search(rf"(?<![\w-]){re.escape(sibling)}(?![\w-])", shipped_text()), (
-        f"the skill never mentions a sibling directory named {sibling}, so one of the two "
-        "install shapes cannot resolve the scripts it runs")
+# Resolving the `daily` sibling on either install shape is guarded in `test_install_shapes.py`.
 
 
 def test_no_command_leaves_a_script_path_to_resolve_against_the_workspace():
@@ -194,9 +179,9 @@ def test_every_script_it_names_is_one_the_sibling_skill_actually_ships():
     """Pinned across the skill boundary, which is the only place this can go stale: the
     scripts belong to `daily` and nothing in that skill's own tests knows this one reads
     them. A renamed script leaves an instruction that fails as a missing file."""
-    shipped = {p.name for p in DAILY_SCRIPTS.iterdir() if p.is_file()}
+    ships = {p.name for p in DAILY_SCRIPTS.iterdir() if p.is_file()}
     named = set(re.findall(r"scripts/([A-Za-z0-9_]+\.py)", shipped_text()))
-    missing = sorted(named - shipped)
+    missing = sorted(named - ships)
     assert named, "the skill names no script at all — it has nothing to investigate a day with"
     assert not missing, f"named but not shipped by the `daily` skill: {missing}"
 
@@ -211,15 +196,15 @@ def words_to_avoid() -> list[str]:
     source's own `category` keeps that name"; "ticket" is fine where the user's backend
     calls it one), so a bare match on those would fail a document that is using them
     correctly. The phrases are unambiguous.
+
+    Read with the same table parser the work-kind checks use, keyed on the header row: the
+    two documents pin each other through these tables, and a parser that quietly returned
+    nothing would leave whichever check depends on it asserting over an empty list.
     """
-    text = (REPO / "CONTEXT.md").read_text(encoding="utf-8")
-    section = text.split("## Words to avoid", 1)[1]
-    found = []
-    for line in section.splitlines():
-        if not line.strip().startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        found += [q for q in re.findall(r'"([^"]+)"', cells[0]) if " " in q]
+    found = [phrase for phrase in
+             table_cells(CONTEXT_MD.read_text(encoding="utf-8"),
+                         "| Don't write | Write |", 0, QUOTED)
+             if " " in phrase]
     assert found, "the glossary's avoid-list parsed to nothing — the check has nothing to read"
     return found
 

@@ -1,31 +1,26 @@
-import json, os, sys
+import os, sys
 import pytest
 
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "scripts")
 sys.path.insert(0, SCRIPTS)
 import harvest_lookup as hl
 import skill_config
-from support import run_cli
+from support import assignments_page, project, run_cli, task, write_catalog
 
 
 def _write_catalog(mcp_dir):
-    # Page 1 holds ACM-CR202; a later page holds a different project + a dupe of ACM-CR202.
-    page1 = {"project_assignments": [
-        {"project": {"id": 48084036, "code": "ACM-CR202",
-                     "name": "Case Backlog Requirements Implementation Phase 2"},
-         "task_assignments": [
-             {"billable": True,  "task": {"id": 20753151, "name": "Gen - Development/Configuration"}},
-             {"billable": False, "task": {"id": 20878969, "name": "Gen - Development/Configuration (NB)"}}]}]}
-    page7 = {"project_assignments": [
-        {"project": {"id": 37122824, "code": "NWC-001", "name": "Admin"},
-         "task_assignments": [
-             {"billable": False, "task": {"id": 20759111, "name": "Meeting - Standup Meetings"}}]},
-        {"project": {"id": 48084036, "code": "ACM-CR202", "name": "Case Backlog Phase 2"},
-         "task_assignments": []}]}  # duplicate project id, must be de-duped
-    with open(os.path.join(mcp_dir, "harvest_assignments.json"), "w", encoding="utf-8") as f:
-        json.dump(page1, f)
-    with open(os.path.join(mcp_dir, "harvest_assignments_p7.json"), "w", encoding="utf-8") as f:
-        json.dump(page7, f)
+    """Page 1 holds ACM-CR202; a later page holds a different project and a duplicate of
+    ACM-CR202, which the reader must yield once."""
+    write_catalog(mcp_dir, {
+        "harvest_assignments.json": assignments_page(1, 7, [
+            project(48084036, "ACM-CR202", "Case Backlog Requirements Implementation Phase 2", [
+                task(20753151, "Gen - Development/Configuration", billable=True),
+                task(20878969, "Gen - Development/Configuration (NB)", billable=False)])]),
+        "harvest_assignments_p7.json": assignments_page(7, 7, [
+            project(37122824, "NWC-001", "Admin", [
+                task(20759111, "Meeting - Standup Meetings", billable=False)]),
+            project(48084036, "ACM-CR202", "Case Backlog Phase 2")]),   # duplicate project id
+    })
 
 
 def test_finds_project_on_first_page_across_pages(tmp_path):
@@ -50,18 +45,13 @@ def _write_client_named_catalog(mcp_dir):
     """One client, two projects: a dead presales shell named for the *client*, and the
     live delivery project named for the *work*. Searching the client's name has to find
     the second one — its name shares no substring with the query."""
-    page = {"project_assignments": [
-        {"project": {"id": 1001, "code": "PSO-1000", "name": "Contoso - D365 CRM Foundation"},
-         "client": {"name": "Contoso Pty Ltd"},
-         "task_assignments": [
-             {"billable": False, "task": {"id": 2001, "name": "Presales - Meetings"}}]},
-        {"project": {"id": 1002, "code": "CTO2000",
-                     "name": "Check app access still enabled after the security group migration"},
-         "client": {"name": "Contoso Pty Ltd"},
-         "task_assignments": [
-             {"billable": True, "task": {"id": 2002, "name": "Gen - Investigation"}}]}]}
-    with open(os.path.join(mcp_dir, "harvest_assignments.json"), "w", encoding="utf-8") as f:
-        json.dump(page, f)
+    write_catalog(mcp_dir, {"harvest_assignments.json": assignments_page(1, 1, [
+        project(1001, "PSO-1000", "Contoso - D365 CRM Foundation",
+                [task(2001, "Presales - Meetings", billable=False)], client="Contoso Pty Ltd"),
+        project(1002, "CTO2000",
+                "Check app access still enabled after the security group migration",
+                [task(2002, "Gen - Investigation", billable=True)], client="Contoso Pty Ltd"),
+    ])})
 
 
 def test_lookup_matches_on_client_name(tmp_path):

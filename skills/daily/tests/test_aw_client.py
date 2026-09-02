@@ -6,7 +6,6 @@ copies means a fix to one silently leaves the other wrong, so these cover the
 shared module and then assert both scripts really use it rather than their own.
 """
 
-import ast
 import datetime as dt
 import os
 import sys
@@ -19,26 +18,26 @@ sys.path.insert(0, SCRIPTS)
 import aw_client as aw
 import activity_timeline as tl
 import afk_blocks as ab
-from support import fixed
+from support import day, fixed
 
-
-def ev(ts, duration, **data):
-    return {"timestamp": ts, "duration": duration, "data": data}
+# Written in UTC: these are tests of the wire format, and an offset would only put a
+# second conversion between the fixture and the string asserted on.
+D = day(offset=0)
 
 
 def test_dedupe_keeps_the_longest_duration_per_timestamp():
     """AW extends an ongoing event by re-emitting it at the same timestamp."""
-    events = [ev("2026-05-28T09:00:00+00:00", 60), ev("2026-05-28T09:00:00+00:00", 900),
-              ev("2026-05-28T09:00:00+00:00", 300)]
+    events = [D.event("09:00", seconds=60), D.event("09:00", seconds=900),
+              D.event("09:00", seconds=300)]
     kept = aw.dedupe_heartbeats(events)
     assert [e["duration"] for e in kept] == [900]
 
 
 def test_dedupe_returns_events_in_timestamp_order():
-    events = [ev("2026-05-28T11:00:00+00:00", 60), ev("2026-05-28T09:00:00+00:00", 60),
-              ev("2026-05-28T10:00:00+00:00", 60)]
+    events = [D.event("11:00", seconds=60), D.event("09:00", seconds=60),
+              D.event("10:00", seconds=60)]
     assert [e["timestamp"] for e in aw.dedupe_heartbeats(events)] == [
-        "2026-05-28T09:00:00+00:00", "2026-05-28T10:00:00+00:00", "2026-05-28T11:00:00+00:00"]
+        "2026-05-28T09:00:00Z", "2026-05-28T10:00:00Z", "2026-05-28T11:00:00Z"]
 
 
 UTC_0930 = dt.datetime(2026, 5, 28, 9, 30, tzinfo=dt.timezone.utc)
@@ -353,18 +352,15 @@ def test_scripts_use_the_shared_helper_rather_than_their_own(module, name):
     )
 
 
-@pytest.mark.parametrize("script", ["afk_blocks.py", "activity_timeline.py"])
-def test_scripts_do_not_redefine_the_server_address(script):
+@pytest.mark.parametrize("module", [ab, tl], ids=lambda m: m.__name__)
+def test_scripts_do_not_redefine_the_server_address(module):
     """A second default address can drift from the shared one, and an identity check
     cannot catch that for a string the way it does for a function.
 
     `AW_BASE` is what this used to name — a module global holding the resolved address.
     There is no such global now; `resolve_base()` runs per request. The thing that could
-    still be copied is the default it falls back to, so that is what is named here.
+    still be copied is the default it falls back to, so that is what is named here — on
+    the imported module, since a module global is exactly what an import exposes.
     """
-    with open(os.path.join(SCRIPTS, script), encoding="utf-8") as fh:
-        tree = ast.parse(fh.read())
-    assigned = [t.id for node in tree.body if isinstance(node, ast.Assign)
-                for t in node.targets if isinstance(t, ast.Name)]
     for own in ("AW_BASE", "DEFAULT_ACTIVITY_URL"):
-        assert own not in assigned, f"{script} keeps its own copy of {own}"
+        assert not hasattr(module, own), f"{module.__name__} keeps its own copy of {own}"

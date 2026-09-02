@@ -31,7 +31,7 @@ import re
 import subprocess
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+from shipped import REPO
 
 # SHA-256 of each redacted name, grouped by how many words it normalises to.
 REDACTED = {

@@ -22,11 +22,12 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
+from shipped import (REPO, SKILLS, frontmatter, frontmatter_name, released_version,
+                     skill_dirs, skill_md_text)
+
 MANIFEST_DIR = REPO / ".claude-plugin"
 PLUGIN_MANIFEST = MANIFEST_DIR / "plugin.json"
 MARKETPLACE_MANIFEST = MANIFEST_DIR / "marketplace.json"
-SKILLS = REPO / "skills"
 
 PLUGIN_NAME = "billables"
 MARKETPLACE_NAME = "activity-to-timesheet"
@@ -55,30 +56,6 @@ def validator_warnings(output: str) -> set[str]:
 
 def manifest(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def skill_dirs() -> list[Path]:
-    return sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file())
-
-
-def frontmatter(skill_md: Path) -> dict[str, str]:
-    """The top-level `key: value` pairs of the YAML frontmatter, or {} if there is none.
-
-    Deliberately not a YAML parser: the fields asserted on here are the flat scalars the
-    spec defines, and a dependency-free reader keeps these tests runnable anywhere the
-    plugin is.
-    """
-    text = skill_md.read_text(encoding="utf-8")
-    if not text.startswith("---"):
-        return {}
-    head = text.split("---", 2)[1]
-    return {m.group(1): m.group(2).strip()
-            for m in re.finditer(r"^([A-Za-z][\w-]*):[ \t]*(.*)$", head, re.M)}
-
-
-def frontmatter_name(skill_md: Path) -> str | None:
-    """The `name:` from the YAML frontmatter, or None if there is no frontmatter."""
-    return frontmatter(skill_md).get("name")
 
 
 # --------------------------------------------------------------------------------------
@@ -217,12 +194,9 @@ def test_every_version_marker_agrees():
     place a version is written down, and a heading that disagrees with what shipped is
     worse than no heading at all.
     """
-    changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
-    released = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.M)
-    assert released, "no released version heading in CHANGELOG.md"
     markers = {
         "plugin.json": manifest(PLUGIN_MANIFEST)["version"],
-        "CHANGELOG.md": released.group(1),
+        "CHANGELOG.md": released_version(),
     }
     assert len(set(markers.values())) == 1, f"version markers disagree: {markers}"
 
@@ -401,7 +375,7 @@ def test_every_shipped_skill_says_what_it_needs_in_order_to_run(skill):
     isn't Claude Code has no plugin manifest to read them from — the frontmatter is all it
     gets. Someone on Codex should learn about the interpreter and the activity source
     before starting a run, not from a script failing halfway through one."""
-    fields = frontmatter(skill / "SKILL.md")
+    fields = frontmatter(skill_md_text(skill))
     stated = fields.get("compatibility", "")
     assert stated, f"{skill.name} declares no compatibility"
     assert len(stated) <= 500, f"{skill.name} compatibility exceeds the spec's 500 characters"
