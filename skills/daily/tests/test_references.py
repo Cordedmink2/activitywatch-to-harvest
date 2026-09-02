@@ -99,7 +99,10 @@ INVENTORY_HEADING = "## Files in this skill"
 # A flag as it is written in either place. Case is allowed through rather than filtered
 # out — `pac` takes a `--xmlFile`, and a camelCase flag added to a script one day should be
 # caught by the rule below that excludes another program's argv, not missed by this regex.
-FLAG = re.compile(r"--[A-Za-z][A-Za-z0-9-]*")
+# An underscore for the same reason, and because leaving it out is worse than a plain miss:
+# `--dry_run` would be invisible on the parsed side and read as `--dry` on the documented
+# one, so documenting it correctly would fail the test naming a flag nobody wrote.
+FLAG = re.compile(r"--[A-Za-z][A-Za-z0-9_-]*")
 FLAG_ONLY = re.compile(FLAG.pattern + r"\Z")
 
 # `- ` opens an entry; the filename runs up to the first em dash, and everything after it
@@ -116,14 +119,25 @@ def _subprocess_argv(tree):
     A `--flag` inside `subprocess.run([...])` is that program's flag, not this script's:
     `refresh_catalogs.py` passes `--name`, `--index`, `--environment` and `--xmlFile` to
     `pac`, and without this they would read as four flags the inventory must list.
+
+    Both spellings of the call are matched, `subprocess.run(...)` and an imported bare
+    `run(...)`, but the argv has to be a list or tuple written at the call. Build it into a
+    variable first — `cmd = [pac_cmd, ...]` then `subprocess.run(cmd)`, which is how this
+    code grows the moment an argument becomes conditional — and the exclusion stops
+    reaching it. That failure is loud rather than silent: the flags surface as ones
+    `refresh_catalogs.py` supposedly parses and the comparison fails. The assertion message
+    says what to do about it, because the obvious response is the wrong one.
     """
+    launchers = {"run", "Popen", "call", "check_call", "check_output"}
     skipped = set()
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and node.args):
             continue
         func = node.func
-        if not (isinstance(func, ast.Attribute)
-                and isinstance(func.value, ast.Name) and func.value.id == "subprocess"):
+        spawns = ((isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                   and func.value.id == "subprocess")
+                  or (isinstance(func, ast.Name) and func.id in launchers))
+        if not spawns:
             continue
         if isinstance(node.args[0], (ast.List, ast.Tuple)):
             skipped.update(id(element) for element in node.args[0].elts)
@@ -148,6 +162,17 @@ def flags_a_script_parses(path) -> set[str]:
     hand-rolled parsers uncovered. The trade is that this cannot see a flag assembled at
     runtime; nothing here assembles one, and a test for the inventory being *complete* is
     worth more than one that is exact about a shape nobody uses.
+
+    Two blind spots worth naming, since both look like holes and only one is:
+
+    * `action=argparse.BooleanOptionalAction` on `--full` would make `--no-full` parseable
+      with that string appearing nowhere in the source, so the inventory would never be
+      asked for it. That is the same class as runtime assembly and a good deal likelier to
+      be reached here — negating a boolean flag is the ordinary next edit to one.
+    * `-h` / `--help` is accepted by every argparse script and has no literal either. That
+      one is a correct omission: nobody wants `--help` in the inventory. A short option
+      added beside a long one (`-j` for `--json`) is not held for the same reason, and the
+      long form it accompanies still is.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     skipped = _subprocess_argv(tree)
@@ -165,16 +190,28 @@ def inventory_entries() -> list[tuple[set[str], set[str]]]:
     """
     with open(os.path.join(SKILL, "SKILL.md"), encoding="utf-8") as fh:
         lines = fh.read().splitlines()
-    start = lines.index(INVENTORY_HEADING) + 1
-    section = lines[start:]
+    heading = [i for i, line in enumerate(lines) if line.strip() == INVENTORY_HEADING]
+    assert len(heading) == 1, (
+        f"SKILL.md has {len(heading)} sections headed {INVENTORY_HEADING!r}; this test "
+        "reads that one to learn which scripts and flags the skill claims to ship. If the "
+        "section was retitled, retitle INVENTORY_HEADING with it.")
+    section = lines[heading[0] + 1:]
     for offset, line in enumerate(section):
         if line.startswith("## "):
             section = section[:offset]
             break
 
     entries = []
+    fenced = False
     for line in section:
-        if line.startswith("- "):
+        if line.lstrip().startswith("```"):
+            # A fenced example belongs to no entry. Folded in, its contents would be read
+            # as that entry's flags — and an example invoking a *different* script would
+            # fail the entry above it, naming flags it has nothing to do with.
+            fenced = not fenced
+        elif fenced:
+            continue
+        elif line.startswith("- "):
             entries.append(line)
         elif line.strip() and entries:
             entries[-1] += " " + line.strip()      # a wrapped entry is still one entry
@@ -189,13 +226,22 @@ def inventory_entries() -> list[tuple[set[str], set[str]]]:
 
 
 def entry_for(name: str) -> tuple[set[str], set[str]]:
-    for names, flags in inventory_entries():
-        if name in names:
-            return names, flags
-    raise AssertionError(
+    # Every match, not the first. An entry whose head fails to end at an em dash swallows
+    # its own prose, and the prose cross-references other scripts — so `aw_client.py`'s
+    # entry would claim `afk_blocks` and `activity_timeline` as well. Taking the first
+    # match hides that: those two have earlier entries of their own, so they keep resolving
+    # correctly until someone reorders the list, at which point two scripts are silently
+    # checked against the wrong entry. Two entries claiming one script is the defect.
+    found = [(names, flags) for names, flags in inventory_entries() if name in names]
+    assert found, (
         f"{name}.py ships in scripts/ but has no entry under {INVENTORY_HEADING!r} in "
         "SKILL.md. That list is how a run learns the script exists at all; a script "
         "missing from it is invisible to every run that does not already know it.")
+    assert len(found) == 1, (
+        f"{name}.py is named by {len(found)} entries under {INVENTORY_HEADING!r}. Usually "
+        "this means an entry's filenames do not end at an em dash, so its description — "
+        "which names other scripts — is being read as part of its list of files.")
+    return found[0]
 
 
 @pytest.mark.parametrize("name", bundled_script_names())
@@ -226,5 +272,9 @@ def test_the_inventory_entry_lists_exactly_the_flags_its_scripts_parse(name):
         f"the SKILL.md entry for {entry} and the flags those scripts parse disagree.\n"
         f"  parsed, not listed: {sorted(parsed - documented) or 'none'}\n"
         f"  listed, not parsed: {sorted(documented - parsed) or 'none'}\n"
-        "The inventory is the only place a run is told a flag exists; add the entry when "
-        "you add the flag.")
+        "The inventory is the only place a run is told a flag exists, so a flag you added "
+        "wants an entry. But check first that it is this script's flag: one being passed "
+        "through to another program belongs to that program, and documenting it here would "
+        "tell every run the skill accepts it. `_subprocess_argv` above excludes those, and "
+        "only reaches an argv list written at the call — build one into a variable and it "
+        "stops reaching, which is a bug in this test rather than a gap in SKILL.md.")

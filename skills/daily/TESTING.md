@@ -1321,6 +1321,12 @@ against the union of what those three parse: a flag written there is known to be
 of them and not which. That is the price of the shared line, and it still catches both
 directions of the drift this entry records.
 
+**One copy is still unheld.** `skills/reconcile/SKILL.md` invokes `harvest_list.py --by-day`
+and names `--window` and `--full`; it is a second skill's file and this gate reads only
+`skills/daily/SKILL.md`. Renaming a flag now fails here and leaves that one instructing a
+run to use — or in `--full`'s case avoid — a flag that no longer exists. Filed rather than
+widened, so the scope of this entry is what it says it is.
+
 **This reverses the "not fixed by a gate, deliberately" above.** That refusal was sound
 about what it was refusing — a test asserting the list matches `ls` would have to encode
 which files deserve a *description*, and the descriptions are the list's value. This test
