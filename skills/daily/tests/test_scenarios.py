@@ -311,6 +311,29 @@ STRADDLE = ("01:30", "04:15")
 # `02:00` once it has passed, so the first ends where the second starts.
 PIECES = (("01:30", "03:00"), ("02:00", "04:15"))
 
+# The refusal in full, pinned the way a golden is. Substrings were tried first and cannot
+# do this job: every assertion about the message survives text *appended* to it, so a
+# rewrite ending "…they abut exactly and must be merged into one entry" passed a test whose
+# name says it checks the opposite. This is the one message the ticket says an implementer
+# must not second-guess, and its prose has been wrong once already — an earlier version of
+# the same advice in `references/output-format.md` split at the break rather than at the
+# transition and lost the exact hour it was written to save, which a review caught and no
+# test could have. So any edit to it fails here and is made deliberately, with the numbers
+# re-checked against the zone.
+REFUSAL = (
+    "ERR 01:30-04:15 on 2026-04-05 runs straight through the daylight-saving change in "
+    "zone Pacific/Auckland.\n"
+    "  Harvest bills the difference between the two clock times, so this entry would "
+    "record 2.75 hrs against the 3.75 hrs that really passed. Post two entries instead:\n"
+    "      01:30 03:00   (1.5 hrs)\n"
+    "      02:00 04:15   (2.25 hrs)\n"
+    "  Those two look like they overlap by 1.0 hrs and do not — they abut. The clocks go "
+    "back at one instant, and that instant reads 03:00 as you reach it and 02:00 once it "
+    "has passed, so the first entry ends and the second begins at the same moment. "
+    "Closing the apparent overlap is what loses the 1.0 hrs that happened twice, which is "
+    "why this is refused rather than split for you. Say in the day's notes that the clocks "
+    "changed — the overlap is the first thing a reviewer will query.\n")
+
 
 def create(monkeypatch, zone, date, start, end, *extra):
     """A create against a configured zone, run in-process. The ids are the fixtures' own."""
@@ -354,8 +377,26 @@ def test_the_refusal_says_why_the_two_entries_it_names_are_not_an_overlap(
     zone, date = fall_back_day()
     r = create(monkeypatch, zone, date, *STRADDLE, "--confirm")
 
-    assert "overlap" in r.err.lower(), "the apparent overlap is the first thing queried"
-    assert "03:00" in r.err and "02:00" in r.err
+    assert r.err == REFUSAL
+
+
+def test_the_straddling_entry_is_never_previewed_either(live_harvest, monkeypatch):
+    """Without `--confirm` this script prints the body it would have sent and exits 0, and
+    that preview is what Step 8 shows the user to get their yes. An entry that will be
+    refused must not be offered: shown one, a run collects the approval, appends the flag
+    exactly as the preview's own last line says to, and only then meets the refusal — with
+    a yes already recorded against an entry that cannot exist.
+
+    Its own test because every other refusal test passes `--confirm`, so the guard could
+    move below the preview and none of them would notice."""
+    live_harvest({("POST", "/time_entries"): (201, {"id": 4104})})
+    zone, date = fall_back_day()
+    r = create(monkeypatch, zone, date, *STRADDLE)
+
+    assert r.code != 0, "a preview of a refused entry is not the normal case"
+    assert r.out == "", "nothing may be offered that cannot then be posted"
+    assert "WOULD POST" not in r.out + r.err
+    assert f"{PIECES[0][0]} {PIECES[0][1]}" in r.err
 
 
 def test_the_two_entries_the_refusal_names_are_themselves_accepted(

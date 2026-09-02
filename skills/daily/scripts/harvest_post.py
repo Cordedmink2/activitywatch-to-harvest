@@ -71,19 +71,26 @@ def refusal_for_a_straddled_change(spent, start_min, end_min, zone) -> str | Non
     """Why this entry cannot be posted as one, or None if it can.
 
     Harvest stores two clock times and bills their difference. On the day the clocks go
-    back, an entry worked straight through the change is short by exactly the repeated
-    hour: `01:30`-`04:15` in `Pacific/Auckland` on 2026-04-05 bills 2.75 hrs for 3.75 hrs
-    of work. Nothing raises — the entry is well-formed, and it reads correctly in every
-    listing afterwards, so there is no later moment at which anyone finds out.
+    back, an entry worked straight through the change is short by exactly the span that
+    happened twice: `01:30`-`04:15` in `Pacific/Auckland` on 2026-04-05 bills 2.75 hrs for
+    3.75 hrs of work. Nothing raises — the entry is well-formed, and it reads correctly in
+    every listing afterwards, so there is no later moment at which anyone finds out.
 
-    **It refuses only the entry that is unambiguously wrong**, which is the one whose
-    clock interval contains the whole repeated hour. The tempting rule — "the clock
-    interval and the elapsed time disagree" — refuses the two replacements this message
-    recommends, because `01:30`-`03:00` also spans 1.5 clock hours and 2.5 real ones if
-    its end is read as the unambiguous `03:00` an hour after the change. Inside the
-    repeated hour the script cannot know which pass a bare `02:30` means, and both
-    readings bill correctly for their own pass, so anything short of containment is left
-    alone. `references/output-format.md` keeps the hand-split guidance for those.
+    That span is an hour in most zones and is never assumed to be: `Australia/Lord_Howe`
+    moves thirty minutes and `Antarctica/Troll` two hours, and every figure in the message
+    below is measured off the zone's own two readings.
+
+    **It refuses only the entry that is unambiguously wrong**, which is the one whose clock
+    interval contains the repeated span with both ends strictly outside it. The tempting
+    rule — "the clock interval and the elapsed time disagree" — refuses the two
+    replacements this message recommends, because `01:30`-`03:00` also spans 1.5 clock
+    hours and 2.5 real ones if its end is read as the unambiguous `03:00` an hour after the
+    change. That reading is why the ends have to be strict: an entry *ending* at
+    `03:00` or *starting* at `02:00` is one of the two recommendations under one reading
+    and an hour short under the other, and this cannot refuse its own advice. Inside the
+    span the script likewise cannot know which pass a bare `02:30` means, and both readings
+    bill correctly for their own pass. `references/output-format.md` keeps the hand-split
+    guidance for everything left over.
 
     It refuses rather than splitting. Two entries out of one approval would put a body on
     the wire the user never previewed, which is the property the confirmation gate exists
@@ -102,14 +109,15 @@ def refusal_for_a_straddled_change(spent, start_min, end_min, zone) -> str | Non
     repeat_close = _minutes(change.as_reached)
     if repeat_open >= repeat_close:
         # The repeated span crosses midnight, as it does in `America/Santiago`, where the
-        # clocks go back at 00:00 to 23:00. No entry this script would accept can contain
-        # it — the reversed-time check above has already refused everything that starts
-        # before midnight and ends after it — so there is nothing here to catch.
+        # clocks go back at 00:00 to 23:00. Containment would then need an end past 1440,
+        # and `parse_time_to_minutes` caps a reading at 23:59 — so no entry this script can
+        # even express contains that span, and there is nothing here to catch.
         return None
     if not (start_min < repeat_open and end_min > repeat_close):
         return None
 
     first, second = repeat_close - start_min, end_min - repeat_open
+    repeated = repeat_close - repeat_open
     return (
         f"ERR {clock(start_min)}-{clock(end_min)} on {spent} runs straight through the "
         f"daylight-saving change in {aw_client.zone_label(zone)}.\n"
@@ -118,13 +126,14 @@ def refusal_for_a_straddled_change(spent, start_min, end_min, zone) -> str | Non
         f"that really passed. Post two entries instead:\n"
         f"      {clock(start_min)} {clock(repeat_close)}   ({hours(first)} hrs)\n"
         f"      {clock(repeat_open)} {clock(end_min)}   ({hours(second)} hrs)\n"
-        f"  Those two look like they overlap by an hour and do not — they abut. The clocks "
-        f"go back at one instant, and that instant reads {clock(repeat_close)} as you "
-        f"reach it and {clock(repeat_open)} once it has passed, so the first entry ends "
-        f"and the second begins at the same moment. Closing the apparent overlap is what "
-        f"loses the repeated hour, which is why this is refused rather than split for you. "
-        f"Say in the day's notes that the clocks changed — the overlap is the first thing "
-        f"a reviewer will query.")
+        f"  Those two look like they overlap by {hours(repeated)} hrs and do not — they "
+        f"abut. The clocks go back at one instant, and that instant reads "
+        f"{clock(repeat_close)} as you reach it and {clock(repeat_open)} once it has "
+        f"passed, so the first entry ends and the second begins at the same moment. "
+        f"Closing the apparent overlap is what loses the {hours(repeated)} hrs that "
+        f"happened twice, which is why this is refused rather than split for you. Say in "
+        f"the day's notes that the clocks changed — the overlap is the first thing a "
+        f"reviewer will query.")
 
 
 def main() -> None:
@@ -188,7 +197,12 @@ def main() -> None:
     body = {
         "project_id": project_id_n,
         "task_id": task_id_n,
-        "spent_date": spent_date,
+        # The parsed date, not the string it came from. `date.fromisoformat` widened on
+        # 3.11 to take `20260812` and `2026-W33-1`, so on a new enough interpreter the
+        # check above admits spellings its own message says are not allowed — and the raw
+        # one would then go on the wire, differently from how 3.10 (the declared minimum)
+        # answers the same input. Sending what was parsed makes the wire body the same.
+        "spent_date": spent.isoformat(),
         "started_time": started,
         "ended_time": ended,
         "notes": notes,

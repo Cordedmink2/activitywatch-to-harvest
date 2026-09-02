@@ -264,6 +264,9 @@ def test_the_create_does_not_offer_a_flag_it_would_then_reject(unconfigured):
     no flags but its confirmation gate. Naming it here would answer a user who is already
     stuck with one more thing to try that comes back as a usage error."""
     r = run_cli(hpost, ["48084036", "20753151", "2026-08-12", "09:00", "10:00", "n"])
+    # The precondition first: an absence alone is also satisfied by an empty stderr, so
+    # without this the test passes against a script that asks for no zone at all.
+    assert "TIMESHEET_TIMEZONE" in r.err
     assert "--utc-offset" not in r.err
 
 

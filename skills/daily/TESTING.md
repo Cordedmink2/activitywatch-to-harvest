@@ -1347,10 +1347,12 @@ hand-written and ungated.
 hour apart printed the same clock time", and #17's prose mitigation is reduced to what the
 code does not cover.
 
-Rung 2 rather than 1 for the same reason that entry is: the loss was reproduced in a test
-before it was fixed — `01:30`-`04:15` on `2026-04-05` in `Pacific/Auckland` reaching the
-fake Harvest as a 2.75-hour entry — but nobody has been watched under-billing a real
-timesheet on a real transition day.
+Rung 2 rather than 1 for the same reason that entry is: the loss was reproduced before it
+was fixed — `test_a_create_straddling_the_change_is_refused_rather_than_billed_short` was
+written first and went red on the create reaching the fake Harvest with `01:30` and `04:15`
+on it, which is the 2.75-hour body — but nobody has been watched under-billing a real
+timesheet on a real transition day. The test in the tree is the one that now passes; its
+red run is not something the repo evidences, only this sentence.
 
 **The read side knew and the write side did not.** `local_clock` marks the second pass,
 `to_utc` refuses a marker where the clock reads once, and `parse_range` names three separate
@@ -1374,7 +1376,8 @@ first design would have failed, and it was written before the guard existed.
 change, because `zoneinfo` publishes no transition list and there is no supported way to ask
 a zone when it next changes. Two zones are in the tests because each breaks an assumption
 `Pacific/Auckland` cannot reach: `Australia/Lord_Howe` moves thirty minutes, so an assumed
-hour would name a second entry half an hour long, and `America/Santiago` goes back *at
+hour would start the second entry half an hour too early and bill thirty minutes nobody
+worked, and `America/Santiago` goes back *at
 midnight*, reading `00:00` as it arrives and `23:00` once passed — the two readings in the
 opposite order to New Zealand's. Direction therefore comes from the sign of the offset
 shift, the same distinction `clock_reads` draws and for the same reason; reading it off the
@@ -1385,7 +1388,19 @@ containing every entry of the day.
 **It refuses rather than splitting**, per the ticket: two entries out of one approval would
 put a body on the wire the user never previewed, which is the property the confirmation gate
 exists to hold. The refusal fires before the preview as well, so nothing is offered that
-cannot then be created.
+cannot then be created — its own test, because every other refusal test passes `--confirm`
+and the guard could move below the preview without one of them noticing.
+
+**The boundary is strict on both ends, and that is a hole it cannot close.** An entry
+*ending* at `03:00` or *starting* at `02:00` is accepted, because those are the two
+entries the refusal itself recommends and it cannot refuse its own advice. But the same two
+arguments describe a different morning: `01:30`-`03:00` where `03:00` is the unambiguous
+reading an hour after the change is 2.5 hrs really worked and bills 1.5, and `02:00`-`04:15`
+read as the *first* pass is 3.25 billing 2.25. Both are silent under-bills of exactly the
+same shape as the one this closes, and no rule available to the script separates them —
+the two intents are the same six characters. `references/output-format.md` carries them
+alongside the start-or-end-inside cases, which is what "reduced to whatever the refusal does
+not cover" amounts to: less prose than before, and not none.
 
 **The gate from #26 earned its keep inside a week.** The zone message names `--utc-offset`,
 which `harvest_post.py` does not have, so `resolve_zone` grew a way to omit it — written

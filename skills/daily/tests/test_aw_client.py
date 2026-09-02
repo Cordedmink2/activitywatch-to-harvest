@@ -217,8 +217,8 @@ def test_a_day_whose_clocks_do_not_change_reports_no_transition(date, zone):
 def test_a_change_that_is_not_a_whole_hour_is_read_at_its_real_size():
     """`Australia/Lord_Howe` moves by thirty minutes, so the span that happens twice is
     01:30-02:00. Nothing may assume the shift is an hour: the two entries a straddling
-    create becomes are measured off these two readings, and an assumed hour would bill the
-    second one thirty minutes long."""
+    create becomes are measured off these two readings, and an assumed hour would start the
+    second one at 01:00 — half an hour too early, billing thirty minutes nobody worked."""
     assert aw.transition_clocks(dt.date(2026, 4, 5), ZoneInfo("Australia/Lord_Howe")) == \
         (dt.time(2, 0), dt.time(1, 30), True)
 
