@@ -2,7 +2,7 @@
 
 **Status:** Accepted — 2026-09-03.
 **Context:** the `daily` skill's reading of a day. Related: [`CONTEXT.md`](../../CONTEXT.md) § "The
-services" (**calendar**, **calendar event**), ADR-0007 — two boundaries, the provider written and the
+services" (**calendar**, **calendar event**), the spec in issue #49, ADR-0007 — two boundaries, the provider written and the
 sources read — which is not written yet (#44) and so is named here rather than linked.
 
 ## Context
