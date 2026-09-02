@@ -24,10 +24,11 @@ At least one field flag must be provided.
 **`--confirm` is the confirmation gate**, and is not a field: without it nothing
 is written, and the script prints the entry id and the exact body it would have
 sent, then exits 0. It may be typed before or after the entry id, as in
-`harvest_post.py`. The gate matters more here than on a create — a patch
-overwrites a line that has already been reviewed and may already have been
-invoiced, and Harvest has no undo. See `harvest_post.py` for why the gate lives
-in the invocation rather than only in SKILL.md's prose.
+`harvest_post.py` — the gate, the preview and the `OK` / `ERR` contract are one
+implementation in `harvest_write.py`, shared by both. The gate matters more here
+than on a create: a patch overwrites a line that has already been reviewed and
+may already have been invoiced, and Harvest has no undo. See `harvest_write.py`
+for why the gate lives in the invocation rather than only in SKILL.md's prose.
 
 Use SINGLE quotes around --notes values to avoid shell $variable interpolation
 mangling money references and other dollar-prefixed substrings.
@@ -36,10 +37,10 @@ Success: prints `OK <entry_id>` and exits 0.
 Preview: prints `WOULD PATCH <entry_id> <body>` and exits 0 — nothing changed.
 Failure: prints `ERR <status> <body[:200]>` to stderr and exits 1.
 """
-import json
 import sys
 
-from harvest_client import parse_time_to_minutes, request, use_utf8
+import harvest_write
+from harvest_client import use_utf8
 
 FLAGS = {
     "--start": ("started_time", str),
@@ -51,26 +52,20 @@ FLAGS = {
     "--date": ("spent_date", str),
 }
 
-CONFIRM_FLAG = "--confirm"
-
 USAGE = (
     "Usage: harvest_patch.py ENTRY_ID "
     "[--start HH:MM] [--end HH:MM] [--notes '...'] "
-    f"[--hours N] [--project-id N] [--task-id N] [--date YYYY-MM-DD] [{CONFIRM_FLAG}]\n"
-    f"Without {CONFIRM_FLAG} the change is previewed, not applied."
+    f"[--hours N] [--project-id N] [--task-id N] [--date YYYY-MM-DD] "
+    f"[{harvest_write.CONFIRM_FLAG}]\n"
+    f"Without {harvest_write.CONFIRM_FLAG} the change is previewed, not applied."
 )
 
 
 def parse_args(argv: list[str]) -> tuple[str, dict, bool]:
-    # Removed wherever it appears, matching harvest_post.py, so one documented gate has one
-    # grammar in both scripts and the flag can be typed before or after the entry id.
-    # Removing it *first* is what stops a field flag left without its value from consuming
-    # it: `--notes --confirm` set the notes to the literal string `--confirm` and previewed
-    # that as though it were meant. It is exempt from the repeated-flag guard below for the
-    # same reason — a repeated value flag silently last-wins, a repeated boolean says the
-    # same thing twice.
-    args = [a for a in argv[1:] if a != CONFIRM_FLAG]
-    confirmed = len(args) != len(argv) - 1
+    # `take_gate` says why it runs before the entry id is read. The gate is not a field, so
+    # it is exempt from the repeated-flag guard below: a repeated value flag silently
+    # last-wins, a repeated boolean says the same thing twice.
+    args, confirmed = harvest_write.take_gate(argv[1:])
     if not args:
         sys.exit(USAGE)
     entry_id = args[0]
@@ -92,8 +87,7 @@ def parse_args(argv: list[str]) -> tuple[str, dict, bool]:
         try:
             body[key] = caster(raw)
         except ValueError:
-            print(f"ERR {flag} expects a {caster.__name__}, got {raw!r}", file=sys.stderr)
-            sys.exit(1)
+            harvest_write.err(f"{flag} expects a {caster.__name__}, got {raw!r}")
         i += 2
     if not body:
         sys.exit("Provide at least one field to update.")
@@ -104,33 +98,14 @@ def main() -> None:
     use_utf8()
     entry_id, body, confirmed = parse_args(sys.argv)
 
+    # The guard runs before the gate is consulted, so an unconfirmed reversed range fails
+    # here and is never previewed. Only when both sides are given: one alone is Harvest
+    # recomputing against the unchanged side, which the docstring warns about and allows.
     if "started_time" in body and "ended_time" in body:
-        try:
-            start_min = parse_time_to_minutes(body["started_time"])
-            end_min = parse_time_to_minutes(body["ended_time"])
-        except ValueError as e:
-            print(f"ERR {e}", file=sys.stderr)
-            sys.exit(1)
-        if end_min <= start_min:
-            print(
-                f"ERR --start ({body['started_time']}) must be before "
-                f"--end ({body['ended_time']}).",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        harvest_write.ordered_minutes(body["started_time"], body["ended_time"],
+                                      "--start", "--end")
 
-    if not confirmed:
-        # The body itself, so what is previewed and what would be sent cannot drift apart.
-        print(f"WOULD PATCH {entry_id} {json.dumps(body, ensure_ascii=False)}")
-        print(f"Nothing was changed. Re-run with {CONFIRM_FLAG} to apply it.")
-        return
-
-    try:
-        resp = request("PATCH", f"/time_entries/{entry_id}", body=body)
-    except RuntimeError as e:
-        print(f"ERR {e}", file=sys.stderr)
-        sys.exit(1)
-    print(f"OK {resp['id']}")
+    harvest_write.perform(harvest_write.update(entry_id, body), confirmed)
 
 
 if __name__ == "__main__":

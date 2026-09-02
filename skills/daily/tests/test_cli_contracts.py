@@ -390,6 +390,16 @@ def test_a_command_that_could_never_post_is_an_error_rather_than_a_preview():
     assert r.out == ""
 
 
+def test_an_unconfirmed_patch_that_could_never_apply_is_an_error_rather_than_a_preview():
+    """The same order holds for an update: the reversed range is refused before the gate is
+    consulted, so nothing is previewed. Without this the two scripts could hold the guard
+    on opposite sides of the gate and every other test here would still pass."""
+    r = run_cli(hp, ["2988748904", "--start", "10:00", "--end", "09:00"])
+    assert r.code == 1
+    assert "must be before" in r.err
+    assert r.out == ""
+
+
 # --------------------------------------------------------------------------------------
 # The guards that already worked — pinned so a refactor can't drop them
 # --------------------------------------------------------------------------------------

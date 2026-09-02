@@ -5,9 +5,11 @@ Usage:
 
 **`--confirm` is the confirmation gate.** Without it nothing is written: the
 script prints the exact body it would have sent and exits 0, so a forgotten flag
-yields a preview rather than an error. SKILL.md Step 8 is where the user's yes is
-obtained; TESTING.md § "The confirmation gate" is why the gate is here as well as
-there.
+yields a preview rather than an error. The gate, the preview and the `OK` / `ERR`
+contract are `harvest_write.py`'s, shared with `harvest_patch.py`; this script
+declares the body and the guards in front of it. SKILL.md Step 8 is where the
+user's yes is obtained; TESTING.md § "The confirmation gate" is why the gate is
+in the invocation as well as there.
 
 Times accept either 24h ("08:15") or 12h ("8:15am") — Harvest accepts both.
 Always sends started_time + ended_time so accounts in start/end-time mode get
@@ -26,17 +28,15 @@ Preview: prints `WOULD POST <body>` and exits 0 — no entry exists.
 Failure: prints `ERR <status> <body[:200]>` to stderr and exits 1.
 """
 import datetime as dt
-import json
 import sys
 
 import aw_client
-from harvest_client import parse_time_to_minutes, request, use_utf8
-
-CONFIRM_FLAG = "--confirm"
+import harvest_write
+from harvest_client import use_utf8
 
 USAGE = ("Usage: harvest_post.py PROJECT_ID TASK_ID YYYY-MM-DD HH:MM HH:MM 'notes' "
-         f"[{CONFIRM_FLAG}]\n"
-         f"Without {CONFIRM_FLAG} the entry is previewed, not created.")
+         f"[{harvest_write.CONFIRM_FLAG}]\n"
+         f"Without {harvest_write.CONFIRM_FLAG} the entry is previewed, not created.")
 
 
 def clock(minutes: int) -> str:
@@ -138,40 +138,24 @@ def refusal_for_a_straddled_change(spent, start_min, end_min, zone) -> str | Non
 
 def main() -> None:
     use_utf8()
-    # The flag is removed wherever it appears, so it can be typed before or after the
-    # positionals. Notes spelled exactly `--confirm` would be eaten too — and the argument
-    # count then falls short, which is a usage error rather than a silent post.
-    args = [a for a in sys.argv[1:] if a != CONFIRM_FLAG]
-    confirmed = len(args) != len(sys.argv) - 1
+    # `take_gate` says why it runs before anything is read positionally. What is left has
+    # to be exactly the six positionals.
+    args, confirmed = harvest_write.take_gate(sys.argv[1:])
     if len(args) != 6:
         sys.exit(USAGE)
     project_id, task_id, spent_date, started, ended, notes = args
 
-    try:
-        start_min = parse_time_to_minutes(started)
-        end_min = parse_time_to_minutes(ended)
-    except ValueError as e:
-        print(f"ERR {e}", file=sys.stderr)
-        sys.exit(1)
-    if end_min <= start_min:
-        print(
-            f"ERR start ({started}) must be before end ({ended}). "
-            "Harvest otherwise silently stores reversed times as 23h entries "
-            "and zero-duration as 0h — the script blocks both.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # Every guard runs before the gate is consulted, so an unconfirmed bad command fails
+    # here and is never previewed.
+    start_min, end_min = harvest_write.ordered_minutes(started, ended)
 
     try:
         project_id_n, task_id_n = int(project_id), int(task_id)
     except ValueError:
-        print(
-            f"ERR project_id and task_id must be numeric Harvest ids, got "
+        harvest_write.err(
+            f"project_id and task_id must be numeric Harvest ids, got "
             f"{project_id!r} and {task_id!r}. A project *code* like 'ACM-CR202' is not "
-            "an id — run harvest_lookup.py to resolve it.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+            "an id — run harvest_lookup.py to resolve it.")
 
     try:
         spent = dt.date.fromisoformat(spent_date)
@@ -179,8 +163,7 @@ def main() -> None:
         # Read rather than passed through because the guard below needs the date to know
         # whether the clocks changed on it. Harvest answers a malformed one with a 422 and
         # its own wording; saying so here costs a round trip less and names the format.
-        print(f"ERR spent_date must be YYYY-MM-DD, got {spent_date!r}.", file=sys.stderr)
-        sys.exit(1)
+        harvest_write.err(f"spent_date must be YYYY-MM-DD, got {spent_date!r}.")
 
     # Last of the checks, and the only one that reads configuration: a plain typo in the
     # arguments should be answered as a typo, not as a missing setting. The zone is asked
@@ -207,19 +190,7 @@ def main() -> None:
         "ended_time": ended,
         "notes": notes,
     }
-    if not confirmed:
-        # The body itself, not a rendering of it: a preview that describes the entry in
-        # its own words is a second description that can drift from the first, and the
-        # user would then be approving the paraphrase rather than the entry.
-        print(f"WOULD POST {json.dumps(body, ensure_ascii=False)}")
-        print(f"Nothing was posted. Re-run with {CONFIRM_FLAG} to create this entry.")
-        return
-    try:
-        resp = request("POST", "/time_entries", body=body)
-    except RuntimeError as e:
-        print(f"ERR {e}", file=sys.stderr)
-        sys.exit(1)
-    print(f"OK {resp['id']}")
+    harvest_write.perform(harvest_write.create(body), confirmed)
 
 
 if __name__ == "__main__":

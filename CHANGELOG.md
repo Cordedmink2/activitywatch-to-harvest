@@ -5,6 +5,14 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- The confirmation gate, the preview and the `OK` / `ERR` contract are one implementation,
+  `scripts/harvest_write.py`, which `harvest_post.py` and `harvest_patch.py` both declare their
+  body to. No command line changes. One message does: a patch with `--start` after `--end` now
+  explains why it is refused, the way the create already did, instead of stating only that it is.
+
 ## [0.6.0] - 2026-09-03
 
 ### Upgrading

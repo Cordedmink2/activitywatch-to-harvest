@@ -963,6 +963,26 @@ reasoned, not observed. Nothing has been posted to a real Harvest account throug
 either. The evidence is the argument handling and the recorded request bodies, as
 everywhere else in this file.
 
+**One implementation, 2026-09-03, issue #22.** Everything above was true of two copies —
+the strip, the reversed-time guard, the preview, the `OK` / `ERR` contract — one in each
+write script, and the `--notes --confirm` fix was carried from one to the other by hand.
+Both now declare their body to `scripts/harvest_write.py` (`create()` / `update()` →
+`perform()`), which owns the gate and the two outcomes a write has. The preview and the
+sent body are rendered from the same `Write`, so the drift the paired tests above guard
+against is now impossible by construction, and `test_harvest_write.py` asserts it at the
+function for both kinds of write without a script in between. Two rows left
+`self-development.md` § "Rules with more than one copy" with this, as the ticket asked: the
+gate rule has one copy in code. Its prose restatements — Step 8, Step 9, `README.md`,
+`CONTEXT.md` — remain, and nothing holds them in agreement but reading; the review that
+read this change said so, and the split of that table into instrument-held and reader-held
+rows is #27's.
+
+One message changed shape. `harvest_patch.py`'s reversed-range refusal used to say only
+`--start (X) must be before --end (Y).`; it now carries the same explanation the create
+gives — Harvest stores reversed times as 23h entries — because the guard is one function.
+The reading script keeps its own two-line strip of `--by-day`: the gate is a property of
+writing, and `harvest_list.py` does not write.
+
 ### Sharing a prefix is not proof of authorship — `install/export_agent_skills.py`
 **Rung 2.** 2026-09-02. Issue #11, both findings raised by the review on the finished
 change and reproduced against the shipped script before either was fixed.
