@@ -2,12 +2,14 @@
 
 The vocabulary this project uses. Three services are in play today: ActivityWatch records what
 happened on the machine, Dataverse holds the work items the machine was busy with, Harvest holds
-the billed time. All three are meant to be swappable, and the terms below are how the rules talk
-about them — so that a second provider is an adapter rather than a rewrite.
+the billed time. A fourth, the user's calendar, is opt-in and records what they were scheduled to be
+doing. All of them are meant to be swappable, and the terms below are how the rules talk about
+them — so that a second provider is an adapter rather than a rewrite.
 
-**Two of the three are read, one is written**, and that is the distinction the boundaries are drawn
-on. A mistake at a read boundary yields an empty catalog. A mistake at the write boundary bills a
-client wrongly — so credentials and the confirmation gate belong there and nowhere else.
+**Only the provider is written to; everything else is read**, and that is the distinction the
+boundaries are drawn on. A mistake at a read boundary yields an empty catalog. A mistake at the
+write boundary bills a client wrongly — so credentials and the confirmation gate belong there and
+nowhere else.
 
 **What this asks for is precise, and it is not "delete the word Harvest".** A rule may name the
 product where the product is the subject: "Post to Harvest", "no Harvest write without explicit
@@ -28,7 +30,7 @@ provider stays inside this plugin for now. Why the read and write boundaries are
 paragraph above and ADR-0006's consequences; the ADR that should hold it on its own, ADR-0007, is on
 [`docs/RECOVERY.md`](./docs/RECOVERY.md)'s list of documents still to write.
 
-## The three services
+## The services
 
 **Activity source** — the local service recording window titles, AFK state and browser tabs. Read
 only. ActivityWatch today, reached at the configured `TIMESHEET_ACTIVITY_URL`. Unlike the provider,
@@ -42,6 +44,14 @@ Dataverse today. Like the activity source and unlike the provider, this one is *
 one environment's entity names, columns and case-creation convention are shipped rather than
 configured, which is the same "one user's facts" failure the provider boundary already fixed. It is
 named here so the fix has a word to use.
+
+**Calendar** — the user's schedule of meetings. Read only, opt-in, and absent unless configured.
+Evidence of *intent*, not of activity: it says where the user was meant to be, and the activity
+source says what the machine saw. That is why it is not an activity source, and the distinction is
+load-bearing: a **calendar event** the activity source corroborates (a meeting window inside its
+span) outranks one it does not, and an uncorroborated event is put to the user at review rather
+than billed on the calendar's word alone. Outlook today, behind a narrow adapter, so a second
+calendar is an adapter rather than a rewrite.
 
 **Timesheet provider**, or just **provider** — the service that holds billed time and invoices
 from it. The only one of the three that is *written* to, which is why the confirmation gate lives
@@ -61,7 +71,8 @@ breaks, active spans, and each span's `active_ratio`. Arithmetic, not judgement,
 verbatim.
 
 **Signal** — an observable in the activity data that points at a client: a work-item number, a
-browser profile, an environment URL, an editor workspace, a repo path, a meeting participant.
+browser profile, an environment URL, an editor workspace, a repo path, a meeting participant, a
+calendar event's subject or attendees.
 
 **Work item** — the identifier the work is tracked under in the user's own **work-item source**: a
 ticket, case, story or bug. The highest-confidence signal there is, and what an entry's note should
@@ -156,6 +167,7 @@ Habits, not prohibitions — the rule above (no account's strings) is the hard o
 | "the user's backend", "the ticket system" | work-item source |
 | "copied-in install", "the copied-in route" | the export (of the skill: an exported install) |
 | "dry run", "test post", "--dry-run" | a preview (what the confirmation gate prints) |
+| "appointment", "invite", "meeting" for the item on the calendar | calendar event (`Meeting` is the work kind a block ends up as) |
 | "explicit confirmation", "the confirm flag" as the concept's name | the confirmation gate (`--confirm` is its spelling) |
 
 So: naming Harvest is right where the subject genuinely *is* Harvest — the `harvest_*.py` scripts,
