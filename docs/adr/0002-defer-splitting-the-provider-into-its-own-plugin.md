@@ -1,8 +1,16 @@
 # ADR-0002: Defer splitting the timesheet provider into its own plugin
 
-**Status:** Accepted — 2026-08-31
+**Status:** Superseded — 2026-09-02 by
+[ADR-0006](./0006-keep-the-provider-in-plugin-but-behind-a-command-contract.md).
 **Context:** whole repo. Related: [`CONTEXT.md`](../../CONTEXT.md) (the vocabulary this decision
 pays for), issue #10.
+
+> **Do not act on the platform constraint below.** The decision this ADR reached — keep the adapter
+> inside `billables` — still holds, but its central claim does not: `plugin.json` now supports a
+> `dependencies` field, and a plugin's `bin/` directory is placed on `PATH`, so the supported seam
+> between plugins is no longer MCP tool names and the split described here is buildable. ADR-0006
+> keeps the decision and replaces the reasoning. This file is kept as the record of what was
+> believed on 31 August.
 
 ## Context
 

@@ -1,9 +1,14 @@
 # CONTEXT.md
 
-The vocabulary this project uses. Two services are in play today: ActivityWatch records what
-happened on the machine, Harvest holds the billed time. Both are meant to be swappable, and the
-terms below are how the rules talk about them — so that a second provider is an adapter rather
-than a rewrite.
+The vocabulary this project uses. Three services are in play today: ActivityWatch records what
+happened on the machine, Dataverse holds the work items the machine was busy with, Harvest holds
+the billed time. All three are meant to be swappable, and the terms below are how the rules talk
+about them — so that a second provider is an adapter rather than a rewrite.
+
+**Two of the three are read, one is written**, and that is the distinction the boundaries are drawn
+on. A mistake at a read boundary yields an empty catalog. A mistake at the write boundary bills a
+client wrongly — so credentials and the confirmation gate belong there and nowhere else. See
+ADR-0007.
 
 **What this asks for is precise, and it is not "delete the word Harvest".** A rule may name the
 product where the product is the subject: "Post to Harvest", "no Harvest write without explicit
@@ -12,26 +17,35 @@ confirmation", the endpoint documentation. What a rule may not do is bake in one
 facts and every user's differ. That is the line the glossary draws and
 `tests/test_provider_neutrality.py` enforces.
 
-The provider half of the abstraction is done to that line; the activity-source half is not, and
-this file says so below rather than pretending otherwise.
+The provider half of the abstraction is done to that line; the activity-source and work-item-source
+halves are not, and this file says so below rather than pretending otherwise.
 
 Use these words in issue titles, test names, skill instructions and reference documents. Where a
 term below and a synonym both read fine, the term below wins; the synonyms are what drift looks
 like.
 
-Decisions that shaped this vocabulary are in [`docs/adr/`](./docs/adr/) — ADR-0002 for why the
-provider stays inside this plugin for now.
+Decisions that shaped this vocabulary are in [`docs/adr/`](./docs/adr/) — ADR-0006 for why the
+provider stays inside this plugin for now, ADR-0007 for why the read and write boundaries are
+separate.
 
-## The two services
+## The three services
 
-**Activity source** — the local service recording window titles, AFK state and browser tabs.
-ActivityWatch today, reached at the configured `TIMESHEET_ACTIVITY_URL`. Unlike the provider, this
-one is *not* yet abstracted: the rules name ActivityWatch's buckets, its event schema and its
+**Activity source** — the local service recording window titles, AFK state and browser tabs. Read
+only. ActivityWatch today, reached at the configured `TIMESHEET_ACTIVITY_URL`. Unlike the provider,
+this one is *not* yet abstracted: the rules name ActivityWatch's buckets, its event schema and its
 categories throughout, and `references/activitywatch.md` documents its API directly. The term
 exists so that work has somewhere to start, not because it is done.
 
+**Work-item source** — the system the user's work items live in, and the thing a **work-item
+catalog** is pulled from. Read only, and it needs no credentials the way the provider does.
+Dataverse today. Like the activity source and unlike the provider, this one is *not* yet abstracted:
+one environment's entity names, columns and case-creation convention are shipped rather than
+configured, which is the same "one user's facts" failure the provider boundary already fixed. It is
+named here so the fix has a word to use.
+
 **Timesheet provider**, or just **provider** — the service that holds billed time and invoices
-from it. Harvest today, reached with the credentials in declared plugin configuration.
+from it. The only one of the three that is *written* to, which is why the confirmation gate lives
+against it. Harvest today, reached with the credentials in declared plugin configuration.
 Everything the provider names — its projects, its tasks, its clients — is *its* vocabulary, not
 this project's. Those strings reach a run from configuration or the user's workspace. They are
 never a default in a shipped file, because one account's task list is one user's fact.
@@ -49,8 +63,9 @@ verbatim.
 **Signal** — an observable in the activity data that points at a client: a work-item number, a
 browser profile, an environment URL, an editor workspace, a repo path, a meeting participant.
 
-**Work item** — the identifier the work is tracked under in the user's own backend: a ticket,
-case, story or bug. The highest-confidence signal there is, and what an entry's note should name.
+**Work item** — the identifier the work is tracked under in the user's own **work-item source**: a
+ticket, case, story or bug. The highest-confidence signal there is, and what an entry's note should
+name.
 
 **Switch point** — the instant inside a stretch where the client evidence changes. A real
 boundary even when no break falls there.
@@ -136,7 +151,9 @@ Habits, not prohibitions — the rule above (no account's strings) is the hard o
 | "timesheet line", "time entry row" | entry |
 | "time chunk", "segment", "slot" | block |
 | "category" for what a block was | work kind (the activity source's own `category` keeps that name) |
-| "ticket" as the general term | work item ("ticket" is fine where the user's backend calls it one) |
+| "ticket" as the general term | work item ("ticket" is fine where the user's work-item source calls it one) |
+| "Dataverse catalog", "the case list" | work-item catalog (the work-item source's own listing) |
+| "the user's backend", "the ticket system" | work-item source |
 | "copied-in install", "the copied-in route" | the export (of the skill: an exported install) |
 | "dry run", "test post", "--dry-run" | a preview (what the confirmation gate prints) |
 | "explicit confirmation", "the confirm flag" as the concept's name | the confirmation gate (`--confirm` is its spelling) |
