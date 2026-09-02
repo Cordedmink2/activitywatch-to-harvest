@@ -44,9 +44,10 @@ if WORKSPACE is None:
     )
 MCP_DIR = WORKSPACE / ".mcp"
 
-# Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_AUTH_PROFILE unset in `.env`
-# to skip it entirely — the Harvest refresh still runs. Set both to enable ticket-number
-# resolution from your Dataverse org via the `pac` CLI.
+# Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_AUTH_PROFILE unset to skip
+# it entirely — the Harvest refresh still runs. Set both to enable ticket-number resolution
+# from your Dataverse org via the `pac` CLI. Where they go depends on the install: environment
+# variables for a plugin, the skill `.env` for an export. README §9 states which and why.
 DV_URL = setting("DATAVERSE_URL")
 PAC_PROFILE = setting("PAC_AUTH_PROFILE")
 
@@ -178,8 +179,9 @@ def _active_pac_index(pac_cmd):
 def refresh_dataverse():
     if not DV_URL or not PAC_PROFILE:
         print(
-            "  Skipping Dataverse refresh — DATAVERSE_URL and/or PAC_AUTH_PROFILE not set in .env.\n"
-            "  (This is an optional feature; the Harvest catalog above is all most users need.)"
+            "  Skipping Dataverse refresh — DATAVERSE_URL and/or PAC_AUTH_PROFILE not set.\n"
+            "  (This is an optional feature; the Harvest catalog above is all most users need.\n"
+            "  To enable it, see README step 9 — where the two values go depends on your install.)"
         )
         return
 
