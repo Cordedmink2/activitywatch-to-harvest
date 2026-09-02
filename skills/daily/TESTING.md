@@ -1000,8 +1000,11 @@ through to the live time-entries API, paging 180 days of real Harvest history �
 5.3s suite, and a red build whenever Harvest was slow. The same shape one flag over
 (`harvest_post`) would have created a **real billable entry on a client's timesheet**.
 
-Fixed by an autouse fixture that repoints `AW_BASE` and `API_BASE` at an unroutable
-address and blanks the credential sources, plus an in-process `run_cli`. The rule —
+Fixed by an autouse fixture that repoints both base addresses at an unroutable one and
+blanks the credential sources, plus an in-process `run_cli`. The activity source is
+redirected through its setting, `TIMESHEET_ACTIVITY_URL`, rather than by reassigning a
+module global: `aw_client` used to freeze the resolved address into `AW_BASE` at import,
+so overwriting that name was the only way to move it. The rule —
 never `subprocess` a script from a test — is in `tests/README.md`, and `test_harness.py`
 asserts the guard actually blocks, because a safety net nobody tests is one nobody knows
 is there.

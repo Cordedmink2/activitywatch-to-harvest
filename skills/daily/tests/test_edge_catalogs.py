@@ -11,41 +11,17 @@ from __future__ import annotations
 import importlib
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
 import harvest_lookup as hl
+import refresh_catalogs as rc
 import skill_config
 from support import run_cli
 
 ASSIGNMENTS = ("GET", "/users/me/project_assignments")
-
-
-# --------------------------------------------------------------------------------------
-# Importing refresh_catalogs
-# --------------------------------------------------------------------------------------
-
-@pytest.fixture
-def refresh(workspace):
-    """Import `refresh_catalogs` for one test, with a workspace already resolvable.
-
-    IMPORT HAZARD — read this before adding a test. `refresh_catalogs` calls
-    `find_workspace()` at *module scope* and `sys.exit()`s when nothing resolves, so it
-    can never be imported at the top of this file the way `harvest_lookup` is: a bare
-    `import refresh_catalogs` would abort collection on any machine without a workspace.
-    It also freezes `WORKSPACE` / `MCP_DIR` into module globals at import time, so a
-    cached copy from an earlier test points at that test's (now deleted) tmp directory.
-    Hence: drop any cached copy, import inside the test with the `workspace` fixture
-    active, and drop it again on teardown. Every test that touches the module must take
-    this fixture — including ones that never write a file.
-    """
-    sys.modules.pop("refresh_catalogs", None)
-    module = importlib.import_module("refresh_catalogs")
-    yield module
-    sys.modules.pop("refresh_catalogs", None)
 
 
 # --------------------------------------------------------------------------------------
@@ -92,8 +68,7 @@ def _write_pages(directory: Path, pages: dict):
 # refresh_harvest(): the two invariants the comments promise
 # --------------------------------------------------------------------------------------
 
-def test_a_failure_on_page_two_leaves_every_existing_catalog_file_byte_for_byte_intact(
-        workspace, live_harvest, refresh):
+def test_a_failure_on_page_two_leaves_every_existing_catalog_file_byte_for_byte_intact(workspace, live_harvest):
     """A refresh that dies halfway must not have started deleting.
 
     If it deletes first and fetches second, a Harvest outage mid-refresh leaves the user
@@ -111,7 +86,7 @@ def test_a_failure_on_page_two_leaves_every_existing_catalog_file_byte_for_byte_
 
     live_harvest(_paged([_page(1, 2, [_project(9, "NEW-9")]),
                          _page(2, 2, [_project(10, "NEW-10")])], fail_on=2))
-    r = run_cli(refresh, ["--harvest-only"])
+    r = run_cli(rc, ["--harvest-only"])
 
     assert r.code != 0
     assert "existing catalog left untouched" in (r.err + r.out)
@@ -120,8 +95,7 @@ def test_a_failure_on_page_two_leaves_every_existing_catalog_file_byte_for_byte_
     assert _snapshot(mcp) == before
 
 
-def test_a_refresh_returning_fewer_pages_deletes_the_leftover_page_files(
-        workspace, live_harvest, refresh):
+def test_a_refresh_returning_fewer_pages_deletes_the_leftover_page_files(workspace, live_harvest):
     """Consumers glob `harvest_assignments*.json`, so a page file the shorter run did not
     overwrite is read as current data. The user sees projects that no longer exist, or
     task ids that have since moved, presented exactly like live ones.
@@ -134,7 +108,7 @@ def test_a_refresh_returning_fewer_pages_deletes_the_leftover_page_files(
     })
 
     live_harvest(_paged([_page(1, 1, [_project(9, "NEW-9")])]))
-    r = run_cli(refresh, ["--harvest-only"])
+    r = run_cli(rc, ["--harvest-only"])
 
     assert r.code == 0
     assert sorted(p.name for p in mcp.iterdir()) == ["harvest_assignments.json"]
@@ -143,8 +117,7 @@ def test_a_refresh_returning_fewer_pages_deletes_the_leftover_page_files(
     assert [pa["project"]["code"] for pa in hl.iter_assignments(str(mcp))] == ["NEW-9"]
 
 
-def test_page_one_is_unsuffixed_and_later_pages_each_hold_their_own_payload(
-        workspace, live_harvest, refresh):
+def test_page_one_is_unsuffixed_and_later_pages_each_hold_their_own_payload(workspace, live_harvest):
     """The reader globs for `harvest_assignments*.json` and the docs name the files
     explicitly. Renaming or duplicating a page here means a lookup either misses every
     project after the first hundred, or reports page one's tasks for all of them.
@@ -155,7 +128,7 @@ def test_page_one_is_unsuffixed_and_later_pages_each_hold_their_own_payload(
              _page(3, 3, [_project(4, "P3-A")])]
 
     live_harvest(_paged(pages))
-    r = run_cli(refresh, ["--harvest-only"])
+    r = run_cli(rc, ["--harvest-only"])
 
     assert r.code == 0
     names = ["harvest_assignments.json", "harvest_assignments_p2.json",
@@ -165,13 +138,12 @@ def test_page_one_is_unsuffixed_and_later_pages_each_hold_their_own_payload(
         assert json.loads((mcp / name).read_text(encoding="utf-8")) == expected
 
 
-def test_the_dataverse_refresh_reports_a_skip_when_the_org_is_not_configured(
-        workspace, refresh):
+def test_the_dataverse_refresh_reports_a_skip_when_the_org_is_not_configured(workspace):
     """Dataverse is optional. If the unconfigured guard stops working, `refresh_dataverse`
     reaches the `pac` CLI with a None environment — a user who never opted in gets an
     error, and their active `pac` auth profile gets switched out from under them.
     """
-    r = run_cli(refresh, ["--dataverse-only"])
+    r = run_cli(rc, ["--dataverse-only"])
     assert r.code == 0
     assert "Skipping Dataverse refresh" in r.out
 
@@ -180,8 +152,7 @@ def test_the_dataverse_refresh_reports_a_skip_when_the_org_is_not_configured(
 # wait_for_project(): the pre-billing poll for an eventually-consistent row
 # --------------------------------------------------------------------------------------
 
-def test_wait_for_project_returns_the_assignment_from_whichever_page_holds_the_code(
-        workspace, live_harvest, refresh, monkeypatch):
+def test_wait_for_project_returns_the_assignment_from_whichever_page_holds_the_code(workspace, live_harvest, monkeypatch):
     """This is what a user runs before billing a freshly-created project. If it only
     looked at page one, anyone with more than a hundred assignments would be told their
     new project does not exist yet and would wait out the whole poll for nothing.
@@ -191,15 +162,15 @@ def test_wait_for_project_returns_the_assignment_from_whichever_page_holds_the_c
     live_harvest(_paged([_page(1, 2, [_project(1, "OTHER-1")]),
                          _page(2, 2, [_project(2, "ACM-CR900", "Brand new case")])]))
 
-    pa = refresh.wait_for_project("ACM-CR900", attempts=3, delay=15)
+    pa = rc.wait_for_project("ACM-CR900", attempts=3, delay=15)
 
+    assert pa is not None, "the project on page 2 was never found"
     assert pa["project"]["id"] == 2
     assert pa["project"]["name"] == "Brand new case"
     assert slept == []          # found on the first attempt, so it never waits
 
 
-def test_wait_for_project_returns_none_once_its_attempts_are_exhausted(
-        workspace, live_harvest, refresh, monkeypatch):
+def test_wait_for_project_returns_none_once_its_attempts_are_exhausted(workspace, live_harvest, monkeypatch):
     """A code that never appears has to come back as None so the caller can say "not
     visible yet". Looping forever, or raising, strands the user mid-timesheet.
     """
@@ -207,7 +178,7 @@ def test_wait_for_project_returns_none_once_its_attempts_are_exhausted(
     monkeypatch.setattr(time, "sleep", slept.append)
     live_harvest(_paged([_page(1, 1, [_project(1, "OTHER-1")])]))
 
-    assert refresh.wait_for_project("NEVER-1", attempts=3, delay=15) is None
+    assert rc.wait_for_project("NEVER-1", attempts=3, delay=15) is None
     assert slept == [15, 15]    # waits between attempts, not after the last one
 
 
@@ -215,8 +186,7 @@ def test_wait_for_project_returns_none_once_its_attempts_are_exhausted(
 # harvest_lookup.iter_assignments(): reading a catalog someone else wrote
 # --------------------------------------------------------------------------------------
 
-def test_a_page_of_unparseable_json_is_skipped_instead_of_aborting_the_whole_lookup(
-        tmp_path):
+def test_a_page_of_unparseable_json_is_skipped_instead_of_aborting_the_whole_lookup(tmp_path):
     """A refresh killed mid-write leaves one truncated page. Every *other* page is still
     good, so the lookup should degrade to "that project is missing" rather than failing
     outright and sending the user off to debug the tool.
@@ -243,8 +213,7 @@ def test_a_page_stored_as_a_bare_json_list_is_read_like_a_wrapped_one(tmp_path):
     assert [pa["project"]["code"] for pa in rows] == ["BARE-1"]
 
 
-def test_a_page_keyed_on_assignments_is_read_like_one_keyed_on_project_assignments(
-        tmp_path):
+def test_a_page_keyed_on_assignments_is_read_like_one_keyed_on_project_assignments(tmp_path):
     """Both spellings exist in the wild. Accepting only Harvest's own key makes a
     perfectly valid catalog look empty.
     """
@@ -256,8 +225,7 @@ def test_a_page_keyed_on_assignments_is_read_like_one_keyed_on_project_assignmen
     assert [pa["project"]["code"] for pa in rows] == ["ALT-1"]
 
 
-def test_a_project_appearing_on_several_pages_is_yielded_once_from_the_first_page(
-        tmp_path):
+def test_a_project_appearing_on_several_pages_is_yielded_once_from_the_first_page(tmp_path):
     """Paging is not a snapshot: a project can be captured twice while the pages are
     being fetched. Yielding both makes the same project appear twice in a lookup, and
     the model picks whichever copy it read last — possibly the one with no tasks.
@@ -317,8 +285,7 @@ def test_the_task_filter_is_a_case_insensitive_substring_of_the_task_name(tmp_pa
     assert [t["id"] for t in matches[0]["tasks"]] == [10]
 
 
-def test_billable_comes_from_the_task_assignments_own_flag_not_from_the_task_name(
-        tmp_path):
+def test_billable_comes_from_the_task_assignments_own_flag_not_from_the_task_name(tmp_path):
     """The "(NB)" naming convention is a human hint, not the source of truth — the
     assignment carries the real flag. Reading the name instead misreports billability,
     and billability is the field an invoice is built from.
@@ -353,8 +320,7 @@ def test_a_project_with_no_task_assignments_returns_an_empty_task_list(tmp_path)
 # harvest_lookup.find_catalog_dir(): where to read when nothing is configured
 # --------------------------------------------------------------------------------------
 
-def test_find_catalog_dir_falls_back_to_a_dot_mcp_under_the_current_directory(
-        tmp_path, monkeypatch):
+def test_find_catalog_dir_falls_back_to_a_dot_mcp_under_the_current_directory(tmp_path, monkeypatch):
     """With no workspace configured, a missing catalog is not fatal for the reader: it
     names the directory it looked in and recovers via the live time-entries API. Raising
     or returning None instead turns "no catalog here" into a traceback.

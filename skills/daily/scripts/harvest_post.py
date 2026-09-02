@@ -20,17 +20,10 @@ Success: prints `OK <entry_id>` and exits 0.
 Preview: prints `WOULD POST <body>` and exits 0 — no entry exists.
 Failure: prints `ERR <status> <body[:200]>` to stderr and exits 1.
 """
-import io
 import json
-import os
 import sys
 
-os.environ["PYTHONIOENCODING"] = "utf-8"
-for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream is not one of these
-    if isinstance(_s, io.TextIOWrapper):
-        _s.reconfigure(encoding="utf-8")
-
-from harvest_client import parse_time_to_minutes, request
+from harvest_client import parse_time_to_minutes, request, use_utf8
 
 CONFIRM_FLAG = "--confirm"
 
@@ -40,6 +33,7 @@ USAGE = ("Usage: harvest_post.py PROJECT_ID TASK_ID YYYY-MM-DD HH:MM HH:MM 'note
 
 
 def main() -> None:
+    use_utf8()
     # The flag is removed wherever it appears, so it can be typed before or after the
     # positionals. Notes spelled exactly `--confirm` would be eaten too — and the argument
     # count then falls short, which is a usage error rather than a silent post.

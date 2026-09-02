@@ -298,9 +298,16 @@ def test_scripts_use_the_shared_helper_rather_than_their_own(module, name):
 
 @pytest.mark.parametrize("script", ["afk_blocks.py", "activity_timeline.py"])
 def test_scripts_do_not_redefine_the_server_address(script):
-    """Two AW_BASE constants can drift apart; identity checks can't catch that for a string."""
+    """A second default address can drift from the shared one, and an identity check
+    cannot catch that for a string the way it does for a function.
+
+    `AW_BASE` is what this used to name — a module global holding the resolved address.
+    There is no such global now; `resolve_base()` runs per request. The thing that could
+    still be copied is the default it falls back to, so that is what is named here.
+    """
     with open(os.path.join(SCRIPTS, script), encoding="utf-8") as fh:
         tree = ast.parse(fh.read())
     assigned = [t.id for node in tree.body if isinstance(node, ast.Assign)
                 for t in node.targets if isinstance(t, ast.Name)]
-    assert "AW_BASE" not in assigned, f"{script} keeps its own copy of AW_BASE"
+    for own in ("AW_BASE", "DEFAULT_ACTIVITY_URL"):
+        assert own not in assigned, f"{script} keeps its own copy of {own}"

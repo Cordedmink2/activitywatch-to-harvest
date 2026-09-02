@@ -36,17 +36,10 @@ Success: prints `OK <entry_id>` and exits 0.
 Preview: prints `WOULD PATCH <entry_id> <body>` and exits 0 — nothing changed.
 Failure: prints `ERR <status> <body[:200]>` to stderr and exits 1.
 """
-import io
 import json
-import os
 import sys
 
-os.environ["PYTHONIOENCODING"] = "utf-8"
-for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream is not one of these
-    if isinstance(_s, io.TextIOWrapper):
-        _s.reconfigure(encoding="utf-8")
-
-from harvest_client import parse_time_to_minutes, request
+from harvest_client import parse_time_to_minutes, request, use_utf8
 
 FLAGS = {
     "--start": ("started_time", str),
@@ -108,6 +101,7 @@ def parse_args(argv: list[str]) -> tuple[str, dict, bool]:
 
 
 def main() -> None:
+    use_utf8()
     entry_id, body, confirmed = parse_args(sys.argv)
 
     if "started_time" in body and "ended_time" in body:

@@ -14,7 +14,10 @@ pointing at `.env.example`, through the shared error contract in `skill_config.f
 
 No third-party deps — uses stdlib `urllib` like the sibling `aw_*.py` helpers.
 """
+import io
 import json
+import os
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,6 +28,26 @@ API_BASE = "https://api.harvestapp.com/v2"
 USER_AGENT = "billables-daily-skill"
 
 _CREDS_CACHE: tuple[str, str] | None = None
+
+
+def use_utf8() -> None:
+    """Make this process and its children speak UTF-8. Call it first thing in `main()`.
+
+    Every script that prints Harvest data needs this: client and project names carry
+    macrons and dashes that a console opened under a Windows codepage turns into a
+    `UnicodeEncodeError` mid-report. `PYTHONIOENCODING` is set as well as the streams
+    reconfigured because `refresh_catalogs` spawns `pac`, which inherits it.
+
+    Lives here rather than in four copies at the top of four scripts — which is where it
+    was, and the copies were module-scope statements, so merely importing any of those
+    scripts rewrote the environment for every other module in the interpreter. A stream
+    that is captured or redirected is not a `TextIOWrapper` and is left alone; a bare
+    `reconfigure()` died with an `AttributeError` naming neither the script nor the cause.
+    """
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
 
 
 def parse_time_to_minutes(t: str) -> int:

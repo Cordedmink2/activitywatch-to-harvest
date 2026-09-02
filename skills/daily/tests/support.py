@@ -28,7 +28,25 @@ import json
 import sys
 import threading
 import urllib.parse
+from pathlib import Path
 from zoneinfo import ZoneInfo
+
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def bundled_scripts() -> list[Path]:
+    """Every `.py` this skill ships, as paths — the population for "any bundled script".
+
+    Derived from the directory rather than listed, because the whole value of a test that
+    says *every* script is that a twelfth one is covered the day it is added. A list here
+    would cover eleven and go on passing.
+    """
+    return sorted(SCRIPTS_DIR.glob("*.py"))
+
+
+def bundled_script_names() -> list[str]:
+    """The same population as importable module names, for `parametrize` ids."""
+    return [p.stem for p in bundled_scripts()]
 
 # Every key the scripts resolve through `skill_config.setting()`. One list, because two
 # tests want it for opposite reasons and a key in one but not the other is a silent hole:

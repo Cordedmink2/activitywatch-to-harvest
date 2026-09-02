@@ -30,12 +30,16 @@ def resolve_base() -> str:
     machine you are typing on. It is declared configuration rather than a constant for the
     case it isn't — a second machine, a non-standard port — which used to mean editing an
     installed script that the next update overwrites.
+
+    Called per request rather than once into a module global. The global saved one settings
+    read per call and cost more than it saved: the address was fixed before any caller
+    existed, so redirecting it meant reassigning `aw_client.AW_BASE` from the outside —
+    which is what this suite had to do to keep itself off a developer's real ActivityWatch,
+    and what made a plain `import aw_client` a thing with consequences. A settings read is
+    a dict lookup and a file stat, and a request over the wire follows it immediately.
     """
     base = skill_config.setting("TIMESHEET_ACTIVITY_URL", default=DEFAULT_ACTIVITY_URL)
     return base.rstrip("/") + "/api/0"
-
-
-AW_BASE = resolve_base()
 
 
 def resolve_zone(flag):
@@ -107,7 +111,7 @@ def zone_label(zone):
 
 def get(path):
     try:
-        with urllib.request.urlopen(AW_BASE + path, timeout=15) as r:
+        with urllib.request.urlopen(resolve_base() + path, timeout=15) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
         # An HTTPError never reaches the `with`, so its response body is left open. That

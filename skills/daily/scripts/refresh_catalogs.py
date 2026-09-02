@@ -15,7 +15,6 @@ Writes:
 """
 
 import argparse
-import io
 import json
 import os
 import re
@@ -24,32 +23,43 @@ import subprocess
 import sys
 import tempfile
 
-os.environ["PYTHONIOENCODING"] = "utf-8"
-for _s in (sys.stdout, sys.stderr):   # a captured or redirected stream is not one of these
-    if isinstance(_s, io.TextIOWrapper):
-        _s.reconfigure(encoding="utf-8")
-
-from harvest_client import request as harvest_request
+from harvest_client import request as harvest_request, use_utf8
 from skill_config import setting, find_workspace, fail_missing
 
-# Writer and reader share find_workspace() so a refresh cannot write catalogs into one
-# directory while harvest_lookup.py reads another. Unresolved is fatal here: writing to a
-# guessed path would report success while the reader kept seeing stale data.
-WORKSPACE = find_workspace()
-if WORKSPACE is None:
-    fail_missing(
-        "can't locate your timesheet workspace (the directory holding .mcp/ and "
-        "Timesheets/). Run this from that directory, or set TIMESHEET_WORKSPACE in the "
-        "skill .env (or as an OS env var) to its absolute path."
-    )
-MCP_DIR = WORKSPACE / ".mcp"
 
-# Dataverse incident catalog is OPTIONAL. Leave DATAVERSE_URL / PAC_AUTH_PROFILE unset to skip
-# it entirely — the Harvest refresh still runs. Set both to enable ticket-number resolution
-# from your Dataverse org via the `pac` CLI. Where they go depends on the install: environment
-# variables for a plugin, the skill `.env` for an export. README §9 states which and why.
-DV_URL = setting("DATAVERSE_URL")
-PAC_PROFILE = setting("PAC_AUTH_PROFILE")
+def mcp_dir():
+    """The `.mcp/` directory this run writes its catalogs into.
+
+    Writer and reader share `find_workspace()` so a refresh cannot write catalogs into one
+    directory while `harvest_lookup.py` reads another. Unresolved is fatal: writing to a
+    guessed path would report success while the reader kept seeing stale data.
+
+    Resolved here rather than at module scope, which is where the fatality used to live.
+    `sys.exit()` during an import takes down whatever was importing — collection of any
+    test file that names this module, a caller reading `--help`, a tool listing the
+    parser's flags — and none of those were asking for a workspace at all. The error is
+    the same one; it now arrives when the directory is actually wanted.
+    """
+    workspace = find_workspace()
+    if workspace is None:
+        fail_missing(
+            "can't locate your timesheet workspace (the directory holding .mcp/ and "
+            "Timesheets/). Run this from that directory, or set TIMESHEET_WORKSPACE in the "
+            "skill .env (or as an OS env var) to its absolute path."
+        )
+    return workspace / ".mcp"
+
+
+def dataverse_settings():
+    """`(DATAVERSE_URL, PAC_AUTH_PROFILE)`, either of which may be None.
+
+    The Dataverse incident catalog is OPTIONAL. Leave both unset to skip it entirely — the
+    Harvest refresh still runs. Set both to enable ticket-number resolution from your
+    Dataverse org via the `pac` CLI. Where they go depends on the install: environment
+    variables for a plugin, the skill `.env` for an export. README §9 states which and why.
+    """
+    return setting("DATAVERSE_URL"), setting("PAC_AUTH_PROFILE")
+
 
 INCIDENT_FETCHXML = """<fetch>
   <entity name="incident">
@@ -74,7 +84,8 @@ def refresh_harvest():
     freshness signal. To bill a brand-new project, use wait_for_project() rather than trusting
     a single refresh.
     """
-    MCP_DIR.mkdir(parents=True, exist_ok=True)
+    mcp = mcp_dir()
+    mcp.mkdir(parents=True, exist_ok=True)
 
     # Fetch every page into memory BEFORE touching the existing files, so an API
     # failure mid-refresh leaves the old catalog intact rather than half-deleted.
@@ -102,10 +113,10 @@ def refresh_harvest():
     try:
         for i, payload in enumerate(pages, start=1):
             out_name = "harvest_assignments.json" if i == 1 else f"harvest_assignments_p{i}.json"
-            tmp = MCP_DIR / (out_name + ".new")
+            tmp = mcp / (out_name + ".new")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2)
-            staged.append((tmp, MCP_DIR / out_name, len(payload.get("project_assignments", []))))
+            staged.append((tmp, mcp / out_name, len(payload.get("project_assignments", []))))
     except OSError:
         for tmp, _, _ in staged:
             tmp.unlink(missing_ok=True)
@@ -114,7 +125,7 @@ def refresh_harvest():
     # Clear stale page files — if a prior run produced more pages than this one,
     # leftover _p{n}.json files would be read as stale data by consumers that
     # glob harvest_assignments*.json. (The `.new` staging files do not match that glob.)
-    for old in MCP_DIR.glob("harvest_assignments*.json"):
+    for old in mcp.glob("harvest_assignments*.json"):
         old.unlink()
 
     for i, (tmp, final, n) in enumerate(staged, start=1):
@@ -162,9 +173,9 @@ def _active_pac_index(pac_cmd):
     """Return the index (str) of the currently-active pac auth profile, or None.
 
     Parsed from `pac auth list` — the active row is marked with `*`, e.g. `[6]   *  …`.
-    Used so we can restore the user's profile after temporarily switching to PAC_PROFILE;
-    otherwise every refresh silently leaves the active profile changed (a cause of
-    cross-tenant 'profile drift').
+    Used so we can restore the user's profile after temporarily switching to the
+    configured one; otherwise every refresh silently leaves the active profile changed
+    (a cause of cross-tenant 'profile drift').
     """
     res = subprocess.run([pac_cmd, "auth", "list"], capture_output=True, text=True)
     if res.returncode != 0:
@@ -177,7 +188,8 @@ def _active_pac_index(pac_cmd):
 
 
 def refresh_dataverse():
-    if not DV_URL or not PAC_PROFILE:
+    dv_url, pac_profile = dataverse_settings()
+    if not dv_url or not pac_profile:
         print(
             "  Skipping Dataverse refresh — DATAVERSE_URL and/or PAC_AUTH_PROFILE not set.\n"
             "  (This is an optional feature; the Harvest catalog above is all most users need.\n"
@@ -189,15 +201,16 @@ def refresh_dataverse():
     if not pac_cmd:
         sys.exit("ERROR: pac CLI not on PATH. Install Power Platform CLI and retry.")
 
-    MCP_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = MCP_DIR / "dv_active_incidents.txt"
+    mcp = mcp_dir()
+    mcp.mkdir(parents=True, exist_ok=True)
+    out_path = mcp / "dv_active_incidents.txt"
 
     # Remember the user's active profile so we can restore it afterward.
     prior_index = _active_pac_index(pac_cmd)
 
     # Ensure the right profile is active
     sel = subprocess.run(
-        [pac_cmd, "auth", "select", "--name", PAC_PROFILE],
+        [pac_cmd, "auth", "select", "--name", pac_profile],
         capture_output=True,
         text=True,
     )
@@ -210,7 +223,7 @@ def refresh_dataverse():
 
     try:
         result = subprocess.run(
-            [pac_cmd, "env", "fetch", "--xmlFile", xml_path, "--environment", DV_URL],
+            [pac_cmd, "env", "fetch", "--xmlFile", xml_path, "--environment", dv_url],
             capture_output=True,
             text=True,
         )
@@ -227,7 +240,7 @@ def refresh_dataverse():
             os.unlink(xml_path)
         except OSError:
             pass
-        # Restore the user's original active profile (don't leave it on PAC_PROFILE).
+        # Restore the user's original active profile (don't leave it on pac_profile).
         if prior_index:
             subprocess.run(
                 [pac_cmd, "auth", "select", "--index", prior_index],
@@ -238,11 +251,12 @@ def refresh_dataverse():
             # Silence here left the active profile switched — the cross-tenant drift the
             # restore exists to prevent, happening in the one case it cannot handle.
             print(f"  WARN could not read the previously-active pac profile, so it was "
-                  f"not restored. Your active profile is now '{PAC_PROFILE}' — run "
+                  f"not restored. Your active profile is now '{pac_profile}' — run "
                   f"`pac auth list` and re-select if that is not what you want.")
 
 
 def main():
+    use_utf8()
     parser = argparse.ArgumentParser(description="Refresh Harvest + Dataverse catalogs for the billables daily skill.")
     parser.add_argument("--harvest-only", action="store_true")
     parser.add_argument("--dataverse-only", action="store_true")

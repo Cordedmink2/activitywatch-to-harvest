@@ -39,8 +39,8 @@ import json
 import re
 import sys
 
-from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
-                       local_clock, parse_range, parse_ts, pick_bucket,
+from aw_client import (dedupe_heartbeats, fetch_events, get, local_clock,
+                       parse_range, parse_ts, pick_bucket, resolve_base,
                        resolve_zone, utc_bounds, zone_label)
 
 # Defaults for the two noise constants, each exposed as a flag in main(): what counts as
@@ -170,7 +170,7 @@ def main():
         win_bucket = pick_bucket(buckets, "aw-watcher-window")
         win_events = fetch_events(win_bucket, start_utc, end_utc)
     except Exception as e:
-        print(f"ERR ActivityWatch unreachable at {AW_BASE} ({e})", file=sys.stderr)
+        print(f"ERR ActivityWatch unreachable at {resolve_base()} ({e})", file=sys.stderr)
         return 1
     if not win_bucket:
         # Without this, a crashed or renamed window watcher yields a well-formed, totally

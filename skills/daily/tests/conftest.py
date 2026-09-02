@@ -35,7 +35,6 @@ for p in (str(SCRIPTS), str(TESTS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import aw_client                     # noqa: E402
 import harvest_client                # noqa: E402
 import skill_config                  # noqa: E402
 from support import (SETTING_KEYS, Day, aw_server, day,  # noqa: E402,F401
@@ -44,6 +43,7 @@ from support import (SETTING_KEYS, Day, aw_server, day,  # noqa: E402,F401
 # Port 0 is not a port. A connection to it cannot be routed anywhere, by anything, which
 # is a stronger guarantee than "a port nothing happens to be listening on right now" —
 # and it fails in ~30ms where a closed loopback port costs 2s of SYN retries on Windows.
+# The bare base, with no `/api/0`: `resolve_base()` appends that itself.
 DEAD = "http://127.0.0.1:0"
 
 # UTC+12, fixed. See `_hermetic` below for why the suite configures one at all.
@@ -58,14 +58,25 @@ def _hermetic(monkeypatch, tmp_path):
     that opens it — a property `test_config_seam.py` asserts rather than assumes, since
     a second reader appearing elsewhere in `scripts/` would leave this guard covering
     half of what it claims to.
+
+    The activity source is redirected through its *setting* rather than by reassigning a
+    module global. `aw_client` used to freeze the address into `AW_BASE` at import, so the
+    only way to move it was to reach in and overwrite it; now `resolve_base()` runs per
+    request and reads `TIMESHEET_ACTIVITY_URL` like anything else. That is the safer of the
+    two mechanisms as well as the tidier one — a `setattr` on a name that has been renamed
+    away raises, but a `setenv` on a key nothing reads any more fails silently and points
+    the suite back at a real ActivityWatch. `test_harness.py` holds that line by asserting
+    the guard works, rather than trusting that it is wired up.
     """
-    monkeypatch.setattr(aw_client, "AW_BASE", f"{DEAD}/api/0")
     monkeypatch.setattr(harvest_client, "API_BASE", f"{DEAD}/v2")
     monkeypatch.setattr(skill_config, "ENV_PATH", tmp_path / "no-such-.env")
     monkeypatch.setattr(harvest_client, "_CREDS_CACHE", None)
     # Left set, a developer's own shell would leak into assertions about defaults.
     for key in SETTING_KEYS:
         monkeypatch.delenv(key, raising=False)
+    # ...and then the activity source is put back, pointed nowhere. After the delenv loop,
+    # necessarily: TIMESHEET_ACTIVITY_URL is one of the keys it clears.
+    monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", DEAD)
     # ...and then one is put back, because there is no longer a built-in offset to fall
     # back on: a script with no `--utc-offset` and no configured zone refuses to date a
     # day at all, which is the point of that change. `Etc/GMT-12` is UTC+12 with no
@@ -96,7 +107,7 @@ def live_aw(monkeypatch):
         srv = aw_server(d.buckets(), d.settings(), **kw)
         srv.__enter__()
         started.append(srv)
-        monkeypatch.setattr(aw_client, "AW_BASE", f"{srv.base}/api/0")
+        monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", srv.base)
         if d.zone_name:
             monkeypatch.setenv("TIMESHEET_TIMEZONE", d.zone_name)
         return srv

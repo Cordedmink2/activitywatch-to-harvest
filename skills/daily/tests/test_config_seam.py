@@ -15,9 +15,13 @@ growing back somewhere else in `scripts/`.
 """
 from __future__ import annotations
 
+import importlib
+import os
 import re
 import sys
 from pathlib import Path
+from types import ModuleType
+from typing import NamedTuple
 
 import pytest
 
@@ -27,7 +31,7 @@ if str(SCRIPTS) not in sys.path:
 
 import harvest_client as hc            # noqa: E402
 import skill_config                    # noqa: E402
-from support import SETTING_KEYS       # noqa: E402
+from support import SETTING_KEYS, bundled_script_names  # noqa: E402
 
 
 @pytest.fixture
@@ -286,3 +290,132 @@ def test_the_precedence_is_stated_where_it_is_implemented():
     assert "Precedence" in doc
     for source in ("flag", ".env", "environment", "default"):
         assert source in doc, f"the precedence docstring never mentions the {source} layer"
+
+
+# --------------------------------------------------------------------------------------
+# Structural: nothing is resolved, read or written by an import
+# --------------------------------------------------------------------------------------
+
+# Importing a module has to be free. It is not, today: `refresh_catalogs` resolves the
+# workspace at module scope and `sys.exit()`s when nothing answers, and `aw_client` freezes
+# the activity-source address into `AW_BASE` the same way. Both are invisible from the
+# outside and expensive from the inside — the suite pays for the first with a fixture
+# duplicated across two files whose only job is to stage the import, and for the second
+# with a conftest that has to reach in and reassign a module global to keep tests off the
+# developer's real ActivityWatch.
+#
+# So these are the tests the prefactor is for. They say what "no side effect" means in
+# three checkable parts, and each part is red against the tree as it stands.
+
+
+# A literal assignment into the process environment. Derived from the sources rather than
+# listed, for the reason below: the fixture has to know which keys to park a sentinel on,
+# and a hand-kept list would silently stop covering the next one.
+ENV_WRITE = re.compile(r"os\.environ\[[\"']([A-Z_]+)[\"']\]\s*=")
+
+
+def keys_a_script_assigns() -> set[str]:
+    return {key for p in SCRIPTS.glob("*.py")
+            for key in ENV_WRITE.findall(p.read_text(encoding="utf-8"))}
+
+
+class ImportRecord(NamedTuple):
+    resolved: list[str]          # seam calls made while the module was loading
+    env_delta: dict[str, str]    # process-environment keys the import added or changed
+
+
+@pytest.fixture
+def import_record(monkeypatch):
+    """Import a bundled script from scratch and report what it did on the way in.
+
+    The seam is wrapped rather than replaced, so the module loads exactly as it would in
+    production and the recording cannot itself change the outcome — a stub returning None
+    would send `aw_client` into `None.rstrip()` and prove nothing about the real path.
+
+    `refresh_catalogs` imports its helpers with `from skill_config import ...`, which binds
+    at import, so the wrappers have to be in place first; that is why this is a fixture
+    around the import and not an assertion after it.
+
+    `sys.modules` is restored by hand to whatever it held before — present *or* absent.
+    Half of this suite has already imported these modules, and `conftest` holds references
+    to three of them; leaving a second copy of `aw_client` behind would quietly detach the
+    hermeticity fixture from the module the rest of the session uses.
+    """
+    def _record(name: str) -> ImportRecord:
+        resolved: list[str] = []
+        for fname in ("setting", "find_workspace"):
+            real = getattr(skill_config, fname)
+
+            def spy(*args, _real=real, _name=fname, **kwargs):
+                resolved.append(_name)
+                return _real(*args, **kwargs)
+
+            monkeypatch.setattr(skill_config, fname, spy)
+
+        # A write is only a *delta* if the key does not already hold the value being
+        # written, and by the time any test runs, collection has imported most of these
+        # modules — so `PYTHONIOENCODING` is already `utf-8` and the assignment under test
+        # is invisible. Park a value no script writes on each key first, and it shows.
+        for key in keys_a_script_assigns():
+            monkeypatch.setenv(key, "unset-by-the-import-side-effect-test")
+
+        before = dict(os.environ)
+        cached: ModuleType | None = sys.modules.get(name)
+        sys.modules.pop(name, None)
+        try:
+            importlib.import_module(name)
+        except SystemExit as exc:
+            pytest.fail(
+                f"importing {name} ended the process: {exc}\n"
+                "A module that exits as it loads cannot be imported by a caller, a test, "
+                "or a `--help`.")
+        finally:
+            sys.modules.pop(name, None)
+            if cached is not None:
+                sys.modules[name] = cached
+        after = dict(os.environ)
+        return ImportRecord(
+            resolved=resolved,
+            env_delta={k: v for k, v in after.items() if before.get(k) != v})
+
+    return _record
+
+
+@pytest.mark.parametrize("name", bundled_script_names())
+def test_importing_a_bundled_script_resolves_no_configuration(name, import_record):
+    """Configuration is resolved where it is used, not where a module is loaded.
+
+    Resolution at import is what makes a value un-redirectable: by the time any caller
+    exists, the answer is already frozen into a module global, and the only way past it is
+    to reassign that global — which is what `conftest` had to do to `aw_client.AW_BASE` to
+    keep the suite off a real ActivityWatch, and what `test_edge_catalogs` carried a
+    fixture and a paragraph headed IMPORT HAZARD to work around for `refresh_catalogs`.
+    Both are gone; this is what stops them coming back.
+
+    It is also what turns a missing setting into an import-time crash. A missing setting
+    should be one `ERROR:` line at the moment the value is wanted; resolved at import it
+    is instead a `SystemExit` from a bare `import`, which aborts collection for anything
+    that so much as names the module.
+    """
+    record = import_record(name)
+    assert not record.resolved, (
+        f"{name} resolves configuration while it is being imported "
+        f"({', '.join(sorted(set(record.resolved)))}) — so the value is fixed before any "
+        "caller exists, and a missing one is an import-time exit rather than an error "
+        "where it is needed")
+
+
+@pytest.mark.parametrize("name", bundled_script_names())
+def test_importing_a_bundled_script_writes_nothing_to_the_environment(name, import_record):
+    """The other half of "no side effect", and the cheaper half to overlook.
+
+    Four scripts set `PYTHONIOENCODING` at module scope, to fix the encoding of the child
+    processes they later spawn. That is a real need with a wrong home: an import mutates
+    the environment of everything else in the interpreter, including a caller that only
+    wanted to read the module's argument parser. It belongs in `main()`, next to the
+    subprocess it exists for.
+    """
+    record = import_record(name)
+    assert not record.env_delta, (
+        f"importing {name} changed the process environment ({sorted(record.env_delta)}) — "
+        "an import is not the place to mutate state every other module can see")

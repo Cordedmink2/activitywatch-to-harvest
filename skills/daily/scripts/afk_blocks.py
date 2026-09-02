@@ -42,9 +42,9 @@ import datetime as dt
 import json
 import sys
 
-from aw_client import (AW_BASE, dedupe_heartbeats, fetch_events, get,
-                       local_clock, parse_local_time, parse_range, parse_ts,
-                       pick_bucket, resolve_zone, utc_bounds, zone_label)
+from aw_client import (dedupe_heartbeats, fetch_events, get, local_clock,
+                       parse_local_time, parse_range, parse_ts, pick_bucket,
+                       resolve_base, resolve_zone, utc_bounds, zone_label)
 
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
 
@@ -255,7 +255,7 @@ def main():
     try:
         afk_bucket, win_bucket = discover_buckets()
     except Exception as e:
-        print(f"ERR ActivityWatch unreachable at {AW_BASE} ({e})", file=sys.stderr)
+        print(f"ERR ActivityWatch unreachable at {resolve_base()} ({e})", file=sys.stderr)
         return 1
     if not afk_bucket:
         print("ERR no aw-watcher-afk bucket found", file=sys.stderr)

@@ -28,7 +28,7 @@ import pytest
 import activity_timeline as tl
 import afk_blocks as ab
 import aw_client as aw
-from support import day, run_cli
+from support import aw_server, day, run_cli
 
 MAY = dt.date(2026, 5, 28)
 
@@ -43,9 +43,15 @@ def unconfigured(monkeypatch):
 # The ActivityWatch address
 # --------------------------------------------------------------------------------------
 
-def test_the_activity_watch_address_defaults_to_the_local_server():
+def test_the_activity_watch_address_defaults_to_the_local_server(monkeypatch):
     """The overwhelmingly common case, and the reason the option is optional: AW runs on
-    the machine you are typing on."""
+    the machine you are typing on.
+
+    The setting is deleted first because the hermetic fixture sets it — that is how the
+    suite now keeps itself off a real ActivityWatch, so a test about the *unconfigured*
+    default has to opt out of the guard, exactly as the timezone tests do.
+    """
+    monkeypatch.delenv("TIMESHEET_ACTIVITY_URL", raising=False)
     assert aw.resolve_base() == "http://localhost:5600/api/0"
 
 
@@ -61,29 +67,46 @@ def test_a_trailing_slash_does_not_produce_a_doubled_path(monkeypatch):
     assert aw.resolve_base() == "http://desk.lan:5600/api/0"
 
 
-def test_the_address_every_request_is_built_on_is_the_resolved_one():
+def test_the_address_every_request_is_built_on_is_the_resolved_one(monkeypatch):
     """The wiring, not just the resolver.
 
-    `get()` builds its URL from the module-level `AW_BASE`, and the tests above exercise
-    `resolve_base()` in isolation while the hermetic fixture monkeypatches `AW_BASE`
-    directly — so nothing else connects the two ends. Reverting line 1 of that pair to a
-    literal `"http://localhost:5600/api/0"` would leave every other test in this file
-    green and break only a real remote-ActivityWatch install.
+    The tests above exercise `resolve_base()` in isolation. Nothing there says `get()` —
+    the function that actually opens the socket — is built on it, and for a while nothing
+    did: the address was resolved once into `AW_BASE` at import, the hermetic fixture
+    reassigned that global directly, and reverting the resolver to a literal
+    `"http://localhost:5600/api/0"` would have left every other test in this file green
+    while breaking every remote-ActivityWatch install.
 
-    Asserted on the source rather than by reloading the module: `afk_blocks` and
-    `activity_timeline` bind these helpers by name at import, so a reload would leave them
-    holding the previous module's function objects and quietly break the identity checks in
-    `test_aw_client.py`. Same technique as `test_scripts_do_not_redefine_the_server_address`.
+    So this drives a real request at a real socket and asks where it landed.
     """
-    tree = ast.parse(Path(aw.__file__).read_text(encoding="utf-8"))
-    wiring = [node.value for node in tree.body
-              if isinstance(node, ast.Assign)
-              and any(getattr(t, "id", None) == "AW_BASE" for t in node.targets)]
-    assert len(wiring) == 1, "aw_client assigns AW_BASE more than once, or not at all"
-    call = wiring[0]
-    assert isinstance(call, ast.Call) and getattr(call.func, "id", None) == "resolve_base", (
-        "AW_BASE is not initialised from resolve_base(), so TIMESHEET_ACTIVITY_URL reaches "
-        "nothing that makes a request")
+    d = day().active("09:00", "17:00")
+    with aw_server(d.buckets(), d.settings()) as srv:
+        monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", srv.base)
+        aw.get("/buckets/")
+        assert srv.requests, (
+            "get() did not reach the configured address, so TIMESHEET_ACTIVITY_URL "
+            "reaches nothing that makes a request")
+
+
+def test_the_address_is_resolved_per_request_rather_than_once(monkeypatch):
+    """Two requests, two addresses, no reimport and no module global reassigned.
+
+    This is the property the prefactor bought, and it is the one that cannot be inferred
+    from the test above: a resolver called once at import would satisfy that one and fail
+    this one. It is also what the hermeticity fixture now stands on — `conftest` redirects
+    the activity source by setting `TIMESHEET_ACTIVITY_URL`, and if the address were ever
+    frozen again the whole suite would quietly start reading the developer's real
+    ActivityWatch.
+    """
+    d = day().active("09:00", "17:00")
+    with aw_server(d.buckets(), d.settings()) as first,          aw_server(d.buckets(), d.settings()) as second:
+        monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", first.base)
+        aw.get("/buckets/")
+        monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", second.base)
+        aw.get("/buckets/")
+        assert first.requests and second.requests, (
+            "the second request went back to the first address — the activity source is "
+            "resolved once and frozen, so no caller can redirect it")
 
 
 # --------------------------------------------------------------------------------------

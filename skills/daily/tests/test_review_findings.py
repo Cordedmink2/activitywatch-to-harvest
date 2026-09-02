@@ -23,18 +23,9 @@ import activity_timeline as tl
 import afk_blocks as ab
 import aw_client
 import harvest_lookup as hl
+import refresh_catalogs as rc
 import skill_config
 from support import aw_server, day, run_cli
-
-
-@pytest.fixture
-def refresh(workspace):
-    """Import `refresh_catalogs` with a workspace resolvable — see the identical fixture
-    in `test_edge_catalogs.py` for why this cannot be a module-level import."""
-    sys.modules.pop("refresh_catalogs", None)
-    module = importlib.import_module("refresh_catalogs")
-    yield module
-    sys.modules.pop("refresh_catalogs", None)
 
 
 # --------------------------------------------------------------------------------------
@@ -51,7 +42,7 @@ def test_timeline_errors_when_the_window_bucket_is_missing(monkeypatch):
     """
     d = day().active("09:00", "17:00")
     with aw_server({"aw-watcher-afk_TESTHOST": d.afk_events()}, d.settings()) as srv:
-        monkeypatch.setattr(aw_client, "AW_BASE", f"{srv.base}/api/0")
+        monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", srv.base)
         r = run_cli(tl, [d.date_str()])
     assert r.code == 1
     assert "window" in r.err.lower()
@@ -62,8 +53,7 @@ def test_timeline_errors_when_the_window_bucket_is_missing(monkeypatch):
 # 2. Every script must import under a captured stdout
 # --------------------------------------------------------------------------------------
 
-def test_refresh_catalogs_imports_under_a_stdout_that_cannot_be_reconfigured(workspace,
-                                                                            monkeypatch):
+def test_refresh_catalogs_imports_under_a_stdout_that_cannot_be_reconfigured(workspace, monkeypatch):
     """The one script that kept a bare `sys.stdout.reconfigure()` at import. Under a
     captured stream — a test harness, a wrapper, `pythonw.exe` — it died with an
     AttributeError naming neither the script nor the cause."""
@@ -94,7 +84,7 @@ def test_buckets_are_found_on_an_activitywatch_that_does_not_suffix_them(monkeyp
     d = day().active("09:00", "17:00")
     with aw_server({"aw-watcher-afk": d.afk_events(),
                     "aw-watcher-window": d.window_events()}, d.settings()) as srv:
-        monkeypatch.setattr(aw_client, "AW_BASE", f"{srv.base}/api/0")
+        monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", srv.base)
         r = run_cli(ab, [d.date_str(), "--json"])
     assert r.code == 0
     assert r.json()["work_start"] == "09:00:00"
@@ -111,7 +101,7 @@ def test_a_suffixed_bucket_still_wins_over_an_unsuffixed_leftover(monkeypatch):
                    d.settings(),
                    last_updated={"aw-watcher-afk": "2026-01-01T00:00:00+00:00",
                                  "aw-watcher-afk_LIVEHOST": "2026-05-28T00:00:00+00:00"}) as srv:
-        monkeypatch.setattr(aw_client, "AW_BASE", f"{srv.base}/api/0")
+        monkeypatch.setenv("TIMESHEET_ACTIVITY_URL", srv.base)
         r = run_cli(ab, [d.date_str(), "--json"])
     assert r.json()["afk_bucket"] == "aw-watcher-afk_LIVEHOST"
     assert r.json()["work_start"] == "09:00:00"
@@ -151,8 +141,7 @@ def test_covered_minutes_still_add_up_for_disjoint_blocks(live_aw):
 # 5. Workspace auto-detection on a real Claude Code install
 # --------------------------------------------------------------------------------------
 
-def test_workspace_is_found_when_the_skill_is_installed_under_dot_claude(tmp_path,
-                                                                        monkeypatch):
+def test_workspace_is_found_when_the_skill_is_installed_under_dot_claude(tmp_path, monkeypatch):
     """Auto-detection walked up two levels from the skill, which is right for
     `<workspace>/skills/<name>` and one level short of `<workspace>/.claude/skills/<name>`
     — the layout Claude Code actually installs into.
@@ -186,8 +175,7 @@ def test_workspace_detection_still_refuses_to_guess(tmp_path, monkeypatch):
 # 6-7. refresh_catalogs robustness
 # --------------------------------------------------------------------------------------
 
-def test_a_null_project_on_a_pending_assignment_does_not_crash_the_poll(refresh,
-                                                                       live_harvest):
+def test_a_null_project_on_a_pending_assignment_does_not_crash_the_poll(workspace, live_harvest):
     """`pa.get("project", {})` returns None — not {} — when the key is present and null,
     so `.get("code")` raised. `wait_for_project` is the pre-billing poll for a
     brand-new project, which is exactly when Harvest is likeliest to serve a
@@ -197,11 +185,12 @@ def test_a_null_project_on_a_pending_assignment_does_not_crash_the_poll(refresh,
         "project_assignments": [{"project": None, "task_assignments": []},
                                 {"project": {"id": 7, "code": "NEW-1"}, "task_assignments": []}],
         "next_page": None})})
-    assert refresh.wait_for_project("NEW-1", attempts=1)["project"]["code"] == "NEW-1"
+    pa = rc.wait_for_project("NEW-1", attempts=1)
+    assert pa is not None, "the null-project row swallowed the real one behind it"
+    assert pa["project"]["code"] == "NEW-1"
 
 
-def test_a_failed_first_write_does_not_destroy_the_existing_catalog(refresh, live_harvest,
-                                                                    workspace, monkeypatch):
+def test_a_failed_first_write_does_not_destroy_the_existing_catalog(workspace, live_harvest, monkeypatch):
     """The old files were deleted before the first new one was written. If that write
     failed — disk full, a sync client holding the directory, a permissions change — the
     catalog was gone with nothing to replace it, and every later lookup fell through to
@@ -225,31 +214,31 @@ def test_a_failed_first_write_does_not_destroy_the_existing_catalog(refresh, liv
 
     monkeypatch.setattr("builtins.open", exploding_open)
     with pytest.raises((OSError, SystemExit)):
-        refresh.refresh_harvest()
+        rc.refresh_harvest()
     monkeypatch.undo()
 
     assert existing.exists(), "the old catalog was deleted with nothing to replace it"
     assert existing.read_text(encoding="utf-8") == before
 
 
-def test_an_unreadable_pac_profile_list_warns_instead_of_silently_switching(refresh, capsys,
-                                                                           monkeypatch):
+def test_an_unreadable_pac_profile_list_warns_instead_of_silently_switching(workspace, capsys, monkeypatch):
     """`_active_pac_index` returns None when `pac auth list` fails or changes format, and
     the restore was then skipped in silence — leaving the user's active profile switched
     to the timesheet one. That cross-tenant drift is the exact thing the restore was
     written to prevent, so it must at least say so."""
-    monkeypatch.setattr(refresh, "DV_URL", "https://example.crm6.dynamics.com")
-    monkeypatch.setattr(refresh, "PAC_PROFILE", "timesheet")
-    monkeypatch.setattr(refresh.shutil, "which", lambda _: "pac")
-    monkeypatch.setattr(refresh, "_active_pac_index", lambda _: None)
+    monkeypatch.setattr(
+        rc, "dataverse_settings",
+        lambda: ("https://example.crm6.dynamics.com", "timesheet"))
+    monkeypatch.setattr(rc.shutil, "which", lambda _: "pac")
+    monkeypatch.setattr(rc, "_active_pac_index", lambda _: None)
 
     class Result:
         returncode = 0
         stdout = "ticketnumber\ttitle\n"
         stderr = ""
 
-    monkeypatch.setattr(refresh.subprocess, "run", lambda *a, **kw: Result())
-    refresh.refresh_dataverse()
+    monkeypatch.setattr(rc.subprocess, "run", lambda *a, **kw: Result())
+    rc.refresh_dataverse()
     out = capsys.readouterr()
     assert "WARN" in (out.out + out.err)
 

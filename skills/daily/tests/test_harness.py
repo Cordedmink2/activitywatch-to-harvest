@@ -26,7 +26,7 @@ from support import day, run_cli
 def test_an_unstubbed_activitywatch_call_fails_instead_of_reading_the_real_server():
     """AW really is running on this machine at :5600. Without the guard this call would
     succeed and the test would silently assert against whatever the user did today."""
-    assert "localhost:5600" not in aw_client.AW_BASE
+    assert "localhost:5600" not in aw_client.resolve_base()
     with pytest.raises(urllib.error.URLError):
         aw_client.get("/buckets/")
 
