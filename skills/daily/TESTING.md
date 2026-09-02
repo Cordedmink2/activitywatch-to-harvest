@@ -1764,7 +1764,7 @@ existing fixture contains a hole (verified: no golden holds a `"gap"` kind).
 
 **The unit tests were not enough, and a mutation check is what showed it.** All four call
 `insert_data_gaps()` directly, so they never exercise the one line in `main()` that puts
-it in the product. Reverting that single line — gap detection built, tested, and wired to
+it in the product (since #24 that line is in `day_skeleton()`; the lesson is unchanged). Reverting that single line — gap detection built, tested, and wired to
 nothing — left the suite at **266 passed / 5 skipped, fully green**, while the CLI went
 straight back to `breaks: (none)` on the real 2026-08-18 stream. The original RED was also
 weaker than it looked: `AttributeError: no attribute 'insert_data_gaps'` proves a function

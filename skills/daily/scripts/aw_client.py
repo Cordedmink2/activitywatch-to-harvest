@@ -24,6 +24,12 @@ import skill_config
 DEFAULT_ACTIVITY_URL = "http://localhost:5600"
 
 
+class UsageError(ValueError):
+    """A flag value a day-reading script cannot act on — a `--window` or `--cover` that
+    does not parse. Carries the message `main()` prints after `ERR `; the exit code stays
+    `main()`'s to decide, and the function that raised it has printed nothing."""
+
+
 def resolve_base() -> str:
     """The `/api/0` prefix every request is built on, from `TIMESHEET_ACTIVITY_URL`.
 

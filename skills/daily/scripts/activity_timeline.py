@@ -39,7 +39,7 @@ import json
 import re
 import sys
 
-from aw_client import (dedupe_heartbeats, fetch_events, get, local_clock,
+from aw_client import (UsageError, dedupe_heartbeats, fetch_events, get, local_clock,
                        parse_range, parse_ts, pick_bucket, resolve_base,
                        resolve_zone, utc_bounds, zone_label)
 
@@ -48,6 +48,8 @@ from aw_client import (dedupe_heartbeats, fetch_events, get, local_clock,
 # § Preferences rather than only here.
 NOISE_FLOOR = 5    # drop sub-5s events (tab-switch noise), per SKILL.md
 GAP_FOLD = 60      # inter-event gaps shorter than this don't break a span (seconds)
+
+WEB_WATCHERS = ("aw-watcher-web-firefox", "aw-watcher-web-chrome")
 
 def load_classes():
     """Return [(label, compiled_regex), ...] from AW settings 'classes'.
@@ -80,7 +82,8 @@ def categorize(app, title, classes):
     return [label for label, rx in classes if rx.search(hay)]
 
 
-def build_window_spans(events, classes, noise_floor=NOISE_FLOOR, gap_fold=GAP_FOLD):
+def build_window_spans(events, classes, noise_floor: float = NOISE_FLOOR,
+                       gap_fold: float = GAP_FOLD):
     """Merge chronological window events into spans sharing a category.
     Each span: start, end (datetime), category, multi (bool), categories (set of
     every class label matched within the span), titles {label: secs}."""
@@ -114,7 +117,7 @@ def build_window_spans(events, classes, noise_floor=NOISE_FLOOR, gap_fold=GAP_FO
     return spans
 
 
-def category_rollup(events, classes, noise_floor=NOISE_FLOOR):
+def category_rollup(events, classes, noise_floor: float = NOISE_FLOOR):
     """Minutes per category across all deduped events at or above the noise floor."""
     totals = {}
     for e in dedupe_heartbeats(events):
@@ -124,6 +127,65 @@ def category_rollup(events, classes, noise_floor=NOISE_FLOOR):
         label = cats[0] if cats else "uncategorized"
         totals[label] = totals.get(label, 0) + e["duration"]
     return {k: round(v / 60, 1) for k, v in sorted(totals.items(), key=lambda kv: -kv[1])}
+
+
+def zoom(spans, web_events, ws, we, zone, noise_floor: float = NOISE_FLOOR):
+    """Zoom mode: the spans that overlap the window, and the web-watcher rows inside it.
+
+    Overlap, not containment, for both. A tab opened before the zoom and still open inside
+    it is usually the row that names the client, and keying on the start alone dropped it.
+    `web_events` is every browser's events together; they are merged and sorted here on
+    the instant, not on the rendered clock — inside the hour a fall-back repeats the two
+    orders disagree, and sorting the strings put the day's browsing in the wrong order.
+    """
+    inside = [s for s in spans if s["end"] > ws and s["start"] < we]
+    dated = []
+    for e in web_events:
+        if e["duration"] < noise_floor:
+            continue
+        t = parse_ts(e["timestamp"])
+        if t + dt.timedelta(seconds=e["duration"]) <= ws or t >= we:
+            continue
+        # The instant rides alongside the row rather than inside it: a `datetime` is not
+        # JSON-serialisable, and a key added to be deleted after the sort only has to
+        # survive one `return` inserted between the two to reach `json.dumps`.
+        dated.append((t, {"time": local_clock(t, zone), "secs": int(e["duration"]),
+                          "title": (e["data"].get("title") or "")[:60],
+                          "url": (e["data"].get("url") or "")[:80]}))
+    dated.sort(key=lambda pair: pair[0])
+    return inside, [row for _, row in dated]
+
+
+def timeline(win_events, web_events, classes, date, zone, win_bucket=None, window=None,
+             noise_floor: float = NOISE_FLOOR, gap_fold: float = GAP_FOLD):
+    """The day's categorised window timeline — from events, printing nothing.
+
+    `window` is the raw `--window` value; a zoom restricts the spans to it and adds the
+    web rows, `web` staying `None` outside zoom mode so a reader can tell "no tabs" from
+    "not asked". Both renderings in `main()` run over what this returns.
+    """
+    spans = build_window_spans(win_events, classes, noise_floor, gap_fold)
+    rollup = category_rollup(win_events, classes, noise_floor)
+    web_rows = None
+    if window:
+        try:
+            ws, we = parse_range(window, date, zone)
+        except Exception as e:
+            raise UsageError(f"bad --window '{window}', expected HH:MM-HH:MM "
+                             f"(seconds optional): {e}") from e
+        spans, web_rows = zoom(spans, web_events, ws, we, zone, noise_floor)
+    return {
+        "date": date.isoformat(),
+        "window_bucket": win_bucket,
+        "spans": [{"start": local_clock(s["start"], zone), "end": local_clock(s["end"], zone),
+                   "min": round((s["end"] - s["start"]).total_seconds() / 60, 1),
+                   "category": s["category"], "multi": s["multi"],
+                   "categories": sorted(s["categories"]),
+                   "top_titles": sorted(s["titles"].items(), key=lambda kv: -kv[1])[:3]}
+                  for s in spans],
+        "rollup_min_by_category": rollup,
+        "web": web_rows,
+    }
 
 
 def main():
@@ -172,6 +234,15 @@ def main():
         buckets = get("/buckets/")
         win_bucket = pick_bucket(buckets, "aw-watcher-window")
         win_events = fetch_events(win_bucket, start_utc, end_utc)
+        # The web watchers are only read in zoom mode, and only the browsers that report:
+        # a missing bucket is answered with nothing by `fetch_events`. A fetch that fails
+        # is reported here like the window watcher's, rather than leaving the zoom's tab
+        # list quietly empty.
+        web_events = []
+        if args.window:
+            for pref in WEB_WATCHERS:
+                web_events += dedupe_heartbeats(
+                    fetch_events(pick_bucket(buckets, pref), start_utc, end_utc))
     except Exception as e:
         print(f"ERR ActivityWatch unreachable at {resolve_base()} ({e})", file=sys.stderr)
         return 1
@@ -186,70 +257,20 @@ def main():
         return 1
     classes = load_classes()
 
-    def to_local(d):
-        return local_clock(d, zone)
-
-    spans = build_window_spans(win_events, classes, args.noise_floor, args.gap_fold)
-    rollup = category_rollup(win_events, classes, args.noise_floor)
-
-    # Zoom mode: restrict spans + pull web watchers for the window.
-    web_rows = None
-    if args.window:
-        try:
-            ws, we = parse_range(args.window, local_date, zone)
-        except Exception as e:
-            print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM "
-                  f"(seconds optional): {e}", file=sys.stderr)
-            return 2
-        spans = [s for s in spans if s["end"] > ws and s["start"] < we]
-        dated = []
-        for pref in ("aw-watcher-web-firefox", "aw-watcher-web-chrome"):
-            try:
-                b = pick_bucket(buckets, pref)
-                for e in dedupe_heartbeats(fetch_events(b, start_utc, end_utc)):
-                    if e["duration"] < args.noise_floor:
-                        continue
-                    t = parse_ts(e["timestamp"])
-                    # Overlap, not containment — matching the span filter above. A tab
-                    # opened before the zoom and still open inside it is usually the row
-                    # that names the client, and keying on the start alone dropped it.
-                    if t + dt.timedelta(seconds=e["duration"]) <= ws or t >= we:
-                        continue
-                    dated.append((t, {"time": to_local(t), "secs": int(e["duration"]),
-                                      "title": (e["data"].get("title") or "")[:60],
-                                      "url": (e["data"].get("url") or "")[:80]}))
-            except Exception:
-                pass
-        # Sorted on the instant, not on the rendered clock. Inside the hour a fall-back
-        # repeats, the two orders disagree: a tab opened at 02:40 on the first pass really
-        # does come before one opened at 02:10 on the second, and sorting the strings put
-        # the day's browsing in the wrong order for that hour. Two browsers are merged
-        # here as well, so this list is never already in order.
-        #
-        # The instant rides alongside the row rather than inside it: a `datetime` is not
-        # JSON-serialisable, and a key added to the payload to be deleted after the sort
-        # only has to survive one `return` inserted between the two to reach `json.dumps`.
-        dated.sort(key=lambda pair: pair[0])
-        web_rows = [row for _, row in dated]
-
-    result = {
-        "date": args.date,
-        "window_bucket": win_bucket,
-        "spans": [{"start": to_local(s["start"]), "end": to_local(s["end"]),
-                   "min": round((s["end"] - s["start"]).total_seconds() / 60, 1),
-                   "category": s["category"], "multi": s["multi"],
-                   "categories": sorted(s["categories"]),
-                   "top_titles": sorted(s["titles"].items(), key=lambda kv: -kv[1])[:3]}
-                  for s in spans],
-        "rollup_min_by_category": rollup,
-        "web": web_rows,
-    }
+    try:
+        result = timeline(win_events, web_events, classes, local_date, zone, win_bucket,
+                          window=args.window, noise_floor=args.noise_floor,
+                          gap_fold=args.gap_fold)
+    except UsageError as e:
+        print(f"ERR {e}", file=sys.stderr)
+        return 2
+    web_rows = result["web"]
 
     if args.json:
         print(json.dumps(result, indent=2))
         return 0
 
-    hdr = f"Window timeline for {args.date} ({zone_label(zone)})"
+    hdr = f"Window timeline for {result['date']} ({zone_label(zone)})"
     if args.window:
         hdr += f"  [zoom {args.window}]"
     print(hdr)

@@ -41,10 +41,11 @@ import argparse
 import datetime as dt
 import json
 import sys
+from typing import NamedTuple
 
-from aw_client import (dedupe_heartbeats, fetch_events, get, local_clock,
-                       parse_local_time, parse_range, parse_ts, pick_bucket,
-                       resolve_base, resolve_zone, utc_bounds, zone_label)
+from aw_client import (UsageError, dedupe_heartbeats, fetch_events, get, local_clock,
+                       parse_range, parse_ts, pick_bucket, resolve_base, resolve_zone,
+                       utc_bounds, zone_label)
 
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
 
@@ -71,6 +72,18 @@ ACTIVE_BAND = 0.7   # active_ratio at or above which a window reads as billable
 THIN_BAND = 0.4     # ...and below which it reads as mostly idle
 
 
+class Tunables(NamedTuple):
+    """The judgement calls, as one value: what `main()` reads off its flags and hands to
+    `day_skeleton()`, and what a test passes without a command line. The defaults are the
+    constants above, so a test that says nothing gets the shipped behaviour."""
+    afk_threshold: int = DEFAULT_THRESHOLD
+    solid: float = SOLID_S
+    blip_gap: float = BLIP_GAP_S
+    min_uncovered: float = MIN_UNCOVERED_S
+    active_band: float = ACTIVE_BAND
+    thin_band: float = THIN_BAND
+
+
 def to_spans(events):
     """Deduped AW events -> spans."""
     spans = []
@@ -80,7 +93,7 @@ def to_spans(events):
     return spans
 
 
-def work_bounds(spans, solid_s=SOLID_S, blip_gap_s=BLIP_GAP_S):
+def work_bounds(spans, solid_s: float = SOLID_S, blip_gap_s: float = BLIP_GAP_S):
     """First and last not-afk moment, with the end-of-day blip guard.
 
     `blip` means work_end came from a momentary flicker (mouse nudge, auto-wake)
@@ -175,7 +188,7 @@ def active_seconds(spans, lo, hi):
     return total
 
 
-def uncovered_segments(spans, active, proposed, min_uncovered_s=MIN_UNCOVERED_S):
+def uncovered_segments(spans, active, proposed, min_uncovered_s: float = MIN_UNCOVERED_S):
     """Active time the proposed billable blocks leave out - the under-billing check,
     symmetric to the work_end ceiling that catches over-billing. Segments holding
     less than `min_uncovered_s` of activity are block rounding, not missed work.
@@ -202,6 +215,206 @@ def uncovered_segments(spans, active, proposed, min_uncovered_s=MIN_UNCOVERED_S)
             if secs >= min_uncovered_s:
                 gaps.append((s0, e0, secs))
     return gaps
+
+
+def union_ranges(ranges):
+    """Merge overlapping or touching `(start, end)` pairs into disjoint ones, in order.
+
+    Summing the proposed blocks independently let two overlapping blocks report more
+    covered activity than the day held — and a coverage figure above 100% reads as
+    "nothing was missed" at exactly the moment the proposed blocks are malformed.
+    """
+    merged = []
+    for cs, ce in sorted(ranges):
+        if merged and cs <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], ce))
+        else:
+            merged.append((cs, ce))
+    return merged
+
+
+def band_verdict(ratio, active_band=ACTIVE_BAND, thin_band=THIN_BAND):
+    """The word the model bills on, with the band it fell in spelled out beside it."""
+    hi, lo = active_band, thin_band
+    if ratio >= hi:
+        return f"active (>={hi:g})"
+    if ratio >= lo:
+        return f"thin ({lo:g}-{hi:g})"
+    return f"mostly idle (<{lo:g})"
+
+
+def window_watcher_tail(win_events, work_end, zone):
+    """Where the last foreground window event ended, against the AFK work end.
+
+    A terminal, IDE or lock screen can sit in the foreground long after the user has
+    walked away; a tail that runs past work end is that trap, not work. None when the
+    window watcher recorded nothing for the day.
+    """
+    if not win_events:
+        return None
+    last = max(parse_ts(e["timestamp"]) + dt.timedelta(seconds=e["duration"]) for e in win_events)
+    gap_min = (last - work_end).total_seconds() / 60
+    return {"end": local_clock(last, zone), "gap_past_work_end_min": round(gap_min, 1)}
+
+
+def window_report(spans, label, ws, we, tunables=Tunables()):
+    """`active_ratio` for one candidate window — the Step 3 validation of a block."""
+    win_dur = (we - ws).total_seconds()
+    overlap = active_seconds(spans, ws, we)
+    ratio = overlap / win_dur if win_dur > 0 else 0.0
+    return {
+        "window": label,
+        "active_ratio": round(ratio, 2),
+        "active_min": round(overlap / 60, 1),
+        "window_min": round(win_dur / 60, 1),
+        "verdict": band_verdict(ratio, tunables.active_band, tunables.thin_band),
+    }
+
+
+def coverage_report(spans, active, label, proposed, zone, tunables=Tunables()):
+    """Do the proposed billable blocks cover the AFK active spans?
+
+    The symmetric partner to the work_end ceiling — surfaces UNDER-billing (active time
+    silently dropped) the way the window-watcher tail surfaces over-billing past the end
+    of the day. The blocks are unioned before totalling; `union_ranges` says why.
+    """
+    uncovered = [{"start": local_clock(s0, zone), "end": local_clock(e0, zone),
+                  "active_min": round(secs / 60, 1)}
+                 for s0, e0, secs in uncovered_segments(spans, active, proposed,
+                                                        tunables.min_uncovered)]
+    covered = sum(active_seconds(spans, cs, ce) for cs, ce in union_ranges(proposed))
+    return {
+        "proposed_blocks": label,
+        "covered_active_min": round(covered / 60, 1),
+        "total_active_min": round(total_active_seconds(spans) / 60, 1),
+        "uncovered": uncovered,
+    }
+
+
+def empty_skeleton(date, afk_bucket):
+    """The result's one shape, with nothing in it: every key a populated day has, so
+    `--json` output parses the same way whether or not the day held any activity. The
+    populated day is this dict filled in, never a second literal."""
+    return {
+        "date": date.isoformat(), "afk_bucket": afk_bucket,
+        "work_start": None, "work_end": None, "work_end_blip": None,
+        "total_active_min": 0.0, "breaks": [], "active_spans": [],
+        "window_watcher_tail": None, "window_report": None, "coverage_report": None,
+    }
+
+
+def _parse_window(label, local_date, zone):
+    """One `HH:MM-HH:MM`, or a `UsageError` naming the flag and what it expected."""
+    try:
+        return parse_range(label, local_date, zone)
+    except Exception as e:
+        raise UsageError(f"bad --window '{label}', expected HH:MM-HH:MM "
+                         f"(seconds optional): {e}") from e
+
+
+def _parse_cover(label, local_date, zone):
+    """Every `HH:MM-HH:MM` in the comma-separated `--cover` value, empty parts skipped."""
+    try:
+        return [parse_range(part.strip(), local_date, zone)
+                for part in label.split(",") if part.strip()]
+    except Exception as e:
+        raise UsageError(f"bad --cover '{label}', expected HH:MM-HH:MM,... "
+                         f"(seconds optional): {e}") from e
+
+
+def day_skeleton(afk_events, win_events, date, zone, afk_bucket=None,
+                 tunables=Tunables(), window=None, cover=None):
+    """The day, reduced to the facts the skill bills against — from events, printing nothing.
+
+    `afk_events` and `win_events` are the deduplicated streams for the day; `window` and
+    `cover` are the raw flag values, read here so that an unreadable one on a day with
+    no activity is still answered by the empty skeleton, as it always was. Both
+    renderings in `main()` run over what this returns, so the JSON a test reads and the
+    text the model reads cannot disagree about the day.
+    """
+    result = empty_skeleton(date, afk_bucket)
+    spans = insert_data_gaps(to_spans(afk_events), tunables.afk_threshold)
+    bounds = work_bounds(spans, tunables.solid, tunables.blip_gap)
+    if bounds is None:
+        return result
+
+    work_start, work_end = bounds["work_start"], bounds["work_end"]
+    breaks = find_breaks(spans, work_start, work_end, tunables.afk_threshold)
+    active = active_spans(spans, tunables.afk_threshold)
+
+    report = None
+    if window:
+        ws, we = _parse_window(window, date, zone)
+        report = window_report(spans, window, ws, we, tunables)
+    coverage = None
+    if cover:
+        proposed = _parse_cover(cover, date, zone)
+        coverage = coverage_report(spans, active, cover, proposed, zone, tunables)
+
+    filled = {
+        "work_start": local_clock(work_start, zone),
+        "work_end": local_clock(work_end, zone),
+        "work_end_blip": ({"last_solid_end": local_clock(bounds["last_solid_end"], zone)}
+                          if bounds["blip"] else None),
+        "total_active_min": round(total_active_seconds(spans) / 60, 1),
+        "breaks": [{"start": local_clock(s, zone), "end": local_clock(e, zone),
+                    "min": round(d / 60, 1), "kind": break_kind(spans, s, e)}
+                   for s, e, d in breaks],
+        "active_spans": [{"start": local_clock(s, zone), "end": local_clock(e, zone),
+                          "min": round((e - s).total_seconds() / 60, 1)} for s, e in active],
+        "window_watcher_tail": window_watcher_tail(win_events, work_end, zone),
+        "window_report": report,
+        "coverage_report": coverage,
+    }
+    result.update(filled)
+    return result
+
+
+def render_text(result, zone, tunables=Tunables(), focused=False):
+    """The text rendering of a skeleton, as lines. `focused` is a bare `--window` probe:
+    a run that checks four thin stretches should not pay for four whole-day dumps it
+    already has, so the day's ceiling stays and the two lists go."""
+    out = [f"AFK analysis for {result['date']}  ({zone_label(zone)}, "
+           f"break>={tunables.afk_threshold}s)",
+           f"  bucket:      {result['afk_bucket']}",
+           f"  work start:  {result['work_start']}",
+           f"  WORK END:    {result['work_end']}   <- end of day; do not bill past this"]
+    if result["work_end_blip"]:
+        out.append(f"  BLIP:        work_end is a momentary flicker; last substantive activity "
+                   f"ended {result['work_end_blip']['last_solid_end']} -> end the final block there")
+    out.append(f"  active time: {result['total_active_min']} min total")
+    tail = result["window_watcher_tail"]
+    if tail:
+        flag = "  <- left-in-focus trap, NOT work" if tail["gap_past_work_end_min"] > 1 else ""
+        out.append(f"  window tail: last window event ends {tail['end']} "
+                   f"({tail['gap_past_work_end_min']:+g} min vs work end){flag}")
+    if not focused:
+        out.append(f"  breaks (>= {tunables.afk_threshold//60} min):")
+        if result["breaks"]:
+            for b in result["breaks"]:
+                tag = ("   <- no AFK data (machine asleep/locked), not a recorded idle span"
+                       if b["kind"] == GAP_STATUS else "")
+                out.append(f"     {b['start']} - {b['end']}  ({b['min']} min){tag}")
+        else:
+            out.append("     (none)")
+        out.append(f"  active spans (short afk folded in):")
+        for s in result["active_spans"]:
+            out.append(f"     {s['start']} - {s['end']}  ({s['min']} min)")
+    if result["window_report"]:
+        w = result["window_report"]
+        out.append(f"  active_ratio for {w['window']}: {w['active_ratio']} "
+                   f"({w['active_min']}/{w['window_min']} min) -> {w['verdict']}")
+    if result["coverage_report"]:
+        c = result["coverage_report"]
+        out.append(f"  coverage of proposed blocks vs AFK active_spans:")
+        out.append(f"     blocks cover {c['covered_active_min']} of {c['total_active_min']} active min")
+        if c["uncovered"]:
+            for u in c["uncovered"]:
+                out.append(f"     UNCOVERED active {u['start']} - {u['end']}  "
+                           f"({u['active_min']} active min)  <- not billed, not a break")
+        else:
+            out.append(f"     (all active spans covered)")
+    return out
 
 
 def main():
@@ -254,180 +467,36 @@ def main():
 
     try:
         afk_bucket, win_bucket = discover_buckets()
+        if not afk_bucket:
+            print("ERR no aw-watcher-afk bucket found", file=sys.stderr)
+            return 1
+        afk_events = dedupe_heartbeats(fetch_events(afk_bucket, start_utc, end_utc))
+        # A missing window bucket is answered with nothing by `fetch_events`, so a day
+        # with no window watcher has no tail. A fetch that fails is a fetch that fails,
+        # reported like any other, rather than a tail quietly missing from the report.
+        win_events = dedupe_heartbeats(fetch_events(win_bucket, start_utc, end_utc))
     except Exception as e:
         print(f"ERR ActivityWatch unreachable at {resolve_base()} ({e})", file=sys.stderr)
         return 1
-    if not afk_bucket:
-        print("ERR no aw-watcher-afk bucket found", file=sys.stderr)
-        return 1
 
-    afk_events = dedupe_heartbeats(fetch_events(afk_bucket, start_utc, end_utc))
-
-    def to_local(d):
-        return local_clock(d, zone)
-
-    spans = insert_data_gaps(to_spans(afk_events), args.afk_threshold)
-    bounds = work_bounds(spans, args.solid, args.blip_gap)
-    if bounds is None:
-        # Same key set as a normal result, so `--json` output can be parsed without
-        # first sniffing whether the day happened to have any activity in it.
-        if args.json:
-            print(json.dumps({
-                "date": args.date, "afk_bucket": afk_bucket,
-                "work_start": None, "work_end": None, "work_end_blip": None,
-                "total_active_min": 0.0, "breaks": [], "active_spans": [],
-                "window_watcher_tail": None, "window_report": None,
-                "coverage_report": None,
-            }, indent=2))
-        else:
-            print(f"No not-afk activity found for {args.date}.")
-        return 0
-
-    work_start, work_end = bounds["work_start"], bounds["work_end"]
-    last_solid_end, work_end_blip = bounds["last_solid_end"], bounds["blip"]
-    total_active_s = total_active_seconds(spans)
-
-    breaks = find_breaks(spans, work_start, work_end, args.afk_threshold)
-    active = active_spans(spans, args.afk_threshold)
-
-    # Window-watcher tail: does a foreground window run past work end?
-    win_tail = None
-    if win_bucket:
-        try:
-            wev = dedupe_heartbeats(fetch_events(win_bucket, start_utc, end_utc))
-            if wev:
-                last = max(parse_ts(e["timestamp"]) + dt.timedelta(seconds=e["duration"]) for e in wev)
-                gap_min = (last - work_end).total_seconds() / 60
-                win_tail = {"end": to_local(last), "gap_past_work_end_min": round(gap_min, 1)}
-        except Exception:
-            pass
-
-    # Optional active_ratio for a candidate window.
-    window_report = None
-    if args.window:
-        try:
-            ws, we = parse_range(args.window, local_date, zone)
-        except Exception as e:
-            print(f"ERR bad --window '{args.window}', expected HH:MM-HH:MM (seconds optional): {e}",
-                  file=sys.stderr)
-            return 2
-        win_dur = (we - ws).total_seconds()
-        overlap = active_seconds(spans, ws, we)
-        ratio = overlap / win_dur if win_dur > 0 else 0.0
-        hi, lo = args.active_band, args.thin_band
-        band = (f"active (>={hi:g})" if ratio >= hi
-                else (f"thin ({lo:g}-{hi:g})" if ratio >= lo else f"mostly idle (<{lo:g})"))
-        window_report = {
-            "window": args.window,
-            "active_ratio": round(ratio, 2),
-            "active_min": round(overlap / 60, 1),
-            "window_min": round(win_dur / 60, 1),
-            "verdict": band,
-        }
-
-    # Coverage check: do the proposed billable blocks cover the AFK active_spans?
-    # The symmetric partner to the work_end ceiling — surfaces UNDER-billing (active
-    # time silently dropped) the way win_tail surfaces over-billing past end-of-day.
-    coverage_report = None
-    if args.cover:
-        prop = []
-        try:
-            for part in args.cover.split(","):
-                part = part.strip()
-                if not part:
-                    continue
-                prop.append(parse_range(part, local_date, zone))
-        except Exception as e:
-            print(f"ERR bad --cover '{args.cover}', expected HH:MM-HH:MM,... (seconds optional): {e}",
-                  file=sys.stderr)
-            return 2
-
-        uncovered = [{"start": to_local(s0), "end": to_local(e0), "active_min": round(secs / 60, 1)}
-                     for s0, e0, secs in uncovered_segments(spans, active, prop,
-                                                            args.min_uncovered)]
-        # Union the proposed blocks before totalling. Summing them independently let two
-        # overlapping blocks report more covered activity than the day held — and a
-        # coverage figure above 100% reads as "nothing was missed" at exactly the moment
-        # the proposed blocks are malformed.
-        merged = []
-        for cs, ce in sorted(prop):
-            if merged and cs <= merged[-1][1]:
-                merged[-1] = (merged[-1][0], max(merged[-1][1], ce))
-            else:
-                merged.append((cs, ce))
-        covered_active = round(sum(active_seconds(spans, cs, ce) for cs, ce in merged) / 60, 1)
-        coverage_report = {
-            "proposed_blocks": args.cover,
-            "covered_active_min": covered_active,
-            "total_active_min": round(total_active_s / 60, 1),
-            "uncovered": uncovered,
-        }
-
-    result = {
-        "date": args.date,
-        "afk_bucket": afk_bucket,
-        "work_start": to_local(work_start),
-        "work_end": to_local(work_end),
-        "work_end_blip": ({"last_solid_end": to_local(last_solid_end)} if work_end_blip else None),
-        "total_active_min": round(total_active_s / 60, 1),
-        "breaks": [{"start": to_local(s), "end": to_local(e), "min": round(d / 60, 1),
-                    "kind": break_kind(spans, s, e)} for s, e, d in breaks],
-        "active_spans": [{"start": to_local(s), "end": to_local(e),
-                          "min": round((e - s).total_seconds() / 60, 1)} for s, e in active],
-        "window_watcher_tail": win_tail,
-        "window_report": window_report,
-        "coverage_report": coverage_report,
-    }
+    tunables = Tunables(args.afk_threshold, args.solid, args.blip_gap, args.min_uncovered,
+                        args.active_band, args.thin_band)
+    try:
+        result = day_skeleton(afk_events, win_events, local_date, zone, afk_bucket,
+                              tunables, window=args.window, cover=args.cover)
+    except UsageError as e:
+        print(f"ERR {e}", file=sys.stderr)
+        return 2
 
     if args.json:
         print(json.dumps(result, indent=2))
         return 0
-
+    if result["work_start"] is None:
+        print(f"No not-afk activity found for {result['date']}.")
+        return 0
     # --cover wants the whole skeleton; a bare --window does not.
     focused = bool(args.window) and not args.cover
-
-    print(f"AFK analysis for {args.date}  ({zone_label(zone)}, break>={args.afk_threshold}s)")
-    print(f"  bucket:      {afk_bucket}")
-    print(f"  work start:  {result['work_start']}")
-    print(f"  WORK END:    {result['work_end']}   <- end of day; do not bill past this")
-    if work_end_blip:
-        print(f"  BLIP:        work_end is a momentary flicker; last substantive activity "
-              f"ended {result['work_end_blip']['last_solid_end']} -> end the final block there")
-    print(f"  active time: {result['total_active_min']} min total")
-    if win_tail:
-        flag = "  <- left-in-focus trap, NOT work" if win_tail["gap_past_work_end_min"] > 1 else ""
-        print(f"  window tail: last window event ends {win_tail['end']} "
-              f"({win_tail['gap_past_work_end_min']:+g} min vs work end){flag}")
-    # A --window probe is a focused question ("what is the ratio for 15:58-16:25?").
-    # Reprinting the full skeleton for it means a run that checks four thin stretches
-    # pays for four whole-day dumps it already has. Keep the day's ceiling (work_end,
-    # blip and tail flags stay above) and drop the two lists.
-    if not focused:
-        print(f"  breaks (>= {args.afk_threshold//60} min):")
-        if breaks:
-            for b in result["breaks"]:
-                tag = ("   <- no AFK data (machine asleep/locked), not a recorded idle span"
-                       if b["kind"] == GAP_STATUS else "")
-                print(f"     {b['start']} - {b['end']}  ({b['min']} min){tag}")
-        else:
-            print("     (none)")
-        print(f"  active spans (short afk folded in):")
-        for s in result["active_spans"]:
-            print(f"     {s['start']} - {s['end']}  ({s['min']} min)")
-    if window_report:
-        w = window_report
-        print(f"  active_ratio for {w['window']}: {w['active_ratio']} "
-              f"({w['active_min']}/{w['window_min']} min) -> {w['verdict']}")
-    if coverage_report:
-        c = coverage_report
-        print(f"  coverage of proposed blocks vs AFK active_spans:")
-        print(f"     blocks cover {c['covered_active_min']} of {c['total_active_min']} active min")
-        if c["uncovered"]:
-            for u in c["uncovered"]:
-                print(f"     UNCOVERED active {u['start']} - {u['end']}  "
-                      f"({u['active_min']} active min)  <- not billed, not a break")
-        else:
-            print(f"     (all active spans covered)")
+    print("\n".join(render_text(result, zone, tunables, focused)))
     return 0
 
 
