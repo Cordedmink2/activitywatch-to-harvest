@@ -4,9 +4,12 @@
 # The harness injects a plugin's `userConfig` values as CLAUDE_PLUGIN_OPTION_<KEY> into
 # *hook* processes only. The skill's scripts are run by the model through the shell, in a
 # process that never sees them. `publish_plugin_config.py` bridges the two by writing the
-# values into $CLAUDE_ENV_FILE, which the harness applies to every later shell command —
-# so they arrive as ordinary environment variables and `skill_config.setting()` resolves
-# them through the precedence it already documents. No new configuration layer.
+# values into $CLAUDE_ENV_FILE, which the harness applies to later *Bash tool* calls — so
+# they arrive as ordinary environment variables and `skill_config.setting()` resolves them
+# through the precedence it already documents. No new configuration layer.
+#
+# Bash tool calls and no others: the fragment is POSIX shell, and Claude Code's PowerShell
+# tool is given no equivalent. See the second known limitation below.
 #
 # Why this wrapper exists rather than naming an interpreter in the manifest: on Windows a
 # bare `python` is frequently the Microsoft Store stub, a 0-byte executable that prints an
@@ -19,10 +22,19 @@
 # not installed — where `sh` is not a command and this wrapper never starts. There is no
 # single command string valid in both shells that also names a working interpreter, and
 # declaring one hook entry per shell would print a spawn error at every session start on
-# whichever platform is not that one. So the gap is closed by diagnosis instead: both
+# whichever platform is not that one. So the gap is closed by diagnosis instead: the
 # "missing setting" messages the user would hit name a new session first and
 # `references/setup.md` § "When the configuration does not arrive" second, which is where
 # `winget install Git.Git` is.
+#
+# KNOWN LIMITATION, the second one and a different one: this wrapper running is not enough
+# for the values to reach the *script*. The fragment is applied to Bash tool calls alone,
+# so on a machine with Git Bash — where this hook ran and wrote the fragment correctly —
+# anything the model chooses to run through the PowerShell tool still finds nothing
+# configured. The skills direct every read of a configured value through Bash, and
+# `skill_config.note_for_an_unreached_shell()` names the shell in the error when a command
+# gets through regardless. Do not merge the two: `winget install Git.Git` is the fix for
+# the gap above and does nothing whatever for this one.
 #
 # Exit 0 whatever happens. A session must not fail to start because configuration could
 # not be published; the scripts report a missing setting themselves, with a message that

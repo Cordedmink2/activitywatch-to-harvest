@@ -24,7 +24,8 @@ import sys
 import tempfile
 
 from harvest_client import request as harvest_request, use_utf8
-from skill_config import setting, find_workspace, fail_missing
+from skill_config import (setting, find_workspace, fail_missing,
+                          note_for_an_unreached_shell)
 
 
 def mcp_dir():
@@ -46,6 +47,9 @@ def mcp_dir():
             "can't locate your timesheet workspace (the directory holding .mcp/ and "
             "Timesheets/). Run this from that directory, or set TIMESHEET_WORKSPACE in the "
             "skill .env (or as an OS env var) to its absolute path."
+            # The third message with the same cause behind it: a configured
+            # TIMESHEET_WORKSPACE is as absent from a PowerShell run as a credential is.
+            + note_for_an_unreached_shell()
         )
     return workspace / ".mcp"
 

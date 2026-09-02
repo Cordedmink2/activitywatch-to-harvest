@@ -99,6 +99,8 @@ Screenshots are what disambiguate generic activity into the right client, so thi
 
 Then run the `daily` skill's `scripts/setup_screenshot_pipeline.ps1`, resolved as described above. It installs Pillow and mss if they are missing and registers one scheduled task. If `TIMESHEET_SCREENSHOTS_DIR` is configured, pass the same path as `-ScreenshotsDir`: the task runs outside any session and never sees the configured value, so passing it explicitly is what keeps the reader and the writer pointed at the same folder.
 
+**Read that value in the Bash tool** — `echo "${TIMESHEET_SCREENSHOTS_DIR:-}"` — and put the literal on the `-ScreenshotsDir` argument. This script is necessarily run through PowerShell, and the configuration reaches Bash tool calls alone (the same reason the probe in "Before you start" is a Bash command). Read in PowerShell it comes back empty, the task registers against `~\Pictures\WorkScreenshots`, and the capture then writes where nothing reads — which is the divergence passing it explicitly is meant to close.
+
 **Verify** — three checks, and the second is the one that catches a stale install:
 
 1. `Get-ScheduledTaskInfo -TaskName WorkScreenshots` returns without error.

@@ -86,6 +86,14 @@ def _hermetic(monkeypatch, tmp_path):
     # `support.DEFAULT_OFFSET` on every date and the golden files stay stable. A test
     # about the unconfigured state deletes it again.
     monkeypatch.setenv("TIMESHEET_TIMEZONE", TEST_ZONE)
+    # Left alone, every assertion on a missing-setting message would depend on which tool
+    # launched the suite: `skill_config.note_for_an_unreached_shell()` appends a line when
+    # the process is one the published configuration cannot have reached, and a run
+    # started through the PowerShell tool on Windows is exactly that. Deleting the session
+    # marker pins the suite as "not a Claude Code tool call" on every platform, which is
+    # the one cell that is true of a CI runner as well. The note's own four cells are
+    # driven by argument in `test_config_seam.py`, not by this process's environment.
+    monkeypatch.delenv(skill_config.IN_A_SESSION, raising=False)
     yield
 
 

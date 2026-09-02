@@ -10,10 +10,18 @@ New Zealand.
 
 The other half is the bridge. The harness injects the declared values as
 `CLAUDE_PLUGIN_OPTION_<KEY>` into *hook* processes only, so `hooks/publish_plugin_config.py`
-republishes them through `$CLAUDE_ENV_FILE` into the session the scripts actually run in.
-The assertions below are on the shapes that make that round-trip exact and the quoting
-that makes it safe; the platform's own behaviour was verified empirically against the
-installed CLI rather than asserted from a reading of it.
+republishes them through `$CLAUDE_ENV_FILE` — which reaches the scripts the model runs
+through the **Bash** tool, and no others. The assertions below are on the shapes that make
+that round-trip exact and the quoting that makes it safe; the platform's own behaviour was
+verified empirically against the installed CLI rather than asserted from a reading of it,
+including the scope: a fragment published by a hook was read back as set in a Bash tool
+call and unset in a PowerShell one, in the same session.
+
+Nothing here can hold that scope — it is the harness's behaviour, not this repo's. What
+the repo holds instead is the skills directing every read of a configured value through
+Bash, and `skill_config.note_for_an_unreached_shell()` naming the shell when a command
+gets through regardless; `skills/daily/TESTING.md` § "Two ways the configuration does not
+arrive" carries the evidence and the rejected alternatives.
 """
 
 import importlib.util

@@ -725,6 +725,13 @@ absent, and warns specifically about PowerShell hook commands. The manifest's co
 `sh "${CLAUDE_PLUGIN_ROOT}/hooks/publish_plugin_config.sh"`, so on such a machine the hook
 never starts and the user gets "I configured everything and nothing is configured".
 
+**This is one of two gaps with that symptom, and the narrower one.** The hook running is
+not enough for the values to reach the script: the fragment is applied to Bash tool calls
+alone, so on a machine that *has* Git Bash a command the model runs through PowerShell
+finds nothing configured either. `winget install Git.Git` is the fix for this entry and
+does nothing for that one. See § "Two ways the configuration does not arrive" — #28, which
+also corrects the "every later shell command" claim this entry was written under.
+
 Three fixes were considered and rejected before accepting the gap:
 
 - *Name the interpreter directly* (`python3 …`, exec form, no shell). No single token
@@ -1424,6 +1431,105 @@ the refusal are arithmetic checked against the read side's own fixtures, not a b
 anyone has made. Whether a model reading the message posts *both* entries rather than
 "correcting" the overlap is untested — the message says not to, and that is a claim about
 prose, which is what § "Three things the review caught" is a record of being wrong about.
+
+### Two ways the configuration does not arrive, and only one had a name — #28
+**Rung 1.** 2026-09-02. Issue #28.
+
+A fresh install with `/plugin configure billables` fully filled in, and the first
+`/billables:daily` says the Harvest credentials are not found. Starting a new session does
+not help, because the session is not what is broken: the values arrive for the **Bash**
+tool and for nothing else, and the script the model reached for happened to be run through
+PowerShell.
+
+**The bridge works. Its scope is narrower than four places said it was.** The SessionStart
+hook writes `export KEY='…'` into `$CLAUDE_ENV_FILE`, and Claude Code applies that file as
+a preamble to Bash tool calls. The PowerShell tool is given no equivalent — and loads no
+profile either — so the fragment reaches it in no form at all. Both halves are now
+documented by the harness, but the docstrings here claimed "every later shell command",
+which is what made the gap invisible: `hooks/publish_plugin_config.py`, its `.sh` wrapper,
+`tests/test_plugin_config.py` and `scripts/skill_config.py` all carried it.
+
+**Measured, not read off the documentation.** A throwaway project with one SessionStart
+hook that appends a probe variable to `$CLAUDE_ENV_FILE`, then a single headless run
+asking for the variable from each tool:
+
+```
+bash: PROBE_BRIDGED=yes
+pwsh: PROBE_BRIDGED=UNSET
+```
+
+The hook itself recorded that it ran and which file it wrote, so "the hook did not fire"
+is excluded rather than assumed. Three further facts came out of the same probe and are
+what the fix is built on: `CLAUDECODE` is set in both tools, `MSYSTEM` in the Bash tool
+only, and both survive into a `python -c` child — which is the process that actually
+prints the message. The harness's own `env` block in `settings.json`, by contrast, reaches
+**both** tools, which is why it appears below as a rejected mechanism rather than as an
+untried one.
+
+**This is not the limitation already recorded**, and conflating them costs the user an
+install. The older one — the hook needing a POSIX shell — is a machine with no Git Bash,
+where the hook never starts and nothing is published to any shell; its fix is
+`winget install Git.Git`. Here Git Bash is present, the hook ran, and the fragment is
+correct. `winget install Git.Git` does nothing for it. `sh --version` separates the two in
+one command.
+
+**The fix is direction plus diagnosis, not a mechanism.** Every skill now says to read a
+configured value in the Bash tool and hand PowerShell the literal, which is what the
+`setup` skill already did for its own probe and what the other two did not; and
+`skill_config.note_for_an_unreached_shell()` appends the cause to the three missing-setting
+messages when the failing process is a Windows one, inside a session, with no POSIX shell
+marker around it. So a command that gets through anyway is answered with "re-run this
+through the Bash tool" instead of "start a new session" — one wasted round trip, and it
+self-corrects without the user.
+
+**Three sites, not one.** `daily/SKILL.md` said to read `TIMESHEET_SCREENSHOTS_DIR` and
+then listed the folder in PowerShell; `reconcile/SKILL.md` did the same, where an empty
+read makes a healthy month look like a month nobody worked; `setup/SKILL.md` told the model
+to pass the configured value to a `.ps1` it necessarily runs through PowerShell, where an
+empty read registers the capture task against the default and points the writer and the
+reader at different folders. The rule is therefore about *reads*, not about scripts — a
+"run the scripts through Bash" rule would have left all three.
+
+**The suite's own verdict had to be pinned, and the pin needed a test that could see it.**
+A conditional tail on a message is invisible to every substring assertion in front of it —
+the same blind spot #23 closed by pinning a message whole — so `conftest` deleting the
+session marker looked load-bearing and was not: removing it left the suite green in both
+shells. The credentials test now asserts where the message *stops*. With that in place,
+removing the pin and running through the PowerShell tool fails it by name, and running
+through Bash does not, which is the two-shell difference the pin exists to remove.
+
+**Two mechanisms that would have closed it properly, both rejected.**
+
+- *Read the fragment the hook already wrote.* Both tools receive `CLAUDE_CODE_SESSION_ID`,
+  and the file sits at `~/.claude/session-env/<that id>/sessionstart-hook-0.sh` — verified:
+  this session's directory exists under its own id, and the probe's held exactly the 25
+  bytes its hook wrote. It costs no new file and no new on-disk exposure. It was rejected
+  for depending on an undocumented path: when the layout changes the fallback stops
+  working silently, which is a safe direction — back to the behaviour above — but not one
+  any test in this repo could catch.
+- *Write the values to `$CLAUDE_PLUGIN_DATA`*, which is documented, survives updates, and
+  is readable from either shell. Rejected because it puts a second plaintext copy of the
+  user's token on disk, and "there is no secrets file for this skill to create, read or
+  share" is a claim `SKILL.md` makes to the user and `tests/test_plugin_config.py` holds.
+  The convenience is not worth converting that into a qualified statement.
+
+Neither is closed off. The evidence is here so a reopening starts from the facts rather
+than re-deriving them.
+
+**Cost, accepted, and stated plainly.** The ticket's first two acceptance criteria are not
+met as written. A script the model invokes through PowerShell still does not resolve its
+settings, and the repro above stays red by design — it measures the harness, and the
+harness has not changed. What changed is that every path the skills direct now reads in
+Bash, and the one failure left says which shell to re-run in. Recording that as "fixed"
+would be the fourth copy of a claim about this bridge that is wider than the bridge.
+
+**What was not measured.** No run was watched hitting the note and re-running itself in
+the other shell; that a model does the obvious thing with "re-run the command through the
+Bash tool" is a claim about prose. `MSYSTEM` is the discriminator and nothing in this repo
+holds Claude Code to setting it — a release that stopped would silence the note, not
+misfire it. And the note is suppressed outside a session, so the exported install run by
+hand from a PowerShell prompt never sees it, which is right today and would be wrong if
+that install ever gained a published layer.
 
 ## Rejected
 

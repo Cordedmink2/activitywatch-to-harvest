@@ -7,11 +7,21 @@ environment variables, but only to *hook* processes. The skill's scripts are run
 model through the shell, in a process that never sees a hook's environment.
 
 `$CLAUDE_ENV_FILE` is the bridge. On SessionStart the harness passes the path of a shell
-fragment it will apply to every later command in the session; anything exported there
-arrives at the scripts as an ordinary environment variable. So the values land in the
-layer `skill_config` already documents as "the process environment, which is where a
-harness injects values" — no new precedence, no second reader, nothing for the scripts to
-know about the harness.
+fragment it will apply to later commands in the session; anything exported there arrives
+at the scripts as an ordinary environment variable. So the values land in the layer
+`skill_config` already documents as "the process environment, which is where a harness
+injects values" — no new precedence, no second reader, nothing for the scripts to know
+about the harness.
+
+**How far the bridge reaches: Claude Code's Bash tool, and nothing else.** The fragment is
+POSIX shell and is applied as a preamble to Bash tool calls; the PowerShell tool is given
+no equivalent and loads no profile, so a script the model happens to run through
+PowerShell sees none of this. That is a documented scope, not a defect here, and it is not
+closed by writing a second fragment: `skills/daily/TESTING.md` § "Two ways the
+configuration does not arrive" records the two mechanisms that would close it and why
+neither was taken. What closes it instead is the skills directing every read of a
+configured value through Bash, and `skill_config.note_for_an_unreached_shell()` naming the
+shell when one gets through anyway.
 
 The option key *is* the setting key. The harness derives the variable name by upper-casing
 the declared key and replacing anything outside `[A-Za-z0-9_]` with `_`; every key this

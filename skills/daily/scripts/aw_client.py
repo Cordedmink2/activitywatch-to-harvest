@@ -100,7 +100,11 @@ def resolve_zone(flag, offers_offset_flag: bool = True):
             "  Already set it? Start a new session — the value is published at session\n"
             "  start. If a new session still shows this, see references/setup.md\n"
             "  § 'When the configuration does not arrive'." +
-            ("\n  Or for this run only:  --utc-offset <hours>" if offers_offset_flag else ""))
+            ("\n  Or for this run only:  --utc-offset <hours>" if offers_offset_flag else "")
+            # Last, after the escape hatch, because it is the cause a user cannot deduce
+            # and the two lines above are the wrong advice for it. Shared with
+            # `harvest_client.load_creds()`: one absence, one cause, one wording.
+            + skill_config.note_for_an_unreached_shell())
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError) as exc:

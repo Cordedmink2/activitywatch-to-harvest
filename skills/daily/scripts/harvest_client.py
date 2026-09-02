@@ -99,6 +99,12 @@ def load_creds() -> tuple[str, str]:
         # values arrive through a SessionStart hook, so a user who fills the dialog and
         # keeps typing in the same session sees exactly this message and reasonably
         # concludes the dialog did not work.
+        #
+        # The shell note is appended rather than written here because the same cause
+        # produces the same absence in `aw_client.resolve_zone()`, and it is a cause the
+        # user cannot deduce: the two lines above are the *right* advice for a session
+        # that has not restarted, and exactly the wrong advice for a command that came
+        # from PowerShell.
         skill_config.fail_missing(
             "Harvest credentials not found.\n"
             "  Run:  /plugin configure billables\n"
@@ -109,6 +115,7 @@ def load_creds() -> tuple[str, str]:
             "  § 'When the configuration does not arrive'.\n"
             f"  (Exported install instead? Copy {skill_config.SKILL_ROOT / '.env.example'}\n"
             f"   -> {skill_config.ENV_PATH} and put them there.)"
+            + skill_config.note_for_an_unreached_shell()
         )
     _CREDS_CACHE = (acct, key)
     return _CREDS_CACHE

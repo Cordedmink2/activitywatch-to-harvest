@@ -185,6 +185,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that described them.
 
 ### Fixed
+- **A configured plugin no longer looks unconfigured because of which shell a command ran in.** The
+  declared values are published as a POSIX shell fragment, and Claude Code applies that to its
+  **Bash** tool alone — so a script run through PowerShell reported the timezone or the credentials
+  missing on a machine set up perfectly well, and the message sent you to start a new session or
+  install Git Bash. Neither was the fix, and following either cost you the run. The skills now read
+  every configured value in Bash and hand PowerShell the resolved literal, which also closes a
+  quieter version of the same fault: the screenshot directory read in PowerShell came back empty, so
+  the month sweep listed the default folder and a healthy month could look like a month nobody
+  worked. Where a command gets through anyway, the error now names the Bash tool.
+
+  The scope was misdescribed in four places as "every later shell command"; it never was. `/plugin
+  configure billables` needs no re-running and Git Bash needs no re-installing — that remains the
+  fix for the *other* gap, a machine with no Git Bash at all, where the publishing hook cannot start
+  and nothing reaches either shell.
 - **The second-pass marker is refused inside the hour the clocks *skip*, where it used to be accepted
   and read an hour early.** On a spring-forward morning `02:30*` resolved an hour *before* unmarked
   `02:30`, so `--window 02:15*-02:45*` was accepted and silently reported on 01:15–01:45, and

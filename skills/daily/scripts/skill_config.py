@@ -5,6 +5,8 @@
   find_workspace() -> Path | None                     — the directory holding `.mcp/`
   fail_missing(message) -> NoReturn                   — the error contract for a
                                                         required setting that isn't there
+  note_for_an_unreached_shell() -> str                — the cause a missing setting has
+                                                        when the shell is the reason
 
 This module carries the reasoning for the precedence below; the restatements of it are
 registered in `references/self-development.md` § "Rules with more than one copy", so a
@@ -15,7 +17,12 @@ Precedence, highest first:
   1. **A per-command flag**, where the script offers one — overrides a single run.
   2. **The skill `.env` file** at the skill root, next to `SKILL.md`. Simple `KEY=VALUE`
      lines; blank lines and `#` comments allowed, surrounding quotes stripped.
-  3. **The process environment**, which is where a harness injects values.
+  3. **The process environment**, which is where a harness injects values — for the
+     commands it injects them into. Claude Code publishes them as a POSIX shell
+     fragment applied to its **Bash** tool alone, so a script the model runs through
+     PowerShell finds this layer empty on a machine configured perfectly well. That is
+     not a fourth source to add; it is one shell missing the third, and
+     `note_for_an_unreached_shell()` is what says so when a required setting is absent.
   4. **The script's own default**, when it documents one.
 
 `.env` beating the process environment is the order as it has always behaved, kept
@@ -44,6 +51,18 @@ from typing import NoReturn, TypeGuard, overload
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = SKILL_ROOT / ".env"
+
+# The two variables the shell note below is decided from. Neither is read for anything
+# else, and both were confirmed in the process that actually prints the message — a Python
+# child of each tool, not merely the shell itself.
+#
+# `CLAUDECODE` is set by Claude Code in every tool process, in both shells, so its absence
+# means an ordinary terminal: nothing was published there for any shell to have missed,
+# and the note would be a wrong hint. `MSYSTEM` is set by Git Bash and by nothing else on
+# Windows, so its absence *inside* a session is the tell that the command did not come
+# from the Bash tool.
+IN_A_SESSION = "CLAUDECODE"
+POSIX_SHELL_MARK = "MSYSTEM"
 
 # A harness's own directory, which holds its `skills/` one level below where a
 # workspace-local install would put it: `.claude/` is Claude Code's, `.agents/` is the
@@ -118,6 +137,41 @@ def fail_missing(message: str) -> NoReturn:
     supply it.
     """
     sys.exit(f"ERROR: {message}")
+
+
+def note_for_an_unreached_shell(platform: str | None = None, environ=None) -> str:
+    """The extra cause a missing-setting message carries when this process is one the
+    published configuration could not have reached. An empty string when it isn't.
+
+    A harness publishes the declared values by writing a POSIX shell fragment, and Claude
+    Code applies that to its **Bash** tool alone — its PowerShell tool is given no
+    equivalent and loads no profile. So on Windows a script the model happens to run
+    through PowerShell reports the timezone or the credentials missing on a machine that
+    is configured perfectly well, and the message it prints sends the user off to start a
+    new session or install Git Bash. Neither is the fix here, and following either costs
+    them the run. `TESTING.md` § "Two ways the configuration does not arrive" carries the
+    evidence and the mechanisms that were rejected before settling on saying so.
+
+    Deliberately not a *detection of PowerShell*. What is checked is the absence of the
+    POSIX shell's own marker, which is equally true of `cmd.exe` and of anything else that
+    is not Git Bash — and the answer for all of them is the same one.
+
+    Both inputs are parameters because the branch is Windows-only: a suite that could
+    reach it only by being run on Windows *through the PowerShell tool* would never reach
+    it, so the four cells are driven by argument instead.
+    """
+    platform = sys.platform if platform is None else platform
+    environ = os.environ if environ is None else environ
+    if platform != "win32":
+        return ""
+    if not environ.get(IN_A_SESSION) or environ.get(POSIX_SHELL_MARK):
+        return ""
+    return (
+        "\n  This command did not come from the Bash tool, and that is the only shell the\n"
+        "  configured values reach — they are published as a POSIX shell fragment, so\n"
+        "  PowerShell reports them missing however well this machine is configured.\n"
+        "  Re-run the command through the Bash tool. If there is no working Bash tool\n"
+        "  here, Git Bash is not installed and nothing was published to either shell.")
 
 
 def _looks_like_a_workspace(candidate: Path) -> bool:

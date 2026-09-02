@@ -30,7 +30,9 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+import aw_client                       # noqa: E402
 import harvest_client as hc            # noqa: E402
+import refresh_catalogs                # noqa: E402
 import skill_config                    # noqa: E402
 from support import SETTING_KEYS, bundled_script_names  # noqa: E402
 
@@ -206,6 +208,91 @@ def test_missing_credentials_name_both_ways_to_supply_them(isolated):
     assert "/plugin configure" in message
     assert ".env.example" in message
     assert "HARVEST_ACCOUNT_ID" in message and "HARVEST_API_KEY" in message
+    # Where it *stops*, which none of the lines above can see: every assertion here is a
+    # substring, and a substring survives anything appended after it. The message now has
+    # a conditional tail — `note_for_an_unreached_shell()` — so without this the suite's
+    # verdict would depend on which tool launched it, and a note wrongly appended to a
+    # Bash-tool run would read as "you are in the wrong shell" to someone who is not.
+    assert message.endswith("put them there.)"), (
+        "something is appended to the credentials message that should not be:\n" + message)
+
+
+# --------------------------------------------------------------------------------------
+# The shell the configuration never reached
+# --------------------------------------------------------------------------------------
+
+# The four cells the note is decided from, driven by argument rather than by this
+# process's environment. The branch is Windows-only and fires only for a command that did
+# *not* come from the Bash tool, so a suite that could reach it only by being launched on
+# Windows through the PowerShell tool would never reach it — which is how the defect got
+# in front of a user in the first place.
+IN_POWERSHELL = {"CLAUDECODE": "1"}
+IN_BASH = {"CLAUDECODE": "1", "MSYSTEM": "MINGW64"}
+IN_A_TERMINAL: dict[str, str] = {}
+
+
+def test_a_windows_command_that_did_not_come_from_bash_is_told_so():
+    """The whole defect in one assertion. The configuration is published as a POSIX shell
+    fragment applied to Bash tool calls alone, so a script the model happens to run
+    through PowerShell reports a required setting missing on a machine that is configured
+    perfectly well — and, until this line existed, sent the user to start a new session or
+    install Git Bash. Both are the right advice for the *other* cause and cost this user
+    the run."""
+    note = skill_config.note_for_an_unreached_shell("win32", IN_POWERSHELL)
+    assert "Bash tool" in note
+    assert note.startswith("\n"), "the note is appended to a message, not printed alone"
+
+
+def test_the_bash_tool_is_not_told_its_own_values_did_not_arrive():
+    """Where the fragment *is* applied, a missing setting means the setting is missing.
+    Adding the note here would put a shell to blame in front of every first-run user who
+    simply has not configured anything yet."""
+    assert skill_config.note_for_an_unreached_shell("win32", IN_BASH) == ""
+
+
+def test_a_plain_terminal_is_not_told_about_a_session_it_is_not_in():
+    """No session marker, so nothing was published to any shell and no shell missed it.
+    This is the exported install run by hand from a PowerShell prompt, where the values
+    come from `.env` and the note would name a mechanism that is not in play."""
+    assert skill_config.note_for_an_unreached_shell("win32", IN_A_TERMINAL) == ""
+
+
+def test_nothing_outside_windows_is_told_to_change_shell():
+    """macOS and Linux have one shell and the fragment reaches it. The marker the check
+    reads — Git Bash's `MSYSTEM` — is absent there for a reason that has nothing to do
+    with this, so without the platform gate every Linux run would carry the note."""
+    assert skill_config.note_for_an_unreached_shell("linux", IN_POWERSHELL) == ""
+    assert skill_config.note_for_an_unreached_shell("darwin", IN_POWERSHELL) == ""
+
+
+@pytest.mark.parametrize("missing", [
+    pytest.param(lambda: hc.load_creds(), id="credentials"),
+    pytest.param(lambda: aw_client.resolve_zone(None), id="timezone"),
+    pytest.param(lambda: refresh_catalogs.mcp_dir(), id="workspace"),
+])
+def test_every_message_a_user_meets_this_way_carries_the_cause(missing, isolated,
+                                                               monkeypatch):
+    """Three scripts, one absence, one cause. A user whose configuration is invisible to
+    PowerShell meets it as whichever of these ran first, so a note on one of them is a
+    diagnosis that depends on which command the model happened to reach for.
+
+    Driven through the real environment here, not by argument: the tests above prove the
+    rule, and this proves each message is wired to it — which is the half that rots when a
+    fourth message is added.
+    """
+    hc._CREDS_CACHE = None
+    # The hermetic fixture configures a zone, because there is no built-in offset left to
+    # fall back on. A test about the unconfigured state has to opt out of it, as the other
+    # timezone tests do.
+    monkeypatch.delenv("TIMESHEET_TIMEZONE", raising=False)
+    # `sys.platform` rather than the function's own parameter: what is under test here is
+    # that each message is *wired* to the rule, and the call sites pass no platform.
+    monkeypatch.setattr(skill_config.sys, "platform", "win32")
+    monkeypatch.setenv(skill_config.IN_A_SESSION, "1")
+    monkeypatch.delenv(skill_config.POSIX_SHELL_MARK, raising=False)
+    with pytest.raises(SystemExit) as exc:
+        missing()
+    assert "Bash tool" in str(exc.value)
 
 
 # --------------------------------------------------------------------------------------
