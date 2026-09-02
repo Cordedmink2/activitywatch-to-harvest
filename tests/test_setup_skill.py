@@ -158,6 +158,77 @@ def test_it_states_when_setup_is_finished():
         "SKILL.md has no section that says setup is over")
 
 
+# The direct-expansion family, in both shells the skill reaches for: `$KEY`, `${KEY}`,
+# `$env:KEY`, `${env:KEY}`, `$Env:KEY`. `${KEY:+word}` and `${KEY+word}` are the two forms
+# that cannot leak — they substitute the word, so the value never leaves the variable — and
+# they are the only exemptions. Anything else this matches is the credential itself.
+#
+# Named separately from the probe's key list below because the two lists have different
+# jobs: printing a timezone is harmless, printing either of these costs the user a
+# rotation. Adding a key here is a claim that it is a secret.
+CREDENTIAL_KEYS = ("HARVEST_ACCOUNT_ID", "HARVEST_API_KEY")
+PROBE_KEYS = CREDENTIAL_KEYS + ("TIMESHEET_TIMEZONE",)
+VALUE_EXPANSION = re.compile(
+    r"\$\{?(?i:env:)?!?(" + "|".join(CREDENTIAL_KEYS) + r")\b(?!:?\+)")
+
+# The name-as-argument forms, which carry no `$` at all and so are invisible to the
+# pattern above. Both print the value; neither is anything this skill needs.
+NAME_ARGUMENT = re.compile(
+    r"\b(?:printenv|Get-Item|Get-ChildItem|Get-Content)\s+(?:env:)?(?i:"
+    + "|".join(CREDENTIAL_KEYS) + r")\b")
+
+
+@pytest.mark.parametrize("key", CREDENTIAL_KEYS)
+def test_no_command_in_the_skill_expands_a_credential_to_its_value(key):
+    """Reported against 0.5.0: `/billables:setup` printed the user's Harvest API key into
+    the session transcript, from its own "is the configuration set?" pre-check.
+
+    The skill told the run *what* to check and not *how*, so the command was improvised,
+    and the improvisation paired `:+` with `:-` on the reading that each supplies a word
+    for its own case. Only `:+` does. `:-` substitutes when the variable is empty, so a
+    configured key printed the word and then the key. Exit 0, no error, nothing to notice.
+
+    So the assertion is not "don't use that idiom" — the next improvisation will be a
+    different one. It is that no direct expansion of a credential survives in the shipped
+    text, which is the family the leak came from and the family a copied line falls into.
+    The trap is worth stating in prose too, which is why this matches the expansion rather
+    than the key name: naming the key while explaining the danger has to stay allowed.
+
+    What it does not reach, so that nobody trusts it further than it goes: a key named
+    through a variable, as the prescribed probe itself does with `${!k:-}`. An edit that
+    unrolled that loop and echoed the indirection would leak and match nothing here. The
+    guard covers the reachable half; prescribing the probe covers the rest, which is why
+    the test below holds the block in place.
+    """
+    text = shipped_text()
+    offenders = [m.group(0) for m in VALUE_EXPANSION.finditer(text) if m.group(1) == key]
+    offenders += [m.group(0) for m in NAME_ARGUMENT.finditer(text)
+                  if key.lower() in m.group(0).lower()]
+    assert not offenders, (
+        f"the setup skill expands {key} to its value ({', '.join(sorted(set(offenders)))})"
+        " — whatever runs it writes that value into the session transcript, which is how"
+        " a Harvest API key was leaked in 0.5.0")
+
+
+def test_the_configuration_probe_is_prescribed_rather_than_left_to_the_run():
+    """The fix above only holds while there is a command to use instead of composing one.
+    Drop the block and the skill is back to naming three keys and hoping.
+
+    Pinned against `PROBE_KEYS` rather than the credentials alone, because "Done" declares
+    setup finished on *three* configured values. A probe that quietly stopped covering the
+    timezone would leave the third one asserted in prose and checked by nothing.
+    """
+    text = setup_text()
+    # Indented, because the probe sits inside a numbered list item.
+    blocks = re.findall(r"^[ \t]*```[a-z]*\n(.*?)^[ \t]*```", text, re.M | re.S)
+    probes = [b for b in blocks if all(k in b for k in PROBE_KEYS)]
+    assert probes, (
+        "no code block in SKILL.md checks all of "
+        f"{', '.join(PROBE_KEYS)}, so the presence check is improvised again on every run")
+    assert any("MISSING" in b and "set" in b for b in probes), (
+        "the prescribed probe never reports the two states it exists to tell apart")
+
+
 def test_it_points_at_the_configuration_dialog_rather_than_asking_for_values():
     """Declared configuration already holds the credentials, the timezone and the paths.
     A walkthrough that asks for them again is a second place for them to be wrong, and

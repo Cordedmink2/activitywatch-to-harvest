@@ -16,6 +16,8 @@ So this skill is not a list of instructions. It is a list of instructions **with
 It covers only the residue a person has to do. Everything a machine can do belongs elsewhere and is not repeated here:
 
 - **The values** — credentials, timezone, paths — are declared plugin configuration, collected once at install. This skill checks whether they are *present* and routes a gap to `/plugin configure billables`. It never asks for one, and never asks the user to type a token into the conversation, which is written to disk in the session transcript. If the user pastes one in anyway, say so at the time and suggest they rotate it before that transcript is shared anywhere — the dialog is the fix going forward, but the token that has already been written down is not fixed by using the dialog next time.
+
+  **The check is the other way a token reaches the transcript, and it is the way that has actually happened.** A command run to find out whether a value is set writes its own output to the same transcript, so *no command in this skill may expand a credential into its output* — the answer is `set` or `MISSING`, never the value. **Use the probe given below rather than composing one.** The version this replaces paired the two default-substitution forms in one string, on the reading that each supplies a word for its own case; in fact only one of the pair substitutes a word, and the other substitutes the variable itself, so the line printed `set` followed by the user's API key. Nothing failed and nothing looked wrong. If a run has already printed a credential, treat it exactly as a pasted token above: say so at the time, and tell the user to rotate it.
 - **The workspace** — `Timesheets/`, the catalogs, and the `.context.md` describing the user's own clients and conventions — belongs to the `daily` skill's own first run. Point at it at the end; do not build it here.
 
 Five steps, and then a stated finish.
@@ -28,11 +30,23 @@ Step 5 runs a script that ships with the `daily` skill, in a directory beside th
 
 Four things, in parallel, before step 1:
 
-1. **Is the configuration set?** Check for `HARVEST_ACCOUNT_ID`, `HARVEST_API_KEY` and `TIMESHEET_TIMEZONE` in the environment. Do not collect them here and do not block on them — steps 1 to 5 need none of them, so carry on and re-check at the finish.
+1. **Is the configuration set?** Run exactly this, through the **Bash** tool — the declared values are published into the session as a POSIX shell fragment, so PowerShell reports `MISSING` for a machine that is configured perfectly well:
+
+   ```bash
+   for k in HARVEST_ACCOUNT_ID HARVEST_API_KEY TIMESHEET_TIMEZONE; do
+     if [ -n "${!k:-}" ]; then echo "$k=set"; else echo "$k=MISSING"; fi
+   done
+   ```
+
+   Three lines of `set` or `MISSING` and nothing else. Do not collect the values here and do not block on them — steps 1 to 5 need none of them, so carry on and re-check at the finish. Leave the `:-` in `${!k:-}` alone: under `set -euo pipefail`, which some harnesses wrap every command in, the bare form aborts the shell on the first unset key — so the machine that most needs an answer is the one that gets a shell error instead, and a run that gets a shell error writes its own replacement.
+
+   **If there is no Bash tool on this machine, do not translate the probe into PowerShell.** No PowerShell command can answer this question on any machine: the fragment is POSIX and is applied to Bash calls only, so PowerShell reports nothing set whether or not the user has configured anything (issue #28). And a box with no Git Bash is one where the publishing hook could not run either, so nothing was published to either shell. That makes the answer known in advance — treat all three as `MISSING`, skip to the Git Bash question below, and never compose a check to confirm it. Composing one is what leaked a key.
 
    **An absent value here has two causes and they need different things.** Either it was never filled in, or it was filled in and the session hook that republishes it did not run — on Windows that hook needs Git Bash, and without it the values reach nothing. So do not report "not configured" from an empty environment alone. Ask whether the user has filled in `/plugin configure billables`; if they have, the answer is a new session, and if a new session does not fix it, `references/setup.md` in the `daily` skill owns that diagnosis. If they have not, that is the thing to ask for — the dialog, never the conversation.
 
    **On an exported install there is no dialog to send them to.** A harness that is not Claude Code has no plugin manifest to hold configuration, so the same keys live in a `.env` beside the sibling skill's `SKILL.md`, and `/plugin configure billables` is a command that does not exist there. Work out which install this is at the same time as resolving the sibling directory below, and route a gap to copying that skill's `.env.example` to `.env` instead. Either way the value is written to a file by the user, not typed into the conversation.
+
+   The probe above cannot see that file, so on an exported install a `MISSING` means nothing until the `.env` has been checked too — and it is checked by **key name only**, never by reading the file out: `grep -c '^HARVEST_API_KEY=[^[:space:]]' <daily-skill>/.env` and the same for the other two keys. A count is the whole answer. The trailing character class is the whole point of the pattern rather than a detail of it: `.env.example` ships every one of these keys already present and empty, so a user who copies the template and stops has all three key names in the file and no values, and a pattern that counts the name alone reports a fully configured install. Blank is unset everywhere else in this plugin, and it has to be unset here too. `cat`ting a `.env` puts the key in the transcript by a different route than the one above and costs the user the same rotation.
 2. **Which address is the activity source on?** `TIMESHEET_ACTIVITY_URL` if it is set, otherwise `http://localhost:5600`. Use that address everywhere below.
 3. **Is there a working interpreter?** On Windows, prefer `py` over a bare `python`: the bare name is often the Store app-execution alias, a 0-byte stub whose tell is a help message about installing from the Store and exit code 49. Probe it — `py -c "import sys; print(sys.prefix)"` then `py -m pip --version` — rather than trusting that the name resolves. An interpreter that exists and even imports its stdlib can still be broken: `Could not find platform independent libraries` on stderr is a split install whose `sys.prefix` doesn't resolve, so pip and site-packages are unreachable. Both matter most at step 5, where a broken interpreter and a blocked one look identical, and the first coworker install of this pipeline went to IT over exactly that confusion.
 4. **Is there a shell to run step 5's script in?** A stock Windows box has only Windows PowerShell 5.1, so `pwsh` may not exist. Either have the user install it (`winget install Microsoft.PowerShell`) or substitute `powershell.exe -File ...` — the scripts run under 5.1. Under 5.1, quote home-relative paths as `"$HOME/..."`: a bare `~` is passed through literally to a native command rather than expanded, so the path resolves to a directory named `~` and the failure reads as "file not found".
@@ -103,7 +117,7 @@ Then run the `daily` skill's `scripts/setup_screenshot_pipeline.ps1`, resolved a
 
 ## Done
 
-Setup is finished when steps 1 to 5 have each passed their own check on this machine, and the three required configuration values are present. Re-check the configuration now if it was missing at the start.
+Setup is finished when steps 1 to 5 have each passed their own check on this machine, and the three required configuration values are present. If any of the three came back `MISSING` at the start, re-run **the same probe from "Before you start"** — not a new one written for the occasion, which is where the value-printing version came from the first time.
 
 Say so plainly, and say what is now true: the activity source is recording, titles carry client codes, the rules classify them, and screenshots are being captured on a schedule. Then hand over the two things that are not this skill's:
 
