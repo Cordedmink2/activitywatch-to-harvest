@@ -201,6 +201,21 @@ def test_every_version_marker_agrees():
     assert len(set(markers.values())) == 1, f"version markers disagree: {markers}"
 
 
+def test_the_readme_states_the_python_floor_the_type_checker_enforces():
+    """`pyrightconfig.json` is what holds the code to its floor — a newer idiom fails the
+    check. The README is where a user learns the floor before installing, and nothing read
+    the two together, so a bump to one would leave the other promising a version the code
+    no longer ran on."""
+    config = json.loads((REPO / "pyrightconfig.json").read_text(encoding="utf-8"))
+    floor = config["pythonVersion"]
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    prerequisites = re.search(r"^## Prerequisites\n(.*?)(?=^## |\Z)", readme, re.M | re.S)
+    assert prerequisites, "README.md has no `## Prerequisites` section"
+    assert f"Python {floor}+" in prerequisites.group(1), (
+        f"README.md's prerequisites never state Python {floor}+, the floor "
+        f"pyrightconfig.json enforces")
+
+
 # --------------------------------------------------------------------------------------
 # The retired install path
 # --------------------------------------------------------------------------------------

@@ -23,6 +23,10 @@ SETUP = SKILLS / "setup"
 SETUP_MD = SETUP / "SKILL.md"
 SCREENSHOT_SETUP = SKILLS / "daily" / "scripts" / "setup_screenshot_pipeline.ps1"
 
+# A Chrome extension ID is 32 letters from `a` to `p`: the hex digits of the key's hash,
+# each shifted onto that alphabet.
+CHROME_EXTENSION_ID = re.compile(r"\b[a-p]{32}\b")
+
 
 def skill_text() -> str:
     """This skill's own `SKILL.md`."""
@@ -111,6 +115,22 @@ def test_the_allow_list_ask_names_what_the_setup_script_actually_registers(field
     assert value in shipped_text(), (
         f"the allow-list guidance never names {value!r}, which is what the screenshot "
         "setup script registers")
+
+
+def test_the_browser_extension_id_is_the_same_wherever_it_is_written():
+    """`ExtensionInstallAllowlist` takes the ID and nothing else, so a copy that drifts
+    sends an administrator allow-listing an extension nobody ships — and the user's
+    browser watcher stays blocked with the ticket marked done. The reference owns the ID;
+    the skill's step and the README repeat it for the reader who never opens the reference,
+    and until this test nothing read the three together."""
+    reference = (SETUP / "references" / "endpoint-security.md").read_text(encoding="utf-8")
+    ids = set(CHROME_EXTENSION_ID.findall(reference))
+    assert len(ids) == 1, f"the endpoint-security reference names {len(ids)} extension IDs"
+    (extension_id,) = ids
+    for doc in (SETUP_MD, REPO / "README.md"):
+        assert extension_id in doc.read_text(encoding="utf-8"), (
+            f"{doc.relative_to(REPO)} does not carry the extension ID the reference names, "
+            f"{extension_id}")
 
 
 def test_a_block_has_to_be_evidenced_before_it_is_escalated():
