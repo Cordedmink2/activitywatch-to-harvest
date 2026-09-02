@@ -52,3 +52,9 @@ ADR-0001 and ADR-0003, and the tail of `INTENT.md`. (`CONTEXT.md` and three of t
 have been rewritten.) The ADR titles above, the recovered `INTENT.md` head, and the spec in issue
 #2 carry enough of the reasoning; `mattpocock-skills:domain-modeling` is the skill that produces
 them. Commit them when they exist.
+
+**ADR-0007 belongs on that list, and it was never a casualty of the loss** - it was simply never
+written. `CONTEXT.md` and ADR-0006 both treat it as the authority for the split the boundaries are
+drawn on: the provider is written to, the activity source and work-item source are read. Neither
+links it, because there is no file to link; the reasoning is live in both of them, and the ADR is
+the write-up. Same skill, and the same "commit it when it exists".

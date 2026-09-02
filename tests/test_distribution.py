@@ -413,3 +413,43 @@ def test_the_generated_export_validates_strictly(exported):
     rewrite is exactly the kind of edit that produces frontmatter nothing will load."""
     res = validate(exported)
     assert res.returncode == 0, res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------------------
+# Prose that points at a file: the reference has to resolve
+# --------------------------------------------------------------------------------------
+
+# Only targets ending `.md`, with an optional `#anchor`. The net is deliberately not
+# "every relative link": `README.md` links `../../issues/new/choose`, which is a path on
+# github.com and resolves nowhere on disk, and a test that demanded it exist would be
+# wrong about the one link in this repo that is supposed to be web-relative.
+DOC_LINK = re.compile(r"\[[^\]]*\]\(([^)#\s]+\.md)(?:#[^)\s]*)?\)")
+
+
+def markdown_docs() -> list[Path]:
+    """Every prose document in the repo, including `docs/adr/`.
+
+    Broader than the population the retired-names guard walks, and for a different
+    reason: that one asks whether a document *names* something that is gone, which needs
+    the docs a consumer reads. This asks whether a link resolves, which is worth knowing
+    for any document a reader can click — an ADR citing a sibling ADR most of all, since
+    the ADRs are how a decision reaches the next person.
+    """
+    return sorted(p for p in REPO.rglob("*.md")
+                  if not {".git", "__pycache__", "node_modules"} & set(p.parts))
+
+
+@pytest.mark.parametrize("doc", markdown_docs(), ids=lambda p: p.as_posix())
+def test_every_document_a_reference_points_at_exists(doc):
+    """A link to a document that was never written is worse than no link.
+
+    It reads as "the reasoning is recorded over there", so a reader stops looking — and
+    the ADRs are the one place in this repo that exists purely to carry reasoning
+    forward. `docs/RECOVERY.md` records that some ADRs were lost and still need writing;
+    that is prose *about* the gap and names no file, which is the honest way to leave one
+    open. A dead link is the dishonest way.
+    """
+    dangling = [target for target in DOC_LINK.findall(doc.read_text(encoding="utf-8"))
+                if not (doc.parent / target).resolve().exists()]
+    assert not dangling, (
+        f"{doc.as_posix()} links documents that do not exist:\n  " + "\n  ".join(dangling))

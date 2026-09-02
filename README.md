@@ -23,6 +23,14 @@ This repo is a plugin marketplace holding one plugin, `billables`. From inside C
 /plugin install billables@activity-to-timesheet
 ```
 
+Take the **user**-scope install if you are offered the choice, so the plugin is enabled in every
+directory you work in. A **local**-scope install is bound to the one folder you installed it from:
+start a session anywhere else and the plugin is disabled there, its session hook never runs, and
+every command reports your credentials and timezone missing however carefully you filled them in.
+That one is worth avoiding rather than diagnosing — it looks identical to having configured
+nothing, and it is missing in *both* shells, so none of the usual fixes apply.
+`claude plugin list` shows which scope you got and whether the plugin is enabled where you are.
+
 That gives you `/billables:daily`, `/billables:reconcile` and `/billables:setup`, and asks you
 for your own details, once:
 

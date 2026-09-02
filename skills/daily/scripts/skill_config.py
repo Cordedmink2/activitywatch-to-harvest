@@ -171,10 +171,20 @@ def note_for_an_unreached_shell(platform: str | None = None, environ=None) -> st
     values from `.env`, and telling that user to change shell would name a mechanism that
     is not in play and a fix that does nothing.
 
-    Two causes remain and nothing here can separate them — the fragment is equally absent
-    when the hook never started — so both are named, which costs the user one line and
-    saves them a reinstall. On a platform with no PowerShell tool only the second can
-    apply, and the note says only that.
+    Three causes remain and nothing here can separate them — the fragment is equally
+    absent when the hook never started, and when this plugin is not enabled in the
+    directory the session began in — so all three are named, which costs the user two
+    lines and saves them a reinstall. The enablement one is the least guessable of the
+    three: a plugin installed at **local** scope is bound to the one directory it was
+    installed from (`installed_plugins.json` records it as a `projectPath`), so a sibling
+    checkout gets no hook, no fragment and no values in *either* shell — while the two
+    fixes the note used to offer, re-run in Bash and install Git Bash, are both already
+    satisfied. `claude plugin list` is the only thing that tells them apart, so the note
+    names the check and not a fix.
+
+    A shell can only be the cause where there are two of them, so that cause is dropped
+    on a platform with no PowerShell tool; the other two are not platform-specific and
+    are named everywhere.
 
     `platform` and `environ` are parameters so the cells are driven by argument; the
     install shape is read from `SKILL_ROOT`, which the tests relocate anyway.
@@ -189,15 +199,25 @@ def note_for_an_unreached_shell(platform: str | None = None, environ=None) -> st
         return (
             "\n  The configuration was not published to this session: the SessionStart\n"
             "  hook that publishes it did not run. Starting a new session will not\n"
-            "  change that — see references/setup.md § 'When the configuration does not\n"
-            "  arrive'.")
+            "  change that. Two causes:\n"
+            "  - this plugin may not be enabled in the directory this session started\n"
+            "    from. An install made at local scope is bound to the one directory it\n"
+            "    was installed from, and no hook runs anywhere else. Run\n"
+            "    `claude plugin list` to see whether it is enabled here.\n"
+            "  - or the hook could not start — see references/setup.md § 'When the\n"
+            "    configuration does not arrive'.")
     return (
         "\n  The configuration was not published to this command, so starting a new\n"
-        "  session will not help. Two causes, and the first is the common one:\n"
+        "  session will not help. Three causes, and the first is the common one:\n"
         "  - the command did not come from the **Bash** tool. The values are published\n"
         "    as a POSIX shell fragment, which Claude Code applies to Bash tool calls and\n"
         "    to nothing else, so PowerShell reports them missing however well this\n"
         "    machine is configured. Re-run this same command through the Bash tool.\n"
+        "  - or this plugin is not enabled in the directory this session started from. An\n"
+        "    install made at local scope is bound to the one directory it was installed\n"
+        "    from; anywhere else the plugin is disabled, no SessionStart hook runs, and\n"
+        "    nothing is published to any shell. Run `claude plugin list` to see whether it\n"
+        "    is enabled here.\n"
         "  - or the publishing hook could not start, which on Windows means Git Bash is\n"
         "    not installed. references/setup.md § 'When the configuration does not\n"
         "    arrive' has that one.")

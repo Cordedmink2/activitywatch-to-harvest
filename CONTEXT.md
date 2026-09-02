@@ -7,8 +7,7 @@ about them — so that a second provider is an adapter rather than a rewrite.
 
 **Two of the three are read, one is written**, and that is the distinction the boundaries are drawn
 on. A mistake at a read boundary yields an empty catalog. A mistake at the write boundary bills a
-client wrongly — so credentials and the confirmation gate belong there and nowhere else. See
-ADR-0007.
+client wrongly — so credentials and the confirmation gate belong there and nowhere else.
 
 **What this asks for is precise, and it is not "delete the word Harvest".** A rule may name the
 product where the product is the subject: "Post to Harvest", "no Harvest write without explicit
@@ -25,8 +24,9 @@ term below and a synonym both read fine, the term below wins; the synonyms are w
 like.
 
 Decisions that shaped this vocabulary are in [`docs/adr/`](./docs/adr/) — ADR-0006 for why the
-provider stays inside this plugin for now, ADR-0007 for why the read and write boundaries are
-separate.
+provider stays inside this plugin for now. Why the read and write boundaries are separate is the
+paragraph above and ADR-0006's consequences; the ADR that should hold it on its own, ADR-0007, is on
+[`docs/RECOVERY.md`](./docs/RECOVERY.md)'s list of documents still to write.
 
 ## The three services
 

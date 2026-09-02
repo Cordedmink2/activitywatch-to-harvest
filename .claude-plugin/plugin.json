@@ -1,7 +1,7 @@
 {
   "name": "billables",
   "description": "Turns captured desktop activity into a reviewable billable timesheet and, on your explicit confirmation, logs it to your timesheet provider.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": {
     "name": "Connor Parsons"
   },

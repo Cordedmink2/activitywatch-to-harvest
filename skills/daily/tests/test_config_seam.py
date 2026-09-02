@@ -258,6 +258,32 @@ def test_a_command_the_fragment_never_reached_is_told_so(plugin_install):
     assert note.startswith("\n"), "the note is appended to a message, not printed alone"
 
 
+def test_an_unreached_command_is_told_the_plugin_may_not_be_enabled_here(plugin_install):
+    """The third cause, and the one the note used to leave out.
+
+    A plugin can be installed at **local** scope, bound to the one directory it was
+    installed from — `installed_plugins.json` records that as a `projectPath`. Run the
+    skill from any other directory and the plugin is simply disabled there: no hook is
+    registered, so no fragment is written, so the marker and the values are equally
+    absent. That is this branch exactly, and until now it offered two causes and no
+    third: re-run through the Bash tool, or install Git Bash.
+
+    Both are wrong for this user, which is what makes the omission expensive rather than
+    untidy. Diagnosed on 2026-09-02 against a plugin installed for `~/Admin` and run from
+    a checkout beside it: the values were missing from a **Bash** tool call, and Git Bash
+    was installed. Following either suggestion costs the run and finds nothing, because
+    the fragment was never written for any shell to have received.
+
+    So the note names the check rather than the fix. `claude plugin list` is the one
+    command that separates a disabled plugin from a shell that missed the fragment — the
+    two look identical from inside a script, and nothing this module can read tells them
+    apart.
+    """
+    note = skill_config.note_for_an_unreached_shell("win32", UNREACHED)
+    assert "claude plugin list" in note, (
+        "the note offers no way to find out whether the plugin is enabled here:\n" + note)
+
+
 def test_a_command_the_fragment_did_reach_is_not_told_its_values_went_missing(
         plugin_install):
     """The marker is in this process, so the fragment is too, so a missing setting means
@@ -299,6 +325,30 @@ def test_a_platform_with_no_powershell_tool_is_not_told_to_change_shell(plugin_i
         note = skill_config.note_for_an_unreached_shell(platform, UNREACHED)
         assert "did not run" in note
         assert "Bash tool" not in note and "PowerShell" not in note
+
+
+def test_a_platform_with_one_shell_is_still_told_the_plugin_may_not_be_enabled(
+        plugin_install):
+    """The cause belongs to the *install*, not to the shell, so it survives the platform.
+
+    macOS and Linux have one shell and the fragment reaches it, so the sibling test above
+    is right that a wrong shell cannot be the cause there. A plugin enabled for one
+    directory and run from another is a cause there in exactly the same way it is on
+    Windows — nothing about `installed_plugins.json` is platform-specific — and this
+    branch used to name only the hook, sending the user to `references/setup.md` for a
+    hook that was never registered to start.
+
+    The second assertion is the one that matters if the two branches are ever merged to
+    save the duplication: this platform has no PowerShell tool to re-run anything in, and
+    naming one would send the user looking for a tool that does not exist.
+    """
+    for platform in ("linux", "darwin"):
+        note = skill_config.note_for_an_unreached_shell(platform, UNREACHED)
+        assert "claude plugin list" in note, (
+            f"on {platform} the note names no way to check whether the plugin is enabled "
+            f"here:\n{note}")
+        assert "Bash tool" not in note and "PowerShell" not in note, (
+            f"on {platform} the note names a shell that has nothing to do with it:\n{note}")
 
 
 @pytest.mark.parametrize("missing", [

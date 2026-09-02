@@ -26,14 +26,24 @@ arrive" carries the evidence and the rejected alternatives.
 
 import importlib.util
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
 
+# The wrapper is a POSIX shell script, so driving it needs a shell that can run one.
+# Imported from the sibling suite rather than copied: `find_bash()` there picks Git Bash
+# specifically, because `System32\bash.exe` on Windows is the WSL launcher and would run
+# the script in a different filesystem namespace entirely. A second copy of that reasoning
+# is a second thing to get wrong.
+from test_install_scripts import bash, posix, requires_bash  # noqa: E402
+
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN_MANIFEST = REPO / ".claude-plugin" / "plugin.json"
 HOOKS = REPO / "hooks"
+README = REPO / "README.md"
 
 # What must be asked for, because nothing can run without it.
 REQUIRED = {"HARVEST_ACCOUNT_ID", "HARVEST_API_KEY", "TIMESHEET_TIMEZONE"}
@@ -194,6 +204,50 @@ def test_a_session_start_hook_publishes_the_configuration():
     assert (HOOKS / "publish_plugin_config.py").is_file()
 
 
+def install_section() -> str:
+    """The README's `## Install` block — the text a user reads before they install.
+
+    Scoped to that section rather than the whole file: this repo's README also documents
+    migrating an older hand install and the exported route, both of which mention scopes
+    of their own, and a passing mention down there is not the instruction anyone follows.
+    """
+    match = re.search(r"^## Install\n(.*?)(?=^## |\Z)", README.read_text(encoding="utf-8"),
+                      re.M | re.S)
+    assert match, "README.md has no `## Install` section"
+    return match.group(1)
+
+
+def test_the_install_instruction_names_the_scope_that_publishes_everywhere():
+    """Every guard in this file is downstream of the plugin being *enabled where you are*.
+
+    A plugin installed at **local** scope is bound to the one directory it was installed
+    from. Start a session anywhere else and it is simply disabled there: no SessionStart
+    hook is registered, so nothing publishes the fragment, so every script reports the
+    configuration missing however carefully the user filled the dialog in. The manifest,
+    the round-trip and the quoting are all exactly right and none of them run.
+
+    That is not hypothetical. Diagnosed on 2026-09-02: an install made from `~/Admin`
+    landed at local scope and bound itself to that directory, and a session started in a
+    checkout beside it found no credentials in *either* shell —
+    `installed_plugins.json` recorded `"scope": "local", "projectPath": ".../Admin"` and
+    `claude plugin list` reported `disabled`, while the two causes the error offered were
+    both already satisfied.
+
+    `claude plugin install` defaults to user scope, so the CLI route is safe by default
+    and the interactive one is what needs saying. The section therefore has to name the
+    scope to pick, what the other one costs, and the command that shows which you got.
+    """
+    section = install_section()
+    assert "user" in section and "scope" in section, (
+        "the install instruction never names a scope, so whichever one the dialog "
+        f"defaults to is the one the user gets:\n{section}")
+    assert "local" in section, (
+        "the install instruction does not say what a local-scope install costs — which "
+        f"is a plugin that works in one directory and is disabled in every other:\n{section}")
+    assert "claude plugin list" in section, (
+        "nothing tells the user how to see which scope they ended up with:\n" + section)
+
+
 def test_only_the_injected_options_are_published():
     """The bridge publishes what the harness injected and nothing else. It must not carry
     the rest of a hook process's environment into every command in the session."""
@@ -298,6 +352,59 @@ def test_the_marker_is_the_only_thing_published_that_nobody_declared():
     assert publisher.MARKER not in user_config()
     assert publisher.option_values(
         {f"CLAUDE_PLUGIN_OPTION_{publisher.MARKER}": "1"}) == {}
+
+
+@requires_bash
+def test_a_candidate_that_exits_without_running_the_script_publishes_nothing_and_is_not_trusted(
+        tmp_path):
+    """The wrapper tries interpreters in turn, and an exit code is not evidence one ran.
+
+    `python3` on Windows is frequently a shim in `WindowsApps` rather than an interpreter,
+    and the wrapper exists to get past it — but it tests the wrong thing. `command -v`
+    finds the shim, the shim exits, and `&& exit 0` accepts that as success: the loop stops
+    at the first candidate that *returned* rather than the first that *worked*, and the
+    session gets no configuration while the hook reports having published it. Every guard
+    in this file passes, because none of this code ran.
+
+    Observed on 2026-09-02: invoking `python3` on this machine handed control to the
+    Python install manager, which updated itself and installed 3.14.7 — fifteen lines of
+    installer output from a SessionStart hook. That one recovered and did run the script.
+    A shim that simply exits does not, and nothing downstream can tell the difference.
+
+    So the wrapper has to check the effect rather than the exit code. The publisher always
+    writes at least the marker line, so a run that left the file untouched did not happen —
+    which is a property of *this* wrapper and needs no third copy of the marker's spelling
+    to assert.
+    """
+    env_file = tmp_path / "sessionstart-hook-0.sh"
+    env_file.write_bytes(b"export SOMETHING_ELSE='kept'\n")
+    stub = tmp_path / "stub"
+    stub.mkdir()
+    # A `python3` of the shape the wrapper is meant to survive: it prints a nag, runs
+    # nothing, and exits 0.
+    (stub / "python3").write_text(
+        "#!/bin/sh\necho 'Python was not found; install it from the Microsoft Store'\nexit 0\n",
+        encoding="utf-8", newline="\n")
+
+    env = dict(os.environ)
+    env["CLAUDE_ENV_FILE"] = str(env_file)
+    env["CLAUDE_PLUGIN_OPTION_TIMESHEET_TIMEZONE"] = "Pacific/Auckland"
+    # PATH is rewritten inside the shell, in POSIX form. Handing Git Bash a Windows-style
+    # PATH through `env=` is the kind of thing that works until a path has a space in it.
+    script = (f'chmod +x "{posix(stub)}/python3"; '
+              f'PATH="{posix(stub)}:$PATH"; '
+              f'exec sh "{posix(HOOKS / "publish_plugin_config.sh")}"')
+    result = subprocess.run([bash(), "-c", script], env=env, capture_output=True,
+                            text=True, encoding="utf-8", errors="replace")
+
+    assert result.returncode == 0, (
+        f"a session must not fail to start over this:\n{result.stdout}\n{result.stderr}")
+    written = env_file.read_bytes()
+    assert b"SOMETHING_ELSE" in written, "the wrapper took another hook's fragment out"
+    assert publisher.MARKER.encode() in written, (
+        "the wrapper stopped at a candidate that ran nothing, so the session was told "
+        f"nothing was published:\n{written!r}\n--- stub output ---\n{result.stdout}")
+    assert b"export TIMESHEET_TIMEZONE='Pacific/Auckland'\n" in written
 
 
 def test_a_hook_event_given_no_env_file_is_not_a_failure(monkeypatch):

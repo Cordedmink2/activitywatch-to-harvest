@@ -5,9 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-03
 
 ### Upgrading
+- **Install at *user* scope, and if the plugin is already installed, check which scope you got.**
+  `claude plugin list` prints it, alongside whether the plugin is enabled in the directory you are
+  standing in. A **local**-scope install is bound to the one folder it was installed from: start a
+  session anywhere else and the plugin is disabled there, no session-start hook runs, and none of
+  your configured values are published to any shell — the credentials you filled in are stored
+  correctly and simply never arrive. `claude plugin enable billables@activity-to-timesheet --scope
+  user` moves an existing install without re-entering anything. `/plugin install` from inside Claude
+  Code can land either scope depending on the prompt you answer; the `claude plugin install` command
+  line defaults to user.
 - **If you installed by hand, you are not on this release and re-running the installer will not
   put you on it.** The old path copied the skill to `~\.claude\skills\daily-timesheet`; the
   installer now generates the shared Agent Skills export instead and leaves that folder alone —
@@ -185,6 +194,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that described them.
 
 ### Fixed
+- **"Credentials not found" on a correctly configured machine now names the cause it used to leave
+  out: the plugin is not enabled in the directory you started the session in.** The message offered
+  two explanations, a stale session and a missing Git Bash, and neither was true of the run that
+  produced it — so it sent you off to re-enter credentials that were stored perfectly well. A
+  **local**-scope install is enabled only in the folder it was installed from; elsewhere no
+  session-start hook runs and nothing is published to Bash *or* PowerShell, which looks exactly like
+  never having configured anything. The error now lists that cause with `claude plugin list` to
+  check it against, and it is listed on every platform, because it has nothing to do with which
+  shell you are in. § *Upgrading* above has the one-line move to user scope.
+- **A `python3` that exits without publishing anything no longer stops the hook from trying
+  `python`.** The wrapper tried three interpreter names in turn and took a zero exit as success,
+  but on Windows `python3` is frequently an install-manager shim: it returns 0 having run nothing,
+  so the loop stopped at the first name and the session started with no configuration and a hook
+  that reported success. Each candidate is now judged on whether the published fragment actually
+  *grew*, measured as a delta because that file is shared with every other hook, so a shim is
+  skipped and the working interpreter behind it gets its turn.
 - **A configured plugin that looks unconfigured now says why, and the skills read in the shell the
   values arrive in.** The declared values are published as a POSIX shell fragment, and Claude Code
   applies that to its **Bash** tool alone — so a script run through PowerShell reported the timezone
