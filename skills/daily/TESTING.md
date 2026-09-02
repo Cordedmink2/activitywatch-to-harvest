@@ -278,6 +278,11 @@ reader. `test_references.py` validates `python scripts/<name>.py` *commands*, no
 encode which files deserve a description, and the list's value is the descriptions, not the
 names. Re-check it by eye whenever a script is added; that is the whole procedure.
 
+**Superseded** by §"The 'Files in this skill' inventory had lost eleven flags — #26": the
+eye missed it again, this time losing flags rather than files. There is a gate now, over
+the names and the flags only. The reasoning above still holds for the descriptions, which
+it does not touch.
+
 ### An exclusivity claim survived in `classification-rules.md`
 **Rung 3.** 2026-08-19. `references/classification-rules.md` § "Task selection" opened with
 "**This table is the single authoritative mapping** — `SKILL.md` does not carry its own
@@ -1284,6 +1289,44 @@ a test that writes that key into the `env_file` or `workspace` fixture's `.env` 
 defeat it and read the developer's real day. Nothing does, and `test_harness.py` only
 proves the guard in its default state, so nothing would catch it. The hazard is written
 into both fixture docstrings; that is the whole mitigation.
+
+### The "Files in this skill" inventory had lost eleven flags — #26
+
+**Rung 2.** 2026-09-02. The entry for `activity_timeline.py` stopped at `--gap-fold` and
+named neither `--full` nor `--min-span`. `--min-span` is the one that mattered: it is the
+tunable `references/context.md.example` maps a `## Preferences` line onto, so it was
+documented in the template a user fills in and absent from the file a run actually reads.
+
+Writing the comparison found nine more. `refresh_catalogs.py`'s entry named neither
+`--harvest-only` nor `--dataverse-only`, and the shared `harvest_post` / `harvest_patch` /
+`harvest_list` entry named `--confirm` and `--by-day` but none of `harvest_patch.py`'s seven
+field flags — including `--hours`, whose module docstring calls it a footgun on start/end
+accounts. A run reading only the inventory saw a patch script with a gate and no fields.
+The inventory now carries the traps in a clause, not just the flag names.
+
+**Flags are read out of the syntax tree, not out of a parser.** The first shape imagined
+for this was "import every script, read its `argparse` parser" — which #21 had just made
+possible. It does not reach: only four of the eleven scripts use argparse and all four build
+the parser inside `main()`, so importing alone yields no parser, and the other three parse
+by hand. The rule that covers all three shapes is textual — a string literal that is
+*exactly* a flag is a flag the script compares an argument against — with one exclusion:
+literals inside an argv list passed to `subprocess` belong to the other program.
+`refresh_catalogs.py` hands `pac` four (`--name`, `--index`, `--environment`, `--xmlFile`),
+and without the exclusion the inventory would have been told to list them. The regex is
+deliberately case-tolerant so `--xmlFile` is excluded by the rule rather than missed by the
+pattern. What this cannot see is a flag assembled at runtime; nothing here assembles one.
+
+**Held per entry, not per script.** Three scripts share one line, so its flags are compared
+against the union of what those three parse: a flag written there is known to belong to one
+of them and not which. That is the price of the shared line, and it still catches both
+directions of the drift this entry records.
+
+**This reverses the "not fixed by a gate, deliberately" above.** That refusal was sound
+about what it was refusing — a test asserting the list matches `ls` would have to encode
+which files deserve a *description*, and the descriptions are the list's value. This test
+holds no description. It holds two things a machine can check without judgement: every
+shipped script has an entry, and each entry's flags match its scripts'. The prose stays
+hand-written and ungated.
 
 ## Rejected
 

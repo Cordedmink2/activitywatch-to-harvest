@@ -6,8 +6,13 @@ actually ships — otherwise the model runs a path that doesn't exist and report
 a missing file instead of taking the documented route.
 """
 
+import ast
 import os
 import re
+
+import pytest
+
+from support import bundled_script_names, bundled_scripts
 
 SKILL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(SKILL, "scripts")
@@ -78,3 +83,148 @@ def test_no_documented_command_hands_over_the_confirmation_flag_ready_typed():
         "default action of a copied template; append it in the surrounding prose instead, "
         "or write it as an optional `[--confirm]`:\n  " + "\n  ".join(offenders)
     )
+
+
+# --------------------------------------------------------------------------------------
+# The "Files in this skill" inventory against the flags the scripts actually parse
+#
+# The inventory is the only place a run is told which flags exist. `TESTING.md` §"The
+# 'Files in this skill' list is hand-maintained and had drifted" records it losing whole
+# scripts once; it had since lost flags as well. Hand-maintained lists drift, so the fix is
+# not to correct the entries but to compare them against the source on every run.
+# --------------------------------------------------------------------------------------
+
+INVENTORY_HEADING = "## Files in this skill"
+
+# A flag as it is written in either place. Case is allowed through rather than filtered
+# out — `pac` takes a `--xmlFile`, and a camelCase flag added to a script one day should be
+# caught by the rule below that excludes another program's argv, not missed by this regex.
+FLAG = re.compile(r"--[A-Za-z][A-Za-z0-9-]*")
+FLAG_ONLY = re.compile(FLAG.pattern + r"\Z")
+
+# `- ` opens an entry; the filename runs up to the first em dash, and everything after it
+# is prose. Names are taken from the head alone because the prose cross-references other
+# scripts: the `aw_client.py` entry names `afk_blocks.py` and `activity_timeline.py` in its
+# description, and reading names out of the whole entry would have `aw_client` claim their
+# flags. Only the first name carries its `scripts/` prefix in an entry that lists several.
+SCRIPT_NAME = re.compile(r"([A-Za-z0-9_]+)\.py")
+
+
+def _subprocess_argv(tree):
+    """Node ids of the string literals that make up an argv handed to another program.
+
+    A `--flag` inside `subprocess.run([...])` is that program's flag, not this script's:
+    `refresh_catalogs.py` passes `--name`, `--index`, `--environment` and `--xmlFile` to
+    `pac`, and without this they would read as four flags the inventory must list.
+    """
+    skipped = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and node.args):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name) and func.value.id == "subprocess"):
+            continue
+        if isinstance(node.args[0], (ast.List, ast.Tuple)):
+            skipped.update(id(element) for element in node.args[0].elts)
+    return skipped
+
+
+def flags_a_script_parses(path) -> set[str]:
+    """Every flag `path` accepts, read out of its syntax tree.
+
+    A flag counts when the source contains a string literal that is *exactly* a flag —
+    which is the same thing as the script comparing an argument against it. That covers all
+    three parsing shapes this skill ships without knowing which is which: argparse's
+    `add_argument("--json")`, `harvest_patch.py`'s `FLAGS` table, and the bare
+    `a != "--by-day"` filter in `harvest_list.py`. A flag named inside a longer string — a
+    usage line, a module docstring — is documentation and does not count, so the literal has
+    to match end to end.
+
+    Read as text rather than by importing the module and inspecting its parser, which is
+    what this test was first imagined as. Only four of the eleven scripts use argparse, and
+    all four build the parser inside `main()`, so an import alone reaches no parser: that
+    route means refactoring four scripts to expose a builder and still leaves the three
+    hand-rolled parsers uncovered. The trade is that this cannot see a flag assembled at
+    runtime; nothing here assembles one, and a test for the inventory being *complete* is
+    worth more than one that is exact about a shape nobody uses.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    skipped = _subprocess_argv(tree)
+    return {node.value for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            and FLAG_ONLY.match(node.value) and id(node) not in skipped}
+
+
+def inventory_entries() -> list[tuple[set[str], set[str]]]:
+    """The inventory as `(script stems named, flags written)` per entry.
+
+    Entries naming no script — `SKILL.md`, the references, `tests/` — are dropped, and so
+    is the `.ps1` beside `screenshot_capture.py`: its parameters are PowerShell's and are
+    not what this compares.
+    """
+    with open(os.path.join(SKILL, "SKILL.md"), encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    start = lines.index(INVENTORY_HEADING) + 1
+    section = lines[start:]
+    for offset, line in enumerate(section):
+        if line.startswith("## "):
+            section = section[:offset]
+            break
+
+    entries = []
+    for line in section:
+        if line.startswith("- "):
+            entries.append(line)
+        elif line.strip() and entries:
+            entries[-1] += " " + line.strip()      # a wrapped entry is still one entry
+
+    out = []
+    for entry in entries:
+        head = entry.split(" — ")[0]
+        names = set(SCRIPT_NAME.findall(head))
+        if names:
+            out.append((names, set(FLAG.findall(entry))))
+    return out
+
+
+def entry_for(name: str) -> tuple[set[str], set[str]]:
+    for names, flags in inventory_entries():
+        if name in names:
+            return names, flags
+    raise AssertionError(
+        f"{name}.py ships in scripts/ but has no entry under {INVENTORY_HEADING!r} in "
+        "SKILL.md. That list is how a run learns the script exists at all; a script "
+        "missing from it is invisible to every run that does not already know it.")
+
+
+@pytest.mark.parametrize("name", bundled_script_names())
+def test_every_bundled_script_has_an_inventory_entry(name):
+    """Derived from `scripts/` rather than from a list, so a twelfth script is covered the
+    day it lands. This is the drift `TESTING.md` records: three scripts had been added and
+    the inventory named none of them."""
+    entry_for(name)
+
+
+@pytest.mark.parametrize("name", bundled_script_names())
+def test_the_inventory_entry_lists_exactly_the_flags_its_scripts_parse(name):
+    """A flag in one and not the other fails, in whichever direction.
+
+    Compared per *entry*, not per script, because one entry covers `harvest_post.py`,
+    `harvest_patch.py` and `harvest_list.py` together — so the flags it lists are held to be
+    the union of what those three parse. A flag written there is known to belong to one of
+    them and not which, which is the price of the three sharing a line; nothing is missing
+    and nothing is invented, which is what the list is read for.
+    """
+    names, documented = entry_for(name)
+    parsed = set()
+    for path in bundled_scripts():
+        if path.stem in names:
+            parsed |= flags_a_script_parses(path)
+    entry = ", ".join(sorted(names))
+    assert parsed == documented, (
+        f"the SKILL.md entry for {entry} and the flags those scripts parse disagree.\n"
+        f"  parsed, not listed: {sorted(parsed - documented) or 'none'}\n"
+        f"  listed, not parsed: {sorted(documented - parsed) or 'none'}\n"
+        "The inventory is the only place a run is told a flag exists; add the entry when "
+        "you add the flag.")
