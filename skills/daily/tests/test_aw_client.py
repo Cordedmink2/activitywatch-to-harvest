@@ -189,6 +189,63 @@ def test_the_transition_instant_is_nameable_only_as_a_marked_time():
     assert aw.local_clock(transition, NZ) == "02:00:00*"
 
 
+# --------------------------------------------------------------------------------------
+# Locating the change itself. `zoneinfo` publishes no transition list, so this is found by
+# bisection — and the zones below are the ones that break the obvious ways of reading it.
+# --------------------------------------------------------------------------------------
+
+def test_the_two_readings_of_a_fall_back_come_back_in_the_order_they_are_read_in():
+    """`03:00` as the instant arrives and `02:00` once it has passed, which is the pair
+    `harvest_post.py` turns into the two entries a straddling create has to become."""
+    assert aw.transition_clocks(dt.date(2026, 4, 5), NZ) == (dt.time(3, 0), dt.time(2, 0), True)
+
+
+def test_a_spring_forward_is_the_same_pair_the_other_way_round():
+    assert aw.transition_clocks(dt.date(2026, 9, 27), NZ) == (dt.time(2, 0), dt.time(3, 0), False)
+
+
+@pytest.mark.parametrize("date,zone", [
+    (dt.date(2026, 5, 28), NZ),          # an ordinary day in a zone that does change
+    (dt.date(2026, 4, 5), fixed(12)),    # the transition date, in a `--utc-offset` zone
+], ids=["ordinary-day", "fixed-offset-zone"])
+def test_a_day_whose_clocks_do_not_change_reports_no_transition(date, zone):
+    """The answer on all but two dates a year, and what keeps every caller's behaviour on
+    those dates exactly what it was."""
+    assert aw.transition_clocks(date, zone) is None
+
+
+def test_a_change_that_is_not_a_whole_hour_is_read_at_its_real_size():
+    """`Australia/Lord_Howe` moves by thirty minutes, so the span that happens twice is
+    01:30-02:00. Nothing may assume the shift is an hour: the two entries a straddling
+    create becomes are measured off these two readings, and an assumed hour would bill the
+    second one thirty minutes long."""
+    assert aw.transition_clocks(dt.date(2026, 4, 5), ZoneInfo("Australia/Lord_Howe")) == \
+        (dt.time(2, 0), dt.time(1, 30), True)
+
+
+def test_clocks_that_go_back_at_midnight_are_still_read_as_going_back():
+    """`America/Santiago` returns to 23:00 as the clock reaches 00:00, so its two readings
+    arrive in the *opposite* order to New Zealand's — the later one second. Reading the
+    direction off that order gets this day exactly backwards and would leave a genuine
+    fall-back treated as a spring-forward, so the direction comes from the offset shift."""
+    got = aw.transition_clocks(dt.date(2026, 4, 4), ZoneInfo("America/Santiago"))
+    assert got is not None and got == (dt.time(0, 0), dt.time(23, 0), True)
+    assert got.once_passed > got.as_reached, "the reason the order cannot be the test"
+
+
+def test_the_reading_taken_at_face_value_is_an_hour_after_the_instant_it_names():
+    """The trap the whole refusal is built around, pinned at the arithmetic. The clocks go
+    back at 14:00Z; that instant reads `03:00` as it arrives, but `03:00` written as a
+    plain time on that date means 15:00Z, an hour later. Only `02:00*` names the instant
+    itself — which is why the two replacement entries read as though they overlap."""
+    date, change = dt.date(2026, 4, 5), aw.transition_clocks(dt.date(2026, 4, 5), NZ)
+    assert change is not None
+    transition = dt.datetime(2026, 4, 4, 14, 0, tzinfo=dt.timezone.utc)
+    assert aw.to_utc(date, aw.parse_local_time("02:00*"), NZ) == transition
+    assert aw.to_utc(date, aw.parse_local_time(change.as_reached.strftime("%H:%M")), NZ) \
+        == transition + dt.timedelta(hours=1)
+
+
 @pytest.mark.parametrize("written,expected", [("02:30", FIRST_PASS), ("02:30*", SECOND_PASS)])
 def test_to_utc_resolves_each_pass_to_its_own_instant(written, expected):
     got = aw.to_utc(dt.date(2026, 4, 5), aw.parse_local_time(written), NZ)

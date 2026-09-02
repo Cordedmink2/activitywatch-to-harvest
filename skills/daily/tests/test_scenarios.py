@@ -21,6 +21,7 @@ import pytest
 
 import activity_timeline as tl
 import afk_blocks as ab
+import harvest_post as hpost
 from scenarios import SCENARIOS, BY_NAME
 from support import day, run_cli, with_heartbeats
 
@@ -293,6 +294,102 @@ def test_web_rows_in_the_repeated_hour_keep_the_order_they_happened_in(live_aw):
         ("02:35:00", "ACME release runbook"),
         ("02:05:00*", "ACME deploy log"),
     ]
+
+
+# --------------------------------------------------------------------------------------
+# The write side of the same morning. `harvest_post` reads no ActivityWatch, so these take
+# the fall-back scenario for its date and zone only — the point is that the script that
+# *bills* the repeated hour answers for the same day the scripts that *read* it do.
+# --------------------------------------------------------------------------------------
+
+# The scenario's own two active spans, as one stretch worked straight through. `01:30` is
+# before the change and `04:15` after it, so the clock says 2.75 hrs and 3.75 hrs really
+# passed — the entry the ticket is about.
+STRADDLE = ("01:30", "04:15")
+# What the refusal has to name instead, in the plain HH:MM the script accepts. They read as
+# though they overlap and do not: the transition instant is `03:00` as you reach it and
+# `02:00` once it has passed, so the first ends where the second starts.
+PIECES = (("01:30", "03:00"), ("02:00", "04:15"))
+
+
+def create(monkeypatch, zone, date, start, end, *extra):
+    """A create against a configured zone, run in-process. The ids are the fixtures' own."""
+    monkeypatch.setenv("TIMESHEET_TIMEZONE", zone)
+    return run_cli(hpost, ["48084036", "20753151", date, start, end, "Cutover", *extra])
+
+
+def fall_back_day():
+    """The date and zone of the scenario, without starting an ActivityWatch for them."""
+    d = BY_NAME["fall-back-repeated-hour-day"].build()
+    assert d.zone_name, "the fall-back scenario is written in a named zone, not an offset"
+    return d.zone_name, d.date_str()
+
+
+def test_a_create_straddling_the_change_is_refused_rather_than_billed_short(
+        live_harvest, monkeypatch):
+    """The defect, at the seam it reaches Harvest through. Harvest derives the duration
+    from the two clock times, so this entry bills 2.75 hrs for 3.75 hrs of work and then
+    reads correctly in every listing afterwards — there is no later moment at which anyone
+    finds out. Asserted against the recorded requests as well as the exit code, because a
+    script that posted and *then* complained would pass on the latter alone."""
+    srv = live_harvest({("POST", "/time_entries"): (201, {"id": 4101})})
+    zone, date = fall_back_day()
+    r = create(monkeypatch, zone, date, *STRADDLE, "--confirm")
+
+    assert srv.sent("POST", "/time_entries") == [], "nothing may reach the wire"
+    assert r.code != 0
+    assert "Traceback" not in r.err
+    for start, end in PIECES:
+        assert f"{start} {end}" in r.err, "the message has to name both entries to post"
+    assert "3.75" in r.err, "and the hours the single entry would have lost"
+
+
+def test_the_refusal_says_why_the_two_entries_it_names_are_not_an_overlap(
+        live_harvest, monkeypatch):
+    """The trap this whole guard is built around. `01:30`-`03:00` and `02:00`-`04:15` look
+    like they overlap by an hour, and an implementer or a reviewer who "corrects" that
+    reintroduces exactly the hour the refusal exists to save — which is how the hand-split
+    guidance in `references/output-format.md` was wrong the first time it was written."""
+    live_harvest({("POST", "/time_entries"): (201, {"id": 4102})})
+    zone, date = fall_back_day()
+    r = create(monkeypatch, zone, date, *STRADDLE, "--confirm")
+
+    assert "overlap" in r.err.lower(), "the apparent overlap is the first thing queried"
+    assert "03:00" in r.err and "02:00" in r.err
+
+
+def test_the_two_entries_the_refusal_names_are_themselves_accepted(
+        live_harvest, monkeypatch):
+    """A guard that refused its own advice would be unusable, and this is the assertion
+    that catches the obvious wrong rule. "The clock interval and the elapsed time
+    disagree" is true of *both* replacement entries — `01:30`-`03:00` spans 1.5 hrs on the
+    clock and 2.5 in real time if `03:00` is read as the unambiguous reading an hour after
+    the change. Only the entry that contains the whole repeated hour is unambiguously
+    wrong, and only that one may be refused."""
+    srv = live_harvest({("POST", "/time_entries"): (201, {"id": 4103})})
+    zone, date = fall_back_day()
+
+    for start, end in PIECES:
+        r = create(monkeypatch, zone, date, start, end, "--confirm")
+        assert r.code == 0, f"{start}-{end} is one of the two entries to post: {r.err}"
+
+    sent = [(r["body"]["started_time"], r["body"]["ended_time"])
+            for r in srv.sent("POST", "/time_entries")]
+    assert sent == list(PIECES), "and each goes on the wire as the user typed it"
+
+
+def test_a_date_with_no_transition_posts_exactly_what_it_always_did(monkeypatch):
+    """The same two clock times, on an ordinary day in a zone that has no transitions at
+    all. The guard has to be invisible on the other 364 days: the preview line is the body
+    itself, so pinning it whole is what says no field moved."""
+    zone, _ = "Etc/GMT-12", None
+    r = create(monkeypatch, zone, "2026-08-12", *STRADDLE)
+
+    assert r.code == 0 and r.err == ""
+    assert r.lines[0] == (
+        'WOULD POST {"project_id": 48084036, "task_id": 20753151, '
+        '"spent_date": "2026-08-12", "started_time": "01:30", "ended_time": "04:15", '
+        '"notes": "Cutover"}')
 
 
 def test_a_user_outside_new_zealand_gets_their_own_zones_day_boundaries(live_aw):

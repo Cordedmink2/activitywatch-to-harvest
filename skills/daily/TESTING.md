@@ -829,11 +829,19 @@ closing it in the harness, which is why the marker is `support.second_pass()` as
 `thin()` and `locked()` slice a range with `_fmt()`, which cannot carry the marker, so they
 raise on one rather than silently generating every piece in the first pass.
 
-**Cost, accepted.** The output shape is one character wider for one hour a year. Anything
-parsing `HH:MM:SS` off these scripts has to tolerate it — `harvest_post.py` does not, and
-`references/output-format.md` now says to strip it there, along with the older trap it
-sharpens: an entry spanning the change bills 2.75 hrs against 3.75 hrs really worked,
-because Harvest derives the duration from the two clock times.
+**Cost, accepted — since closed in code.** The output shape is one character wider for one
+hour a year. Anything parsing `HH:MM:SS` off these scripts has to tolerate it —
+`harvest_post.py` does not, and `references/output-format.md` says to strip it there, along
+with the older trap it sharpens: an entry spanning the change bills 2.75 hrs against 3.75
+hrs really worked, because Harvest derives the duration from the two clock times.
+
+That second half was accepted here as a prose mitigation and is no longer one. #23 made the
+create refuse such an entry and name the two to post instead — see § "A create straddling
+the fall-back was billed an hour short, silently". The judgement above still stands for what
+it covered: the marker is a rendering decision, and whether the *write* path should refuse a
+straddling entry was never the question in front of #17. What survives in
+`output-format.md` is the case the refusal cannot see, where a block starts or ends inside
+the repeated hour rather than containing it.
 
 **A marker is refused where the clock reads once.** `09:00*`, and `03:00*` on that same
 morning, raise rather than resolving quietly to the unmarked time — `zoneinfo` drops `fold`
@@ -1334,6 +1342,74 @@ holds no description. It holds two things a machine can check without judgement:
 shipped script has an entry, and each entry's flags match its scripts'. The prose stays
 hand-written and ungated.
 
+### A create straddling the fall-back was billed an hour short, silently — #23
+**Rung 2.** 2026-09-02. Closes the consequence recorded as accepted in § "Two instants an
+hour apart printed the same clock time", and #17's prose mitigation is reduced to what the
+code does not cover.
+
+Rung 2 rather than 1 for the same reason that entry is: the loss was reproduced in a test
+before it was fixed — `01:30`-`04:15` on `2026-04-05` in `Pacific/Auckland` reaching the
+fake Harvest as a 2.75-hour entry — but nobody has been watched under-billing a real
+timesheet on a real transition day.
+
+**The read side knew and the write side did not.** `local_clock` marks the second pass,
+`to_utc` refuses a marker where the clock reads once, and `parse_range` names three separate
+causes of a backwards range. `harvest_post.py` read no configuration at all: it took two
+clock strings, checked that the second was larger, and posted. Harvest then derives the
+duration from exactly those two strings, so an entry worked straight through the change is
+short by the repeated hour — and it is well-formed, so nothing raises, and it reads
+correctly in every listing afterwards. There is no later moment at which anyone finds out.
+
+**The obvious rule refuses the two entries it recommends.** "The clock interval and the
+elapsed time disagree" was the first design and it is wrong: `01:30`-`03:00` spans 1.5 clock
+hours and 2.5 real ones, because a bare `03:00` on that date is the unambiguous reading an
+hour after the change. Both replacements fail that test. What is actually unambiguous is
+*containment* — an entry whose clock interval holds the whole repeated span cannot be right
+on either reading — so that is what is refused, and an entry that merely starts or ends
+inside the span is left alone because it bills correctly for one of its two passes. The
+Phase-1 test asserts the two recommended entries post unchanged; it is the assertion the
+first design would have failed, and it was written before the guard existed.
+
+**The span is read, not assumed.** `aw_client.transition_clocks()` bisects the day for the
+change, because `zoneinfo` publishes no transition list and there is no supported way to ask
+a zone when it next changes. Two zones are in the tests because each breaks an assumption
+`Pacific/Auckland` cannot reach: `Australia/Lord_Howe` moves thirty minutes, so an assumed
+hour would name a second entry half an hour long, and `America/Santiago` goes back *at
+midnight*, reading `00:00` as it arrives and `23:00` once passed — the two readings in the
+opposite order to New Zealand's. Direction therefore comes from the sign of the offset
+shift, the same distinction `clock_reads` draws and for the same reason; reading it off the
+order of the two readings gets Santiago exactly backwards. Its repeated span also wraps
+midnight, which the containment test in minutes-since-midnight would otherwise read as
+containing every entry of the day.
+
+**It refuses rather than splitting**, per the ticket: two entries out of one approval would
+put a body on the wire the user never previewed, which is the property the confirmation gate
+exists to hold. The refusal fires before the preview as well, so nothing is offered that
+cannot then be created.
+
+**The gate from #26 earned its keep inside a week.** The zone message names `--utc-offset`,
+which `harvest_post.py` does not have, so `resolve_zone` grew a way to omit it — written
+first as a `offset_flag="--utc-offset"` parameter default.
+`test_the_inventory_entry_lists_exactly_the_flags_its_scripts_parse` went red and wanted
+`--utc-offset` added to the `aw_client` entry, where it would have told every run that a
+module with no command line takes an argument. A bare flag literal in a script is
+indistinguishable from a flag that script parses, and the boolean the parameter became is
+the simpler design anyway. Neither the test nor the reading that produced it was looking for
+this.
+
+**Cost, accepted.** Posting now requires `TIMESHEET_TIMEZONE` where it previously required
+nothing — the standard `resolve_zone` message, minus the `--utc-offset` line this script
+cannot honour, and an `### Upgrading` note. A plugin install has already supplied it; what
+changes is running the one script on a machine configured for nothing else. `spent_date` is
+also parsed now rather than passed through, so a malformed one is an `ERR` naming the format
+instead of Harvest's own 422.
+
+**What was not measured.** Still no real entry posted across a real transition. The hours in
+the refusal are arithmetic checked against the read side's own fixtures, not a booking
+anyone has made. Whether a model reading the message posts *both* entries rather than
+"correcting" the overlap is untested — the message says not to, and that is a claim about
+prose, which is what § "Three things the review caught" is a record of being wrong about.
+
 ## Rejected
 
 ### Byte size as a "static screen" signal — narrowed, 2026-08-28
@@ -1534,6 +1610,26 @@ same reading, which needs a sentence in the `to_utc` docstring saying why.
 `references/activitywatch.md` states the current behaviour outright rather than implying a
 refusal; the line before this change promised one, which is what makes this worth an entry
 instead of a silent decision.
+
+### An entry across a spring-forward is over-billed and not refused — out of scope on #23
+
+2026-09-02, and the mirror of the fall-back refusal that shipped with it. On the morning the
+clocks go forward, `01:30`-`04:15` in `Pacific/Auckland` is 1.75 hrs of real time and Harvest
+bills the 2.75 the two clock strings say — over-billing a client rather than under-billing
+them, which is the worse direction to be silent in.
+
+`transition_clocks` finds the day and reports which way it went, so the guard *could* fire
+here; it deliberately does not, and the tests say so by name. Two reasons, and neither is
+"harder". The pieces degenerate: `01:30`-`02:00` and `03:00`-`04:15` are separated by a gap
+where the fall-back pair abut, and either end of the entry can land inside the skipped hour
+and leave one piece empty. And the message would be the fall-back one inverted — an
+apparent *gap* that must not be closed rather than an apparent overlap — so showing one
+wording for both is the failure § "One `fold` guard could not tell the two transition hours
+apart" already records: naming the wrong transition sends a reader hunting one six months
+away, which is worse than naming none.
+
+#23 scoped it out and this is where it waits. The entry above on the unmarked `--window`
+into the skipped hour is the read-side half of the same hour.
 
 ### Does a piece split out of a thin block re-validate at its own ratio? — untested
 

@@ -37,20 +37,11 @@ The `Timesheets/<date>_timesheet.md` is an *optional* internal-audit artefact. G
 ## Conventions
 
 - **Time format**: `HH:MM` 24-hour, in the user's local timezone (the configured `TIMESHEET_TIMEZONE` — which is what the scripts already render in, so their output needs no further conversion). The separator between start and end is the en-dash `–` (U+2013), not a hyphen.
-- **A `*` on a time — the hour the clocks go back.** One hour of one day a year, the local clock repeats, and the scripts suffix the second pass: `02:30` is the first, `02:30*` the one an hour later. Three things follow, in the order you will hit them.
+- **A `*` on a time — the hour the clocks go back.** One hour of one day a year, the local clock repeats, and the scripts suffix the second pass: `02:30` is the first, `02:30*` the one an hour later. Four things follow, in the order you will hit them.
   - **Keep it in the markdown row.** `02:30*–04:15` is a different block from `01:30–02:30`, and without the marker two rows can read identically for time the user actually spent twice. Add a Notes bullet saying the clocks changed that day.
   - **Strip it before `harvest_post.py`.** Harvest takes a plain `HH:MM` and has no notion of the repeated hour; a `*` in the argument is a bad time, not a marked one.
-  - **Never let one entry span the change.** Harvest subtracts the two clock times, so a stretch worked straight through — `01:30` to `04:15` in `Pacific/Auckland` on 2026-04-05 — posts as 2.75 hrs against the 3.75 hrs that really passed. Split it **at the transition**, which is the instant the scripts print as `02:00*`, and post two entries.
-
-    The two notations differ at exactly that instant, which is the whole trap, so take the split in two steps:
-
-    | | pre-change piece | post-change piece |
-    | --- | --- | --- |
-    | What the scripts print | `01:30 – 02:00*` | `02:00* – 04:15` |
-    | What you post to Harvest | `01:30` – `03:00` | `02:00` – `04:15` |
-    | Hours Harvest then bills | 1.5 | 2.25 |
-
-    The transition instant has two clock readings — `03:00` as you reach it and `02:00` once the clocks have gone back — so the pre-change piece *ends* at `03:00` and the post-change piece *starts* at `02:00`. The two entries look like they overlap and do not; they abut. 1.5 + 2.25 = 3.75, the time really worked. Say in the Notes that the clocks changed, because the overlap is the first thing a reviewer will query.
+  - **Never let one entry span the change.** Harvest subtracts the two clock times, so a stretch worked straight through — `01:30` to `04:15` in `Pacific/Auckland` on 2026-04-05 — would post as 2.75 hrs against the 3.75 hrs that really passed. `harvest_post.py` refuses that entry and names the two to post instead, with the arithmetic; do what it says and add a Notes bullet saying the clocks changed. Do not "fix" the overlap it warns you about — closing it is what loses the hour.
+  - **A block that only *starts* or *ends* inside the repeated hour is still yours to split.** The refusal covers only an entry containing the whole repeated hour, because nothing shorter is unambiguously wrong. `02:15–04:15` — unmarked, so the first pass — bills 2.0 against the 3.0 really worked; `02:15*–04:15` strips to the same two arguments and 2.0 is right for it. The script sees one entry and cannot tell them apart, so this one is on you. Split at the transition — the instant the scripts print as `02:00*` — and post the piece before it *ending* at `03:00` and the piece after it *starting* at `02:00`, which is the same pair of readings the refusal explains. `01:30–02:30*` is the mirror image: an hour billed for the two really worked.
 
     Do not reach for `03:00` in a script argument to mean that instant: to the scripts `03:00` is 15:00Z, an hour after the change, and only `02:00*` names it.
 

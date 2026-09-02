@@ -28,6 +28,7 @@ import pytest
 import activity_timeline as tl
 import afk_blocks as ab
 import aw_client as aw
+import harvest_post as hpost
 from support import aw_server, day, run_cli
 
 MAY = dt.date(2026, 5, 28)
@@ -240,6 +241,30 @@ def test_neither_script_runs_a_day_against_a_zone_nobody_chose(module, live_aw, 
     r = run_cli(module, [d.date_str(), "--json"])
     assert r.code != 0
     assert "TIMESHEET_TIMEZONE" in r.err
+
+
+def test_a_create_will_not_post_against_a_zone_nobody_chose(unconfigured):
+    """The upgrade this ticket carries. `harvest_post.py` asked for no configuration at
+    all until it had to know whether the clocks changed on the date being billed, so a
+    user who never set a timezone — which was possible, because the two reading scripts
+    are where the message used to come from — now meets it here as well.
+
+    The same message, deliberately: a second wording for one missing value is a second
+    thing to keep true. It is refused before the preview, not only before the post, so a
+    run cannot be shown an entry it will then be unable to create."""
+    r = run_cli(hpost, ["48084036", "20753151", "2026-08-12", "09:00", "10:00", "n"])
+    assert r.code != 0
+    assert r.out == "", "nothing may be previewed that cannot then be posted"
+    assert "TIMESHEET_TIMEZONE" in r.err and "/plugin configure" in r.err
+    assert "Traceback" not in r.err
+
+
+def test_the_create_does_not_offer_a_flag_it_would_then_reject(unconfigured):
+    """`--utc-offset` is the escape hatch the two reading scripts name, and this one has
+    no flags but its confirmation gate. Naming it here would answer a user who is already
+    stuck with one more thing to try that comes back as a usage error."""
+    r = run_cli(hpost, ["48084036", "20753151", "2026-08-12", "09:00", "10:00", "n"])
+    assert "--utc-offset" not in r.err
 
 
 # --------------------------------------------------------------------------------------

@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an IANA name, so daylight saving is derived per date rather than being a number you edit twice a
   year. There is no conversion from the old number and no default: it decides where your day starts
   and ends, and a guess mis-dates a timesheet without anything appearing to fail.
+- **Posting a time entry now needs `TIMESHEET_TIMEZONE` too, where it previously needed nothing.**
+  `harvest_post.py` has to know when the clocks change to refuse an entry that runs through one, so
+  it asks for the zone the same way the two reading scripts do — with the same message, naming
+  `/plugin configure billables`, and before the preview rather than only before the post. A plugin
+  install has already supplied it and nothing changes. What changes is running that one script on
+  its own on a machine configured for nothing else: it now stops with that message instead of
+  posting. It carries no `--utc-offset`, so the setting is the only way in.
 
 ### Added
 - **A `reconcile` skill that asks one question of a month: which days were worked but never
@@ -225,6 +232,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by name rather than quietly ignored. Before it reaches Harvest the marker must be stripped, and an
   entry must not span the change — `references/output-format.md` §Conventions has the split, which is
   not where it looks: the transition instant is `02:00*`, and `03:00` is an hour after it.
+- **A create that runs straight through the autumn change is refused instead of billed an hour
+  short.** Harvest derives an entry's duration from its two clock times, so `01:30` to `04:15` on
+  `2026-04-05` in `Pacific/Auckland` posted as 2.75 hrs against the 3.75 hrs really worked — and
+  nothing raised, because the entry is well-formed and reads correctly in every listing afterwards.
+  `harvest_post.py` now names the two entries to post instead, `01:30`–`03:00` and `02:00`–`04:15`,
+  and says why they are not the overlap they look like: the clocks go back at one instant, which
+  reads `03:00` as you reach it and `02:00` once it has passed, so the first ends where the second
+  begins. Closing that apparent overlap is what loses the hour.
+
+  It refuses rather than splitting: two entries out of one approval would put a body on the wire
+  nobody previewed. Only the entry that contains the whole repeated span is refused — one that
+  merely starts or ends inside it bills correctly for whichever pass it was, and the guidance for
+  those stays in `references/output-format.md`. The span is read from the zone rather than assumed
+  to be an hour, so `Australia/Lord_Howe`'s thirty minutes split at thirty minutes. A date with no
+  transition is untouched, and an entry across a *spring*-forward is out of scope for now.
 - Headers name the zone (`zone Pacific/Auckland`) when one is configured, rather than printing a
   single offset that a transition day does not have. A run passing `--utc-offset` still reads
   `offset UTC+13`, which is what was typed.

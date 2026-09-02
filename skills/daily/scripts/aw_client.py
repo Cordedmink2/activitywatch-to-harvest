@@ -16,6 +16,7 @@ import datetime as dt
 import json
 import urllib.error
 import urllib.request
+from typing import NamedTuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import skill_config
@@ -42,13 +43,25 @@ def resolve_base() -> str:
     return base.rstrip("/") + "/api/0"
 
 
-def resolve_zone(flag):
+def resolve_zone(flag, offers_offset_flag: bool = True):
     """The timezone this day's local clock is read in.
 
     `flag` is whatever `--utc-offset` supplied, or None; it wins, so a day spent in
     another zone can still be reconstructed without reconfiguring anything. It resolves to
     a zone that is that offset all year, which is what passing a number has always meant.
     Otherwise the configured `TIMESHEET_TIMEZONE` is loaded.
+
+    `offers_offset_flag=False` says the calling script has no such per-run override —
+    which `harvest_post.py` has not, carrying no flags but its confirmation gate. The
+    messages below then stop naming `--utc-offset`, rather than sending a user who is
+    already stuck to try one more thing that would come back as a usage error.
+
+    A boolean and not the flag's own spelling, which is what it was first written as: a
+    bare `"--utc-offset"` default here is indistinguishable from a flag *this* module
+    parses, and `tests/test_references.py` said so — it reads the flags out of each
+    script's syntax tree and wanted this one added to the `aw_client` inventory entry,
+    where it would tell every run that a module with no command line takes an argument.
+    There is one spelling of the flag either way, so nothing is lost by not passing it.
 
     A zone rather than a number, because a day does not necessarily have *one* offset.
     This used to answer with a single figure read at local noon, and on the day the clocks
@@ -78,22 +91,25 @@ def resolve_zone(flag):
     name = skill_config.setting("TIMESHEET_TIMEZONE")
     if not name:
         skill_config.fail_missing(
-            "No timezone configured, and no --utc-offset given.\n"
-            "  A day's boundaries depend on your zone, so there is nothing safe to assume.\n"
+            ("No timezone configured, and no --utc-offset given.\n" if offers_offset_flag
+             else "No timezone configured.\n") +
+            "  Your zone decides where a day begins and ends, and when the clocks change\n"
+            "  inside it, so there is nothing safe to assume.\n"
             "  Set it once:  /plugin configure billables  -> TIMESHEET_TIMEZONE\n"
             "                (an IANA name, e.g. Europe/London or Pacific/Auckland)\n"
             "  Already set it? Start a new session — the value is published at session\n"
             "  start. If a new session still shows this, see references/setup.md\n"
-            "  § 'When the configuration does not arrive'.\n"
-            "  Or for this run only:  --utc-offset <hours>")
+            "  § 'When the configuration does not arrive'." +
+            ("\n  Or for this run only:  --utc-offset <hours>" if offers_offset_flag else ""))
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError) as exc:
         skill_config.fail_missing(
             f"Could not load the timezone '{name}' ({exc}).\n"
             "  Check it against the IANA list (e.g. Europe/London, Pacific/Auckland).\n"
-            "  On Windows the zone database is a separate install:  pip install tzdata\n"
-            "  Or bypass it for this run:  --utc-offset <hours>")
+            "  On Windows the zone database is a separate install:  pip install tzdata" +
+            ("\n  Or bypass it for this run:  --utc-offset <hours>" if offers_offset_flag
+             else ""))
 
 
 def zone_label(zone):
@@ -241,6 +257,67 @@ def to_utc(local_date, local_time, zone):
                 f"{opening}the clock reads {clock} only once on {local_date} in this "
                 f"zone — drop the '{SECOND_PASS_MARK}'")
     return moment.astimezone(dt.timezone.utc)
+
+
+def _offset_at(moment, zone):
+    """The offset in force at an instant, as a timedelta.
+
+    By subtracting the two renderings rather than by asking `utcoffset()`, which is typed
+    as possibly absent and is not, for the same reason `clock_reads` converts to UTC
+    instead. Both operands are made naive first: a naive difference is the offset, where
+    an aware one would be zero by construction.
+    """
+    return moment.astimezone(zone).replace(tzinfo=None) - moment.replace(tzinfo=None)
+
+
+class Transition(NamedTuple):
+    """The one clock change on a date: its two readings, and which way it went."""
+    as_reached: dt.time         # what the clock said as the instant arrived
+    once_passed: dt.time        # what it said immediately afterwards
+    repeats: bool               # True if the span between them happens twice, not never
+
+
+def transition_clocks(local_date, zone):
+    """The clock change on `local_date`, or None if there isn't one.
+
+    In `Pacific/Auckland` on 2026-04-05 the clocks go back at one instant that reads
+    `03:00` as you arrive at it and `02:00` afterwards, so this answers
+    `(03:00, 02:00, repeats=True)`; on the spring-forward day it answers
+    `(02:00, 03:00, repeats=False)`, the same pair the other way round.
+
+    `repeats` comes from the sign of the offset shift and not from comparing the two
+    readings, which is the same distinction `clock_reads` draws and for a sharper reason
+    here: a zone whose clocks go back at midnight reads `00:00` as it arrives and `23:00`
+    once passed, so "the later reading came second" gets that day exactly backwards.
+    `America/Santiago` does this every April.
+
+    None on every other day, which is the answer for all but two dates a year and the one
+    that keeps a caller's behaviour on those dates exactly what it was.
+
+    Found by bisection because `zoneinfo` publishes no transition list — there is no
+    supported way to ask a zone when it next changes, only what its offset is at a given
+    instant. The day is bracketed by its own two midnights, resolved in the zone the way
+    `utc_bounds` resolves them, so a day that is 23 or 25 hours long is searched at its
+    real length. A second transition inside one day would be missed; no zone has had one
+    since the standard-time era, and a day with two would break far more than this.
+    """
+    lo = to_utc(local_date, dt.time(0, 0), zone)
+    hi = to_utc(local_date + dt.timedelta(days=1), dt.time(0, 0), zone)
+    before, after = _offset_at(lo, zone), _offset_at(hi, zone)
+    if before == after:
+        return None
+    while hi - lo > dt.timedelta(seconds=1):
+        mid = lo + (hi - lo) / 2
+        if _offset_at(mid, zone) == before:
+            lo = mid
+        else:
+            hi = mid
+    # `hi` is now the first instant past the change, within a second of it. Transitions
+    # land on a minute boundary, so flooring recovers the instant itself exactly — and the
+    # readings below are wanted to the minute regardless, since that is what a Harvest
+    # entry is written in.
+    moment = hi.replace(second=0, microsecond=0)
+    return Transition((moment + before).time(), (moment + after).time(), after < before)
 
 
 def parse_range(rng, local_date, zone):

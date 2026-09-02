@@ -17,14 +17,17 @@ would pass whether or not the guard it names still exists. The gate's own contra
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import gc
 import re
 import threading
 import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from zoneinfo import ZoneInfo
 
 import pytest
 
+import aw_client as aw
 import harvest_client as hc
 import harvest_list as hlist
 import harvest_patch as hp
@@ -118,6 +121,91 @@ def test_post_turns_an_api_rejection_into_an_err_line_not_a_traceback(live_harve
     assert "Task is not assigned" in r.err
     assert "Traceback" not in r.err
     assert r.out == ""
+
+
+def post_on(monkeypatch, live_harvest, zone, date, start, end):
+    """A confirmed create against a named zone, with the wire watched.
+
+    Returns `(result, requests)`. The scenario-day case is in `test_scenarios.py`; these
+    are the zones and dates that break an assumption the New Zealand one cannot reach.
+    """
+    monkeypatch.setenv("TIMESHEET_TIMEZONE", zone)
+    srv = live_harvest({("POST", "/time_entries"): (201, {"id": 3010})})
+    r = run_cli(hpost, ["48084036", "20753151", date, start, end, "Cutover", CONFIRM])
+    return r, srv.sent("POST", "/time_entries")
+
+
+def test_a_change_of_half_an_hour_is_split_at_half_an_hour(monkeypatch, live_harvest):
+    """`Australia/Lord_Howe` moves by thirty minutes, so 01:30-02:00 is the span that
+    happens twice and the second entry has to start at `01:30`, not at an assumed hour
+    earlier. 1.0 + 1.5 is the 2.5 hrs really worked between 01:00 and 03:00 there; an
+    assumed hour would name a second entry of 2.0 and bill half an hour that never
+    happened."""
+    r, sent = post_on(monkeypatch, live_harvest, "Australia/Lord_Howe",
+                      "2026-04-05", "01:00", "03:00")
+    assert sent == [] and r.code != 0
+    assert "01:00 02:00" in r.err and "01:30 03:00" in r.err
+    assert "(1.0 hrs)" in r.err and "(1.5 hrs)" in r.err
+    assert "2.5 hrs that really passed" in r.err
+
+
+def test_an_entry_across_a_spring_forward_is_left_alone(monkeypatch, live_harvest):
+    """Out of scope for the refusal, and deliberately so: the clock skips rather than
+    repeating, so this entry is over-billed rather than short and its two pieces would be
+    separated by a gap where the fall-back ones abut. A message written for one and shown
+    for the other sends the reader hunting the wrong hour — `TESTING.md` § Open gaps
+    carries what is left.
+
+    Two independent checks stop it, so this alone cannot say which: on a spring-forward the
+    two readings also arrive in the order that makes the span look like it wraps midnight.
+    The test below pins the one that states the scope."""
+    r, sent = post_on(monkeypatch, live_harvest, "Pacific/Auckland",
+                      "2026-09-27", "01:30", "04:15")
+    assert r.code == 0 and r.lines == ["OK 3010"]
+    assert (sent[0]["body"]["started_time"], sent[0]["body"]["ended_time"]) == ("01:30", "04:15")
+
+
+def test_the_direction_of_the_change_is_what_decides_it_not_the_arithmetic(monkeypatch):
+    """`repeats` is the line between the two kinds of transition day, and it has to be a
+    check somebody wrote rather than a side effect of the containment test collapsing —
+    which is the criticism `TESTING.md` § Open gaps already makes of a refusal that emerged
+    from arithmetic in `parse_range`. Removing it changes no result today, because the
+    reading order catches the same days by coincidence, so nothing else here would notice.
+
+    The pair below is therefore constructed and not a real zone's: a fall-back's readings
+    with the direction flipped. No zone produces it, and that is the point — it isolates
+    the one branch. 90 and 255 are `01:30` and `04:15` in minutes since midnight."""
+    zone = ZoneInfo("Pacific/Auckland")
+    fall_back = aw.Transition(dt.time(3, 0), dt.time(2, 0), repeats=True)
+    monkeypatch.setattr(aw, "transition_clocks", lambda *a: fall_back)
+    assert hpost.refusal_for_a_straddled_change(dt.date(2026, 4, 5), 90, 255, zone)
+
+    monkeypatch.setattr(aw, "transition_clocks", lambda *a: fall_back._replace(repeats=False))
+    assert hpost.refusal_for_a_straddled_change(dt.date(2026, 4, 5), 90, 255, zone) is None
+
+
+def test_clocks_going_back_at_midnight_do_not_refuse_an_ordinary_working_day(
+        monkeypatch, live_harvest):
+    """`America/Santiago` goes back at 00:00 to 23:00, so its repeated span is the last
+    hour of the date and no entry this script accepts can contain it — a reversed one is
+    already refused. The containment test is written in minutes since midnight, where that
+    span reads as 23:00 *to* 00:00 and so contains every entry of the day. Nine to five on
+    that date posts normally."""
+    r, sent = post_on(monkeypatch, live_harvest, "America/Santiago",
+                      "2026-04-04", "09:00", "17:00")
+    assert r.code == 0 and r.lines == ["OK 3010"]
+    assert (sent[0]["body"]["started_time"], sent[0]["body"]["ended_time"]) == ("09:00", "17:00")
+
+
+def test_a_date_that_is_not_a_date_is_refused_before_anything_is_sent(live_harvest):
+    """The date is now read rather than passed through, because the guard above needs to
+    know whether the clocks changed on it. Harvest answers a malformed one with a 422 of
+    its own; saying so here costs a round trip less and names the format."""
+    srv = live_harvest({("POST", "/time_entries"): (201, {"id": 3011})})
+    r = run_cli(hpost, ["48084036", "20753151", "12/08/2026", "09:00", "10:30", "n", CONFIRM])
+    assert srv.sent("POST", "/time_entries") == []
+    assert r.code == 1 and r.err.startswith("ERR") and "YYYY-MM-DD" in r.err
+    assert "Traceback" not in r.err
 
 
 # ======================================================================================
