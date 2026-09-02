@@ -143,7 +143,8 @@ Then, in order:
    ```
 2. **`/plugin configure billables`**, with the old `.env` open beside you, and fill in the
    right-hand column. Start a new session afterwards: the values reach the scripts at session
-   start.
+   start, in commands run through the **Bash** tool — that is the only shell they are published
+   to, so a script run through PowerShell will report them missing.
 3. **Read your current screenshot task back before touching it**, because the next step replaces it
    with one built from defaults:
    ```powershell
@@ -342,10 +343,13 @@ never edits it silently.
    — a file in your home directory, so treat that directory as holding a secret.
    Set your **timezone** here too if you skipped it at install — the scripts refuse to date a day
    without one.
-3. Start a new session (the values reach the scripts at session start), then verify (on Windows use
-   `py` — a bare `python` is often the Store stub):
-   ```powershell
-   py "<skill folder>\scripts\harvest_list.py" 2026-01-01 2026-01-01
+3. Start a new session — the values are published at session start, into commands Claude Code runs
+   through its **Bash** tool. Then verify there (on Windows use `py` — a bare `python` is often the
+   Store stub). It has to be the Bash tool: the values are published as a POSIX shell fragment, so
+   the same command in PowerShell reports the credentials missing on an account that is set up
+   perfectly well.
+   ```bash
+   py "<skill folder>/scripts/harvest_list.py" 2026-01-01 2026-01-01
    ```
    Entries print one per line; a day with no entries prints `(no time entries from … to …)`.
    Either of those with no auth error is success — a 401/403 means the token is wrong.

@@ -41,6 +41,14 @@ import os
 import sys
 
 PREFIX = "CLAUDE_PLUGIN_OPTION_"
+
+# The one export here that is not a declared setting. It says "this process received the
+# fragment", which is a different question from "anything was configured" — so it is
+# written whether or not there were values to write. `skill_config` reads it to tell a
+# missing setting apart from a setting that never arrived, and the spelling exists twice
+# because a hook is run by path and can import nothing from the skill.
+# `tests/test_plugin_config.py` pins the two together.
+MARKER = "BILLABLES_CONFIG_PUBLISHED"
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         os.pardir, ".claude-plugin", "plugin.json")
 
@@ -66,10 +74,11 @@ def option_values(environ, declared=None) -> dict:
     Restricted to the keys this plugin declares. The prefix alone is not a safe filter:
     it is the harness's namespace, not this plugin's, so if a hook process is ever handed
     another enabled plugin's options too, filtering on the prefix would export that
-    plugin's *sensitive* values into the environment of every shell command for the rest
+    plugin's *sensitive* values into the environment of every Bash tool call for the rest
     of the session — visible to any subprocess, any `env`, anything that logs its
-    environment. Whether the harness scopes the injection was not something to find out
-    from a leak, and intersecting costs one `json.load`.
+    environment. That the fragment reaches one tool and not the other narrows the blast
+    radius and does not change the argument. Whether the harness scopes the injection was
+    not something to find out from a leak, and intersecting costs one `json.load`.
 
     A blank value is dropped rather than published. `skill_config.has_value()` already
     treats blank as unset at every layer, and publishing `KEY=` would mean an option the
@@ -107,9 +116,13 @@ def main() -> int:
     if not env_file:
         # Not every hook event is given one. Nothing to publish is not a failure.
         return 0
-    fragment = render(option_values(os.environ))
-    if not fragment:
-        return 0
+    # The marker first and unconditionally. A user who has configured nothing yet still
+    # gets it, because what it records is that the fragment reached the reader — and the
+    # message that reads it is precisely the one a user with nothing configured will see.
+    # Withholding it there would make "you have not configured this" indistinguishable
+    # from "your configuration did not arrive", which is the whole distinction it exists
+    # to draw.
+    fragment = f"export {MARKER}='1'\n" + render(option_values(os.environ))
     # Appended in one write, and appended rather than truncated: the file is shared with
     # every other hook that publishes to this session, and a partial write would leave a
     # half-quoted line that breaks every command in the session rather than one setting.

@@ -59,6 +59,29 @@ def test_configured_setting_falls_back_to_an_os_env_var(env_file, monkeypatch):
     assert sc.resolve_screenshots_dir([]) == r"D:\FromOsEnv"
 
 
+def test_a_tilde_in_a_configured_path_is_expanded(env_file):
+    """A configured value is typed by a person, and `~/Pictures/Shots` is how a person
+    writes a home-relative path.
+
+    Taken literally it names a directory called `~` under whatever the scheduled task's
+    working directory happens to be — created without complaint, written to every 2.5
+    minutes, and invisible to every reader, which look under the home directory. Nothing
+    fails; the day simply has no screenshots on it. The default already came out absolute,
+    which is why this only ever bit a user who configured one.
+    """
+    env_file.write_text("TIMESHEET_SCREENSHOTS_DIR=~/Pictures/Shots\n", encoding="utf-8")
+    resolved = sc.resolve_screenshots_dir([])
+    assert not resolved.startswith("~"), "a configured ~ reached the filesystem as a name"
+    assert resolved == os.path.expanduser("~/Pictures/Shots")
+
+
+def test_a_tilde_on_the_command_line_is_expanded_too(env_file):
+    """The scheduled task's `-ScreenshotsDir` comes from a person the same way — the setup
+    skill now tells the model to paste what `--where` resolved, and a `~` surviving one
+    hop and not the other would put the writer and the readers back in different places."""
+    assert sc.resolve_screenshots_dir(["~/Shots"]) == os.path.expanduser("~/Shots")
+
+
 def test_take_screenshots_writes_where_it_is_told():
     """The destination is a parameter, not a module global bound from sys.argv at
     import time - importing under pytest used to bind whatever was on the command line."""

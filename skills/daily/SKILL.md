@@ -44,13 +44,15 @@ When the same setting is available from more than one of those, a per-command fl
 | `.mcp/harvest_assignments*.json` | Cached Harvest project assignments (`project.id/name/code`, `client.name`, `task_assignments[]`) | Project + task IDs, via `harvest_lookup.py` |
 | `.mcp/<catalog>.txt/.json` | User-specific catalogs (e.g. active-incident list) | Work-item number → title |
 
-**Screenshot location:** `~/Pictures/WorkScreenshots/` above is the default. If `TIMESHEET_SCREENSHOTS_DIR` is configured, captures go there instead — read that path rather than the literal one in the commands below. Resolve it once, **in the Bash tool**, because that is the only shell it arrives in:
+**Screenshot location:** `~/Pictures/WorkScreenshots/` above is the default. If `TIMESHEET_SCREENSHOTS_DIR` is configured, captures go there instead — read that path rather than the literal one in the commands below. Resolve it once, **in the Bash tool**, and reuse the answer for the whole run:
 
 ```bash
-echo "${TIMESHEET_SCREENSHOTS_DIR:-}"
+python "<this skill's folder>/scripts/screenshot_capture.py" --where
 ```
 
-Empty means the default, so use the literal `"$HOME\Pictures\WorkScreenshots"` in the PowerShell commands. Non-empty is the path to paste into them as it stands — it is already in Windows form, which is why this echoes the setting rather than expanding a fallback that would come back as `/c/Users/...` and list nothing.
+It prints the resolved directory and captures nothing. Quote it when you paste it into the PowerShell commands below — a configured path may contain spaces.
+
+Do not reach for an `echo` of the setting instead. That reads the process environment, which is one of the four layers `skill_config` resolves and not the one an exported install keeps this value in: it comes back empty for a user whose capture task is writing somewhere else entirely, and you would then list the default folder and find it empty. The script applies the whole precedence, and expands a `~`.
 
 **Timezone:** AW stores UTC; the scripts convert using the configured `TIMESHEET_TIMEZONE`, applying it at each instant rather than once for the day, so a daylight-saving change needs nothing from you — including on the day itself, which is 23 or 25 hours long and is read at that length. On the day the clocks go back, the second pass over the repeated hour is suffixed `*` (`02:30:00*`); hand it back to `--window` / `--cover` as part of the time, and see `references/output-format.md` before it reaches Harvest. **There is no assumed zone and no default offset** — a run with neither a configured zone nor `--utc-offset` stops and says so, because a guessed offset dates the day wrong without failing. `--utc-offset <hours>` still overrides it for a single run (a day spent in another zone). If a run reports it cannot *load* the zone, the machine is missing the zone database: `py -m pip install tzdata`.
 
@@ -306,5 +308,5 @@ Show the exact diff, one fact per ask. Example: "The XrmToolBox signal isn't in 
 - `scripts/skill_config.py` — the seam every script reads a setting through; its docstring carries the flag / `.env` / environment / default precedence and the reasoning behind it
 - `scripts/harvest_client.py` — shared Harvest API helper + the credentials contract
 - `scripts/refresh_catalogs.py` — refresh `.mcp/harvest_assignments*.json` + incident catalog; `--harvest-only` / `--dataverse-only` do one of the two (they are mutually exclusive, and the default is both); `wait_for_project(<code>)` for new synced projects
-- `scripts/screenshot_capture.py` + `scripts/setup_screenshot_pipeline.ps1` — per-monitor capture + one-time scheduled-task setup
+- `scripts/screenshot_capture.py` (`--where`) + `scripts/setup_screenshot_pipeline.ps1` — per-monitor capture + one-time scheduled-task setup. `--where` prints the resolved capture directory and captures nothing; it is how you get that path for a PowerShell command, per "Screenshot location" above
 - `tests/` + `pytest.ini` — the script suite. Maintainers only; `references/self-development.md` explains what it does and does not measure.

@@ -47,10 +47,17 @@ def resolve_screenshots_dir(argv):
     standard flag-beats-configuration order, so it is `skill_config`'s to apply rather
     than this script's — including the rule that a blank argument, which Task Scheduler
     hands through for an omitted one, does not count as a value.
+
+    `expanduser` because a configured value is typed by a person. `~/Pictures/Shots` from
+    a `.env` used to be taken literally, so the capture wrote to a directory *named* `~`
+    under whatever the task's working directory happened to be, and every reader looked
+    somewhere else — the same reader/writer divergence `--where` below exists to close,
+    arrived at from the other end. The default is already absolute.
     """
-    return setting("TIMESHEET_SCREENSHOTS_DIR",
-                   flag=argv[0] if argv else None,
-                   default=DEFAULT_SCREENSHOTS_DIR)
+    resolved = setting("TIMESHEET_SCREENSHOTS_DIR",
+                       flag=argv[0] if argv else None,
+                       default=DEFAULT_SCREENSHOTS_DIR)
+    return os.path.expanduser(resolved)
 
 
 # mss / Pillow are imported lazily inside take_screenshots() so this module
@@ -87,7 +94,22 @@ def take_screenshots(dest):
     return saved
 
 
+WHERE_FLAG = "--where"
+
+
 if __name__ == "__main__":
+    if WHERE_FLAG in sys.argv[1:]:
+        # Print where captures go and take none. The three skills need this value to
+        # build a PowerShell listing command, and PowerShell is the one shell the
+        # configuration is not published to — so they resolve it here, in a Bash tool
+        # call, and paste the answer. `echo "$TIMESHEET_SCREENSHOTS_DIR"` is the obvious
+        # thing to reach for and is wrong: it reads the process environment alone, which
+        # is one of four layers and not the one an exported install keeps this value in.
+        # Nothing sensitive can come out of here — this key is a path, and no other key
+        # is reachable through this flag.
+        print(resolve_screenshots_dir([a for a in sys.argv[1:] if a != WHERE_FLAG]))
+        sys.exit(0)
+
     dest = resolve_screenshots_dir(sys.argv[1:])
 
     # Under pythonw.exe there is no console: sys.stdout / sys.stderr are None and

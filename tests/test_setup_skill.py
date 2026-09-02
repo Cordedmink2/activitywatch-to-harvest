@@ -178,6 +178,85 @@ NAME_ARGUMENT = re.compile(
     + "|".join(CREDENTIAL_KEYS) + r")\b")
 
 
+def every_shipped_skill_text() -> list[tuple[str, str]]:
+    """`(label, text)` for every `.md` a run of *any* skill can read.
+
+    Wider than `shipped_text()` on purpose, and only for the credential guard below. The
+    leak it exists for was in the `setup` skill because that is the skill that asks about
+    configuration — but #28 put "read the configured value in the Bash tool" into `daily`
+    and `reconcile` as well, and an improvised read is an improvised read wherever it is
+    written. Scoping the guard to where the last leak happened is how the next one gets a
+    different postcode.
+    """
+    return [(str(p.relative_to(REPO)), p.read_text(encoding="utf-8"))
+            for p in sorted(SKILLS.rglob("*.md"))]
+
+
+@pytest.mark.parametrize("skill", ["daily", "reconcile", "setup"])
+def test_a_skill_handing_a_configured_path_to_powershell_resolves_it_in_bash(skill):
+    """#28: the configuration is published to Bash tool calls alone.
+
+    All three skills read `TIMESHEET_SCREENSHOTS_DIR` and then use it in a PowerShell
+    command — a directory listing in two of them, the scheduled task's `-ScreenshotsDir`
+    in the third. Read *in* PowerShell it comes back empty on every machine, so the
+    listing shows the default folder and the task registers against it: the reader and
+    the writer end up pointed at different directories, and nothing fails. A month sweep
+    then reports that a month nobody worked.
+
+    `--where` rather than an `echo` of the variable, because the value has four possible
+    layers and the environment is only one of them — the exported install keeps it in
+    `.env`, where an `echo` finds nothing. The flag runs the same resolution the capture
+    script writes by, which is the whole point.
+    """
+    root = SKILLS / skill
+    # What a *run* reads: SKILL.md and the references beside it. `TESTING.md` and
+    # `self-development.md` are the maintainer's, and both have to stay free to quote the
+    # wrong idiom while explaining why it is wrong — the same allowance the credential
+    # guard below makes for naming a key while describing the danger.
+    read_on_a_run = [root / "SKILL.md"] + sorted((root / "references").glob("*.md"))
+    text = "\n".join(p.read_text(encoding="utf-8") for p in read_on_a_run if p.is_file())
+    if "TIMESHEET_SCREENSHOTS_DIR" not in text:
+        pytest.skip(f"the {skill} skill does not read the capture directory")
+    assert "--where" in text, (
+        f"the {skill} skill uses TIMESHEET_SCREENSHOTS_DIR but never says how to resolve "
+        "it; anything reading it in PowerShell gets an empty answer and the default folder")
+    assert "Bash" in text, (
+        f"the {skill} skill does not say which tool to resolve it in, which is the half "
+        "that matters")
+    # And the wrong way is forbidden outright, because merely offering the right one does
+    # not displace it: an `echo` reads the process environment, which is one layer of the
+    # four and not the one an exported install keeps this value in.
+    wrong = [form for form in ("$TIMESHEET_SCREENSHOTS_DIR",
+                               "${TIMESHEET_SCREENSHOTS_DIR",
+                               "$env:TIMESHEET_SCREENSHOTS_DIR") if form in text]
+    assert not wrong, (
+        f"the {skill} skill expands TIMESHEET_SCREENSHOTS_DIR directly ({', '.join(wrong)})"
+        " — that reads only the process environment, so a user whose capture directory is"
+        " configured in a .env gets an empty answer and the default folder")
+
+
+@pytest.mark.parametrize("key", CREDENTIAL_KEYS)
+def test_no_shipped_skill_text_anywhere_expands_a_credential_to_its_value(key):
+    """The same rule as below, across all three skills rather than one.
+
+    `daily/SKILL.md` now tells a run to resolve a configured value in the Bash tool and
+    paste the answer into a PowerShell command. That is one sentence away from the
+    improvisation that leaked a key in 0.5.0, and the value it names there is a *path* —
+    so the instruction is safe and the habit it teaches is the dangerous one. This holds
+    the line for the keys where it matters, everywhere a run can read.
+    """
+    offenders = []
+    for label, text in every_shipped_skill_text():
+        found = [m.group(0) for m in VALUE_EXPANSION.finditer(text) if m.group(1) == key]
+        found += [m.group(0) for m in NAME_ARGUMENT.finditer(text)
+                  if key.lower() in m.group(0).lower()]
+        offenders += [f"{label}: {f}" for f in found]
+    assert not offenders, (
+        f"a shipped skill expands {key} to its value ({'; '.join(sorted(set(offenders)))})"
+        " — whatever runs it writes that value into the session transcript, which is how"
+        " a Harvest API key was leaked in 0.5.0")
+
+
 @pytest.mark.parametrize("key", CREDENTIAL_KEYS)
 def test_no_command_in_the_skill_expands_a_credential_to_its_value(key):
     """Reported against 0.5.0: `/billables:setup` printed the user's Harvest API key into

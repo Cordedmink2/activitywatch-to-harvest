@@ -61,6 +61,21 @@ def load_publisher():
     return module
 
 
+def load_skill_config():
+    """The `daily` skill's `skill_config`, imported by path.
+
+    By path rather than by adding `scripts/` to `sys.path`: this is a repo-level suite
+    with no skill on its import path, and putting one there would let a later test import
+    a bundled module by accident and read the real `.env` through it.
+    """
+    path = REPO / "skills" / "daily" / "scripts" / "skill_config.py"
+    spec = importlib.util.spec_from_file_location("skill_config_under_test", path)
+    assert spec and spec.loader, f"{path} is not importable as a module"
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 publisher = load_publisher()
 
 
@@ -258,7 +273,31 @@ def test_publishing_appends_to_the_file_the_harness_named(tmp_path, monkeypatch)
     # than sourcing it would carry the CR into the value.
     assert env_file.read_bytes() == (
         b"export SOMETHING_ELSE='kept'\n"
+        b"export BILLABLES_CONFIG_PUBLISHED='1'\n"
         b"export TIMESHEET_TIMEZONE='Pacific/Auckland'\n")
+
+
+def test_the_marker_the_scripts_look_for_is_the_one_the_hook_writes():
+    """Two spellings of one name, and nothing else could hold them together.
+
+    A hook is run by path, from a directory with no relationship to the skill, so it
+    cannot import `skill_config` — the constant exists on both sides. A typo on either
+    would not fail anything: the hook would publish a marker nobody reads, and every
+    session would look to the scripts as though nothing had been published, so the note
+    would fire on a machine where the values had in fact arrived. That is a wrong
+    diagnosis attached to a message the user is already confused by.
+    """
+    assert publisher.MARKER == load_skill_config().PUBLISHED_MARK
+
+
+def test_the_marker_is_the_only_thing_published_that_nobody_declared():
+    """It is not a setting, so it is not in the manifest and `option_values()` never sees
+    it. Asserting that keeps it from drifting into the declared surface, where
+    `test_the_declared_surface_is_exactly_the_settings_the_scripts_resolve` would then
+    demand a script resolve it."""
+    assert publisher.MARKER not in user_config()
+    assert publisher.option_values(
+        {f"CLAUDE_PLUGIN_OPTION_{publisher.MARKER}": "1"}) == {}
 
 
 def test_a_hook_event_given_no_env_file_is_not_a_failure(monkeypatch):
@@ -269,13 +308,21 @@ def test_a_hook_event_given_no_env_file_is_not_a_failure(monkeypatch):
     assert publisher.main() == 0
 
 
-def test_nothing_configured_writes_nothing(tmp_path, monkeypatch):
-    """A user who has configured nothing yet should not have an empty fragment appended to
-    a file every session start."""
+def test_nothing_configured_still_records_that_the_hook_ran(tmp_path, monkeypatch):
+    """The marker and nothing else.
+
+    This used to write nothing at all, on the reasoning that a user who has configured
+    nothing should not have an empty fragment appended every session start. That was
+    right about the values and wrong about the marker: the *unconfigured* user is exactly
+    who reads a missing-setting message, and withholding the marker from them makes "you
+    have not configured this" indistinguishable from "your configuration did not reach
+    this command" — the one distinction the marker exists to draw. Publishing it costs
+    one line in a file the harness discards with the session.
+    """
     env_file = tmp_path / "sessionstart-hook-0.sh"
     monkeypatch.setenv("CLAUDE_ENV_FILE", str(env_file))
     for name in list(publisher.os.environ):
         if name.startswith(publisher.PREFIX):
             monkeypatch.delenv(name, raising=False)
     assert publisher.main() == 0
-    assert not env_file.exists()
+    assert env_file.read_bytes() == b"export BILLABLES_CONFIG_PUBLISHED='1'\n"

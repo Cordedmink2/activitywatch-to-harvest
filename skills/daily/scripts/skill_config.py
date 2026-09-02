@@ -52,17 +52,26 @@ from typing import NoReturn, TypeGuard, overload
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = SKILL_ROOT / ".env"
 
-# The two variables the shell note below is decided from. Neither is read for anything
-# else, and both were confirmed in the process that actually prints the message — a Python
-# child of each tool, not merely the shell itself.
+# The two variables the note below is decided from.
 #
 # `CLAUDECODE` is set by Claude Code in every tool process, in both shells, so its absence
-# means an ordinary terminal: nothing was published there for any shell to have missed,
-# and the note would be a wrong hint. `MSYSTEM` is set by Git Bash and by nothing else on
-# Windows, so its absence *inside* a session is the tell that the command did not come
-# from the Bash tool.
+# means an ordinary terminal: nothing was published there for any shell to have missed.
+#
+# `PUBLISHED_MARK` is the one export the publishing hook makes that is not a declared
+# setting. It travels *in the same fragment as the values*, which is the whole point: its
+# absence means this process did not receive that fragment, and nothing can separate the
+# two, because there is no route by which the values arrive without it. The first version
+# of this check asked whether Git Bash's own `MSYSTEM` was set, as a proxy for the same
+# question, and was wrong — `MSYSTEM` is inherited from whatever launched Claude Code, so
+# on a machine where the session was started from a Git Bash terminal the PowerShell tool
+# carries it too and the check was silenced for exactly the user it was written for.
+# `TESTING.md` § "Two ways the configuration does not arrive" holds the record.
+#
+# The hook cannot import this module — it is run by path, from a directory with no
+# relationship to the skill — so the spelling exists twice. `tests/test_plugin_config.py`
+# pins the two together; a mismatch would silently make every session look unpublished.
 IN_A_SESSION = "CLAUDECODE"
-POSIX_SHELL_MARK = "MSYSTEM"
+PUBLISHED_MARK = "BILLABLES_CONFIG_PUBLISHED"
 
 # A harness's own directory, which holds its `skills/` one level below where a
 # workspace-local install would put it: `.claude/` is Claude Code's, `.agents/` is the
@@ -140,42 +149,84 @@ def fail_missing(message: str) -> NoReturn:
 
 
 def note_for_an_unreached_shell(platform: str | None = None, environ=None) -> str:
-    """The extra cause a missing-setting message carries when this process is one the
-    published configuration could not have reached. An empty string when it isn't.
+    """The extra cause a missing-setting message carries when the published configuration
+    did not reach this process at all. An empty string when it did, or could not have.
 
-    A harness publishes the declared values by writing a POSIX shell fragment, and Claude
-    Code applies that to its **Bash** tool alone — its PowerShell tool is given no
-    equivalent and loads no profile. So on Windows a script the model happens to run
+    A plugin install's values are published by a SessionStart hook writing a POSIX shell
+    fragment, and Claude Code applies that to its **Bash** tool alone — the PowerShell tool
+    is given no equivalent and loads no profile. So a script the model happens to run
     through PowerShell reports the timezone or the credentials missing on a machine that
-    is configured perfectly well, and the message it prints sends the user off to start a
-    new session or install Git Bash. Neither is the fix here, and following either costs
-    them the run. `TESTING.md` § "Two ways the configuration does not arrive" carries the
-    evidence and the mechanisms that were rejected before settling on saying so.
+    is configured perfectly well, and the two lines above this note send the user off to
+    start a new session or install Git Bash. Neither is the fix, and following either
+    costs them the run. `TESTING.md` § "Two ways the configuration does not arrive"
+    carries the evidence and the mechanisms rejected before settling on saying so.
 
-    Deliberately not a *detection of PowerShell*. What is checked is the absence of the
-    POSIX shell's own marker, which is equally true of `cmd.exe` and of anything else that
-    is not Git Bash — and the answer for all of them is the same one.
+    **What is checked is the fact itself, not a proxy for it.** The marker rides in the
+    same fragment as the values, so a process holding one holds the other; there is no
+    arrangement of shells, launchers or inherited environments that delivers the values
+    without it. That is what the first version got wrong — see `PUBLISHED_MARK` above.
 
-    Both inputs are parameters because the branch is Windows-only: a suite that could
-    reach it only by being run on Windows *through the PowerShell tool* would never reach
-    it, so the four cells are driven by argument instead.
+    It stays silent unless this is a **plugin** install, because that is the only shape
+    with a publishing step to have missed. An exported or hand-installed copy reads its
+    values from `.env`, and telling that user to change shell would name a mechanism that
+    is not in play and a fix that does nothing.
+
+    Two causes remain and nothing here can separate them — the fragment is equally absent
+    when the hook never started — so both are named, which costs the user one line and
+    saves them a reinstall. On a platform with no PowerShell tool only the second can
+    apply, and the note says only that.
+
+    `platform` and `environ` are parameters so the cells are driven by argument; the
+    install shape is read from `SKILL_ROOT`, which the tests relocate anyway.
     """
     platform = sys.platform if platform is None else platform
     environ = os.environ if environ is None else environ
+    if not _is_a_plugin_install():
+        return ""
+    if not environ.get(IN_A_SESSION) or environ.get(PUBLISHED_MARK):
+        return ""
     if platform != "win32":
-        return ""
-    if not environ.get(IN_A_SESSION) or environ.get(POSIX_SHELL_MARK):
-        return ""
+        return (
+            "\n  The configuration was not published to this session: the SessionStart\n"
+            "  hook that publishes it did not run. Starting a new session will not\n"
+            "  change that — see references/setup.md § 'When the configuration does not\n"
+            "  arrive'.")
     return (
-        "\n  This command did not come from the Bash tool, and that is the only shell the\n"
-        "  configured values reach — they are published as a POSIX shell fragment, so\n"
-        "  PowerShell reports them missing however well this machine is configured.\n"
-        "  Re-run the command through the Bash tool. If there is no working Bash tool\n"
-        "  here, Git Bash is not installed and nothing was published to either shell.")
+        "\n  The configuration was not published to this command, so starting a new\n"
+        "  session will not help. Two causes, and the first is the common one:\n"
+        "  - the command did not come from the **Bash** tool. The values are published\n"
+        "    as a POSIX shell fragment, which Claude Code applies to Bash tool calls and\n"
+        "    to nothing else, so PowerShell reports them missing however well this\n"
+        "    machine is configured. Re-run this same command through the Bash tool.\n"
+        "  - or the publishing hook could not start, which on Windows means Git Bash is\n"
+        "    not installed. references/setup.md § 'When the configuration does not\n"
+        "    arrive' has that one.")
 
 
 def _looks_like_a_workspace(candidate: Path) -> bool:
     return (candidate / ".mcp").is_dir() or (candidate / "Timesheets").is_dir()
+
+
+def _is_a_plugin_root(candidate: Path) -> bool:
+    """`.claude-plugin/` is the harness's own marker for a plugin root; the manifest
+    inside it is what declares the configuration surface. One copy of that fact, because
+    the two callers below want it for opposite reasons."""
+    return (candidate / ".claude-plugin").is_dir()
+
+
+def _is_a_plugin_install() -> bool:
+    """Whether this skill is running from inside a plugin — `<plugin>/skills/<name>`.
+
+    `note_for_an_unreached_shell()` asks, so that it speaks only where there is a
+    publishing step to have missed. Every other install shape reads its values from
+    `.env` and has no session hook in the picture at all; telling that user to change
+    shell would name a mechanism that is not in play and a fix that does nothing.
+
+    Anchored on the shape rather than a depth, for the reasons `_install_workspace()`
+    sets out below.
+    """
+    parent = SKILL_ROOT.parent
+    return parent.name == "skills" and _is_a_plugin_root(parent.parent)
 
 
 def _install_workspace() -> Path | None:
@@ -207,7 +258,7 @@ def _install_workspace() -> Path | None:
     root = parent.parent
     if root.name in HARNESS_DIRS:
         root = root.parent
-    if (root / ".claude-plugin").is_dir():
+    if _is_a_plugin_root(root):
         return None
     return root if _looks_like_a_workspace(root) else None
 
