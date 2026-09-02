@@ -63,6 +63,10 @@ worth nothing while there is one plugin.
   contract `daily` uses (#31).
 - The export channel constrains the seam. Any future adoption of `bin/` has to answer for it, or
   accept that the export loses the provider.
+- **One platform fact is still missing, and the split needs it.** Whether one plugin's scripts can
+  see another plugin's declared `userConfig` is undocumented. An adapter plugin owning its own
+  credentials would declare them itself, which is probably fine — but "probably" is not a seam.
+  Establish it before splitting, not during.
 
 ## Alternatives considered
 
