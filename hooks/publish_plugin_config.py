@@ -34,11 +34,27 @@ beside this file, so the manifest stays the single declaration of the surface an
 cannot drift. Reading it rather than trusting the `CLAUDE_PLUGIN_OPTION_` prefix is
 deliberate — see `option_values()`.
 
+**The second job this hook does: re-point the screenshot task after a plugin update.** The
+`WorkScreenshots` task stores an absolute path to `screenshot_capture.py`, and under a plugin
+install that path is inside the versioned cache directory this file also lives in. It is
+right for the session that registered it and for no session after the next update: if the
+old directory is pruned every trigger fails `0x80070002`, and if it is left in place — which
+is what was observed — the task keeps running the superseded release's capture script with
+`LastTaskResult 0`, looking healthy to the very check `setup` hands the user. This hook runs
+at every session start from inside the *current* version, so it compares the stored path
+against its own plugin root and, when they disagree, rewrites that one path and nothing
+else. See `repair_screenshot_task()`; `tests/test_screenshot_task_repair.py` pins it. Issue
+#29 has the design and the two alternatives it rejects.
+
 No third-party deps — stdlib only, like every other script in this plugin.
 """
 import json
 import os
+import re
+import subprocess
 import sys
+import xml.etree.ElementTree as ET
+from typing import Callable, Optional
 
 PREFIX = "CLAUDE_PLUGIN_OPTION_"
 
@@ -111,10 +127,220 @@ def render(options: dict) -> str:
     return "".join(line + "\n" for line in lines)
 
 
+# --------------------------------------------------------------------------------------
+# The screenshot task
+# --------------------------------------------------------------------------------------
+
+# The task `skills/daily/scripts/setup_screenshot_pipeline.ps1` registers, and where the
+# capture script sits relative to the plugin root. Both are that script's facts, spelled
+# again here because a hook is run by path and imports nothing from the skill.
+TASK_NAME = "WorkScreenshots"
+CAPTURE_SCRIPT = os.path.join("skills", "daily", "scripts", "screenshot_capture.py")
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# How the write receives its inputs. Through the environment rather than the command line:
+# the values are quoted Windows paths, and a `-Command` string would have to re-quote them
+# for PowerShell, which is where a path with a space or an apostrophe would come apart.
+ENV_TASK = "BILLABLES_TASK_NAME"
+ENV_OLD = "BILLABLES_TASK_ARGS_OLD"
+ENV_NEW = "BILLABLES_TASK_ARGS_NEW"
+
+# The write. It compares the live action to what Python read before it changes anything:
+# the read is decoded from console output in whatever code page the hook inherited, so a
+# path with a non-ASCII character in it can arrive mangled, and a mismatch is a refusal
+# rather than a best guess. (`-ne` is case-insensitive, which cannot produce a wrong path:
+# the new string is derived from the same read.) `Set-ScheduledTask -InputObject` writes the
+# whole definition back — triggers, settings, principal, state — with only the one string
+# changed; observed doing exactly that on 2026-09-03, and `tests/test_screenshot_task_repair.py`
+# pins it against a throwaway task. Exit codes are for the caller's outcome only; nothing prints.
+WRITE_SCRIPT = (
+    "$ErrorActionPreference = 'Stop'; "
+    f"$t = Get-ScheduledTask -TaskName $env:{ENV_TASK}; "
+    f"if ($t.Actions[0].Arguments -ne $env:{ENV_OLD}) {{ exit 3 }}; "
+    f"$t.Actions[0].Arguments = $env:{ENV_NEW}; "
+    "Set-ScheduledTask -InputObject $t | Out-Null"
+)
+
+_TASK_NS = "{http://schemas.microsoft.com/windows/2004/02/mit/task}"
+_FIRST_ARGUMENT = re.compile(r'^\s*(?:"([^"]*)"|(\S+))')
+
+
+def stored_arguments(task_xml: str) -> Optional[str]:
+    """The first Exec action's `Arguments`, out of what `schtasks /Query /XML` printed.
+
+    That tool is the read path because it does not pay a PowerShell startup, and this runs
+    at every session start. Its output declares UTF-16 whatever bytes it actually printed,
+    so the text is decoded first (`_decode_console`) and the declaration dropped rather
+    than left to contradict it. Anything that is not a task document reads as nothing.
+    """
+    body = re.sub(r"^\s*<\?xml[^>]*\?>", "", task_xml, count=1)
+    try:
+        root = ET.fromstring(body)
+    except (ET.ParseError, ValueError):
+        return None
+    for exec_node in root.iter(f"{_TASK_NS}Exec"):
+        node = exec_node.find(f"{_TASK_NS}Arguments")
+        return (node.text or "") if node is not None else ""
+    return None
+
+
+def _same_path(a: str, b: str) -> bool:
+    return os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
+
+
+def repaired_arguments(arguments: str, plugin_root: str) -> Optional[str]:
+    """The stored arguments with the plugin root re-pointed at `plugin_root`, or `None`.
+
+    `None` means leave the task alone, and it is the answer for every task this hook does
+    not own: one already naming this install; one whose script does not sit at this
+    plugin's `skills/daily/scripts/` layout — a hand-installed copy or the exported skill,
+    both of which `setup`'s read-back check exists to catch; and one whose root is not a
+    *sibling* of this one. Successive versions of one plugin install side by side under one
+    parent, so a root anywhere else is most likely a checkout of this repo with the plugin
+    loaded from it — observed on 2026-09-03 with a local-path marketplace, whose plugins the
+    harness runs from their source folder. The rule fails safe: if the harness ever moves
+    its cache the repair stops firing and `setup` catches the stale path as it does today.
+
+    Only the root inside the first argument changes. The rest — the capture directory, the
+    quoting, the order — is what the user registered, and the ticket is explicit that a
+    repair rebuilding any of it is a regression.
+    """
+    match = _FIRST_ARGUMENT.match(arguments)
+    if not match:
+        return None
+    script = match.group(1) if match.group(1) is not None else match.group(2)
+    suffix = os.sep + CAPTURE_SCRIPT
+    normalised = os.path.normpath(script)
+    if not normalised.lower().endswith(suffix.lower()):
+        return None
+    stored_root = normalised[: -len(suffix)]
+    if _same_path(stored_root, plugin_root):
+        return None
+    if not _same_path(os.path.dirname(stored_root), os.path.dirname(plugin_root)):
+        return None
+    replacement = os.path.join(plugin_root, CAPTURE_SCRIPT)
+    start, end = match.span(1) if match.group(1) is not None else match.span(2)
+    return arguments[:start] + replacement + arguments[end:]
+
+
+def powershell_exe() -> str:
+    """Windows PowerShell, which every supported Windows has, by its fixed path — not by
+    `PATH`, which under Git Bash may put `pwsh` or nothing first."""
+    root = os.environ.get("SystemRoot") or os.environ.get("SYSTEMROOT") or r"C:\Windows"
+    return os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+
+
+def _decode_console(raw: bytes) -> str:
+    """Console output in whatever code page the hook inherited.
+
+    UTF-16 when the bytes say so (a BOM, or the NULs that UTF-16 puts between ASCII
+    letters — which UTF-8 would happily accept as text and then fail to parse). Otherwise
+    UTF-8 first, which is what was observed, and the OEM code page when that fails, since
+    OEM bytes for a non-ASCII character are rarely valid UTF-8. When every guess is wrong
+    the write's own comparison refuses, so a wrong guess here costs a PowerShell start
+    and never a wrong path.
+    """
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in raw[:16]:
+        try:
+            return raw.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            return raw.decode("oem")
+        except (UnicodeDecodeError, LookupError):
+            return raw.decode("utf-8", errors="replace")
+
+
+def refusal_marker() -> str:
+    """Where a refused write is remembered, outside the versioned plugin so it survives
+    the session and inside the user's own profile so it needs no rights."""
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or os.path.expanduser("~")
+    return os.path.join(base, "billables", "screenshot-task-repair-refused.txt")
+
+
+def _read_text(path: str) -> Optional[str]:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def repair_screenshot_task(run: Callable = subprocess.run, plugin_root: Optional[str] = None,
+                           windows: Optional[bool] = None, marker: Optional[str] = None) -> str:
+    """Re-point a stale `WorkScreenshots` task at this plugin root.
+
+    Returns a word naming what happened, for the tests and for anyone measuring: the read
+    runs at every session start (`schtasks`, 50–100 ms observed); the write runs about once
+    per release (one `powershell.exe`, ~0.5 s observed). `windows` is the *interpreter's*
+    platform, not the machine's: an MSYS2 Python on Windows would build a `/c/Users/...`
+    path the scheduler cannot run.
+
+    A write that is refused is remembered against the root it was for, and not tried again
+    until the root changes — i.e. until the next release. Without that, a task the user
+    cannot write (one registered from an elevated shell, which `setup` documents) would
+    cost a PowerShell start at every session start forever, silently, and the ticket is
+    explicit that a repair which does that gets removed. `setup`'s read-back check is what
+    catches the refused case, as it catches a hand install.
+
+    Exceptions from the two subprocesses are outcomes, not failures; `main()` guards the
+    rest, because the hook's one contract is that a session always starts.
+    """
+    if windows is None:
+        windows = os.name == "nt"
+    if not windows:
+        return "not-windows"
+    plugin_root = PLUGIN_ROOT if plugin_root is None else plugin_root
+    marker = refusal_marker() if marker is None else marker
+    try:
+        read = run(["schtasks", "/Query", "/TN", TASK_NAME, "/XML"],
+                   capture_output=True, timeout=15)
+    except Exception:
+        return "unreadable"
+    if read.returncode != 0:
+        return "no-task"
+    arguments = stored_arguments(_decode_console(read.stdout or b""))
+    if arguments is None:
+        return "unreadable"
+    repaired = repaired_arguments(arguments, plugin_root)
+    if repaired is None:
+        return "current"
+    # Never point the task at a file that is not there: that would be the failure this
+    # exists to prevent, caused by the thing meant to prevent it.
+    if not os.path.isfile(os.path.join(plugin_root, CAPTURE_SCRIPT)):
+        return "no-script"
+    if _read_text(marker) == os.path.normcase(plugin_root):
+        return "refused-earlier"
+    env = dict(os.environ)
+    env.update({ENV_TASK: TASK_NAME, ENV_OLD: arguments, ENV_NEW: repaired})
+    try:
+        write = run([powershell_exe(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
+                     "Bypass", "-Command", WRITE_SCRIPT],
+                    env=env, capture_output=True, timeout=60)
+        refused = write.returncode != 0
+    except Exception:
+        refused = True
+    try:
+        if refused:
+            os.makedirs(os.path.dirname(marker), exist_ok=True)
+            with open(marker, "w", encoding="utf-8") as fh:
+                fh.write(os.path.normcase(plugin_root))
+        elif os.path.exists(marker):
+            os.remove(marker)
+    except OSError:
+        pass
+    return "write-refused" if refused else "repaired"
+
+
 def main() -> int:
     env_file = os.environ.get("CLAUDE_ENV_FILE")
     if not env_file:
-        # Not every hook event is given one. Nothing to publish is not a failure.
+        # Not every hook event is given one. Nothing to publish is not a failure. (The
+        # wrapper exits before starting an interpreter in this case, so the task repair
+        # below is a SessionStart-only thing by the same test.)
         return 0
     # The marker first and unconditionally. A user who has configured nothing yet still
     # gets it, because what it records is that the fragment reached the reader — and the
@@ -132,6 +358,12 @@ def main() -> int:
     # the value.
     with open(env_file, "a", encoding="utf-8", newline="\n") as fh:
         fh.write(fragment)
+    # After the publish, so a repair that fails cannot cost the configuration; and inside
+    # its own guard, because the hook's one contract is that a session always starts.
+    try:
+        repair_screenshot_task()
+    except Exception:
+        pass
     return 0
 
 

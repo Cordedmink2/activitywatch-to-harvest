@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The screenshot task survives a plugin update** (#29). It stores an absolute path to the capture
+  script, and on a plugin install that path names the *versioned* cache folder — so every
+  `/plugin update` left it running the superseded release's script (the old folder stays on disk,
+  `LastTaskResult` stays `0`, and nothing looks wrong) or, had the folder gone, failing `0x80070002`
+  on every trigger. The session-start hook now compares the stored path with the version that is
+  starting and rewrites that one path when they differ; start time, end time, interval, days,
+  capture directory, interpreter and principal are left exactly as registered. Nothing to do on
+  update. The read costs about 60 ms per session start through `schtasks`; the write, about once a
+  release, one PowerShell start — and a write that is refused (a task registered from an elevated
+  shell) is remembered and not retried until the next release. A hand-installed or exported copy's
+  task is not touched — that, and the refused case, are still `/billables:setup`'s read-back check.
+
 ### Changed
 - The confirmation gate, the preview and the `OK` / `ERR` contract are one implementation,
   `scripts/harvest_write.py`, which `harvest_post.py` and `harvest_patch.py` both declare their
