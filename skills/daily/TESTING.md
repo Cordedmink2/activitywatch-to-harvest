@@ -1025,7 +1025,10 @@ It now emits the normal key set with nulls; the text path keeps its sentence.
 unguarded at import. Under pytest — or any harness swapping in a plain stream — that
 raises `AttributeError`, which is why those three had no tests at all while
 `activity_timeline` and `harvest_lookup`, which already guarded it, did. Guarded
-identically.
+identically. Superseded: the call is no longer made at import at all. The four scripts
+that spawn children share `harvest_client.use_utf8()`, the other two reconfigure their own
+streams, and every one of the six does it from `main()` — see "Configuration resolved at
+import" below.
 
 ### Bad numeric arguments produced tracebacks, not `ERR` lines
 `harvest_post.py ACM-CR202 …` (a project *code* where an id belongs) died in `int()`;
@@ -1238,6 +1241,49 @@ resolves to `14:30Z`, the instant a clock left running would next have shown, wh
 standing convention `to_utc` documents and `utc_bounds` depends on for a zone whose change
 lands at local midnight. So `--window 02:15-02:45` wholly inside the gap is accepted and
 reports on 03:15–03:45. That was left alone deliberately — see `## Open gaps`.
+
+### Configuration resolved at import, and an import that ended the process — #21
+
+`refresh_catalogs` called `find_workspace()` at module scope and `fail_missing()` — a
+`sys.exit` — when nothing answered. So `import refresh_catalogs` could end whatever was
+importing: collection of any test file that named it, a caller reading `--help`, a tool
+listing its flags. None of those wanted a workspace. `aw_client` froze the activity-source
+address into `AW_BASE` the same way, and four scripts wrote `PYTHONIOENCODING` into the
+process environment as they loaded.
+
+The suite was paying for all three. Two test files carried a byte-identical `refresh`
+fixture whose only job was to stage that import, under a paragraph headed IMPORT HAZARD.
+`test_refresh_catalogs.py` had given up importing the module at all: it asserted against
+the file's **source text**, including index arithmetic over the string to prove one
+statement preceded another — so a rename failed it with behaviour unchanged, while a
+behaviour change passed untouched. And the hermeticity fixture could only keep tests off a
+real ActivityWatch by reaching in and reassigning `aw_client.AW_BASE`.
+
+Settings now resolve where they are used. The fixture exists **zero** times rather than
+once — with the hazard gone, `conftest`'s `workspace` fixture was already all those tests
+needed. `test_config_seam.py` holds the rule for every bundled script, parametrized over
+the directory rather than a list: nothing resolved, nothing written, no exit, on import.
+
+Two things worth knowing about that guard. It spies on `skill_config.setting` and
+`find_workspace` *before* the import, because `from skill_config import setting` binds at
+import time. And it parks a sentinel value on every environment key a script assigns,
+derived by walking the syntax tree — without that the environment half was green for the
+wrong reason, since collection has already imported most of these modules and
+`PYTHONIOENCODING` already held the value the write was about to set.
+
+**Two observable changes, in a prefactor that claimed none.** `--dataverse-only` on a
+machine with no resolvable workspace used to exit 1 with the workspace error, because that
+error fired at import whatever the flags were; it now prints "Skipping Dataverse refresh"
+and exits 0, since nothing it was asked to do needs a workspace. And on the default path
+the workspace error now arrives *after* "Refreshing Harvest project assignments…" rather
+than before any output at all.
+
+**The hermeticity guard moved down a precedence layer.** It sets `TIMESHEET_ACTIVITY_URL`
+rather than overwriting a module global, and `.env` outranks the process environment — so
+a test that writes that key into the `env_file` or `workspace` fixture's `.env` would
+defeat it and read the developer's real day. Nothing does, and `test_harness.py` only
+proves the guard in its default state, so nothing would catch it. The hazard is written
+into both fixture docstrings; that is the whole mitigation.
 
 ## Rejected
 

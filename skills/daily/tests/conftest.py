@@ -12,10 +12,12 @@ tests run on*:
   reaches `harvest_client.request()` unstubbed can **create a real time entry on a
   client-facing timesheet**. That is the one genuinely dangerous failure mode here.
 
-So `_hermetic` is autouse: it repoints both base URLs at a port nothing listens on and
+So `_hermetic` is autouse: it points both base addresses at a port nothing listens on and
 blanks the credential sources. An unstubbed call then fails immediately and visibly
 instead of touching production. Tests that *want* a server ask for `live_aw` /
-`live_harvest`, which point the same constants at a local fake.
+`live_harvest`, which point the same two at a local fake — the activity source through
+`TIMESHEET_ACTIVITY_URL`, Harvest through the `API_BASE` constant. See `_hermetic` below
+for why those are two mechanisms rather than one.
 
 **Corollary: never shell out to a script with `subprocess`.** A subprocess inherits none
 of this and reads the real `.env`. Use `support.run_cli`, which runs `main()` in-process.
@@ -151,6 +153,14 @@ def env_file(tmp_path, monkeypatch):
 
     The autouse hermetic fixture has already cleared `SETTING_KEYS` out of the process
     environment, so a result depends only on what the test puts in this file.
+
+    HAZARD — this file outranks the guard. `.env` beats the process environment (see the
+    precedence in `skill_config`), and `_hermetic` keeps the suite off a real
+    ActivityWatch by *setting* `TIMESHEET_ACTIVITY_URL`, not by overwriting a module
+    global as it once did. So writing that key into this file points the scripts at
+    whatever it names — write `http://localhost:5600` and a test reads the developer's
+    real day, passes today and fails next Tuesday. Nothing does this; `test_harness.py`
+    proves the guard in its default state only, so nothing would catch it either.
     """
     env = tmp_path / ".env"
     env.write_text("", encoding="utf-8")
@@ -160,7 +170,11 @@ def env_file(tmp_path, monkeypatch):
 
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
-    """A throwaway workspace tree (`.mcp/` + `Timesheets/`) that `find_workspace()` resolves to."""
+    """A throwaway workspace tree (`.mcp/` + `Timesheets/`) that `find_workspace()` resolves to.
+
+    Points `ENV_PATH` at a real file to do it, so the hazard on `env_file` above applies
+    here too: a `TIMESHEET_ACTIVITY_URL` written into this `.env` outranks `_hermetic`.
+    """
     ws = tmp_path / "workspace"
     (ws / ".mcp").mkdir(parents=True)
     (ws / "Timesheets").mkdir()

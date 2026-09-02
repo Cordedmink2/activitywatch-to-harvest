@@ -8,10 +8,9 @@ successful-looking lookup against a catalog that is half gone or half stale.
 """
 from __future__ import annotations
 
-import importlib
 import json
-import os
 import time
+import os
 from pathlib import Path
 
 import pytest

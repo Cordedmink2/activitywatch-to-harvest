@@ -6,14 +6,16 @@ importing the module resolved the workspace at import time and exited when there
 one. The tests could not run the code, so they described it instead, and a rename broke
 them with behaviour unchanged while a behaviour change slipped past untouched.
 
-The module imports cleanly now, so they call it. What is still asserted against the source
+The module imports cleanly now, so they call it — the plain `import refresh_catalogs` at
+the top of this file is itself the evidence that the import-time exit is gone, which is
+why no test here asserts it separately. `test_config_seam.py` holds the general rule for
+every bundled script. What is still asserted against the source
 is only what is genuinely a property of the source: that no tenant URL is written down
 anywhere in `scripts/`, which is a claim about every file rather than about this one's
 behaviour.
 """
 
 import re
-import sys
 from pathlib import Path
 
 import pytest
@@ -77,17 +79,6 @@ def test_workspace_resolution_fails_loudly_rather_than_guessing(unresolvable):
         rc.mcp_dir()
     assert str(exc.value).startswith("ERROR:")
     assert "TIMESHEET_WORKSPACE" in str(exc.value)
-
-
-def test_workspace_resolution_is_not_reached_by_importing_the_module():
-    """The reason this file can call the code at all.
-
-    Importing `refresh_catalogs` used to run the resolution above and `sys.exit()` on an
-    unconfigured machine, which took down collection for any file that named the module.
-    `test_config_seam.py` asserts the general rule for every bundled script; this is the
-    specific case that shaped this file, kept next to the tests it unblocked.
-    """
-    assert "refresh_catalogs" in sys.modules
 
 
 def test_the_workspace_is_resolved_freshly_on_each_call(unresolvable, tmp_path):

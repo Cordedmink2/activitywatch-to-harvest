@@ -15,6 +15,7 @@ growing back somewhere else in `scripts/`.
 """
 from __future__ import annotations
 
+import ast
 import importlib
 import os
 import re
@@ -308,20 +309,36 @@ def test_the_precedence_is_stated_where_it_is_implemented():
 # three checkable parts, and each part is red against the tree as it stands.
 
 
-# A literal assignment into the process environment. Derived from the sources rather than
-# listed, for the reason below: the fixture has to know which keys to park a sentinel on,
-# and a hand-kept list would silently stop covering the next one.
-ENV_WRITE = re.compile(r"os\.environ\[[\"']([A-Z_]+)[\"']\]\s*=")
-
-
 def keys_a_script_assigns() -> set[str]:
-    return {key for p in SCRIPTS.glob("*.py")
-            for key in ENV_WRITE.findall(p.read_text(encoding="utf-8"))}
+    """Every environment key any bundled script writes a literal name into.
+
+    Derived from the sources rather than listed, because the fixture below has to park a
+    sentinel on each one and a hand-kept list would silently stop covering the next.
+
+    Walked as a syntax tree rather than matched as text. The regex this replaces pinned
+    one spelling, `os.environ["K"] =`; rewriting that single line as `os.environ.update()`
+    would have parked no sentinel, and — because `use_utf8()` leaks `PYTHONIOENCODING`
+    into the real process environment on every `run_cli` — a later import-time write would
+    then have matched the already-leaked value and shown no delta. A green test asserting
+    nothing, from a refactor of one line in a different file.
+    """
+    keys = set()
+    for path in SCRIPTS.glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            targets = (node.targets if isinstance(node, ast.Assign)
+                       else [node.target] if isinstance(node, ast.AugAssign) else [])
+            for target in targets:
+                if (isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Attribute)
+                        and target.value.attr == "environ"
+                        and isinstance(target.slice, ast.Constant)):
+                    keys.add(target.slice.value)
+    return keys
 
 
 class ImportRecord(NamedTuple):
-    resolved: list[str]          # seam calls made while the module was loading
-    env_delta: dict[str, str]    # process-environment keys the import added or changed
+    resolved: list[str]                 # seam calls made while the module was loading
+    env_delta: dict[str, str | None]    # environment keys the import added, changed or removed
 
 
 @pytest.fixture
@@ -374,13 +391,21 @@ def import_record(monkeypatch):
             if cached is not None:
                 sys.modules[name] = cached
         after = dict(os.environ)
+        # Both directions: a key added or changed, and a key removed. Iterating `after`
+        # alone made a deletion at import invisible.
         return ImportRecord(
             resolved=resolved,
-            env_delta={k: v for k, v in after.items() if before.get(k) != v})
+            env_delta={k: after.get(k) for k in set(before) | set(after)
+                       if before.get(k) != after.get(k)})
 
     return _record
 
 
+# `skill_config` is in this population and is the one member the seam half cannot speak
+# for: the spies go on the cached module object, so its own fresh import runs unspied. It
+# resolves nothing today, and the environment half below covers it either way. Excluding
+# it would be worse — the population is derived from the directory precisely so that a
+# script cannot quietly sit outside the rule.
 @pytest.mark.parametrize("name", bundled_script_names())
 def test_importing_a_bundled_script_resolves_no_configuration(name, import_record):
     """Configuration is resolved where it is used, not where a module is loaded.

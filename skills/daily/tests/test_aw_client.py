@@ -284,7 +284,7 @@ def test_an_unmarked_reading_inside_the_skipped_hour_takes_the_instant_the_clock
 # disagreed about a reversed range, so one errored and the other printed an empty result
 # for the same typo. That is the drift this whole module exists to prevent.
 SHARED = ["get", "pick_bucket", "fetch_events", "dedupe_heartbeats", "parse_ts",
-          "parse_range"]
+          "parse_range", "resolve_base"]
 
 
 @pytest.mark.parametrize("module", [ab, tl], ids=["afk_blocks", "activity_timeline"])

@@ -18,10 +18,12 @@ bare `pytest` does the right thing.
 
 Two live systems are running on the machine this suite runs on: ActivityWatch on
 `localhost:5600`, and Harvest — reachable with the real credentials sitting in `.env` at
-the skill root. `conftest.py` has an autouse fixture that repoints both base URLs at an
-unroutable address and blanks the credential sources, so an un-stubbed call fails loudly
+the skill root. `conftest.py` has an autouse fixture that points both base addresses at an
+unroutable one and blanks the credential sources, so an un-stubbed call fails loudly
 instead of reading the user's real day or **creating a real time entry on a client's
-timesheet**.
+timesheet**. Note which way round they go: the activity source is redirected by setting
+`TIMESHEET_ACTIVITY_URL`, so a `.env` written by the `env_file` or `workspace` fixture
+outranks it — do not put that key in one.
 
 A subprocess inherits none of that. It reads the real `.env` and talks to the real API.
 Use `support.run_cli(module, args)`, which runs `main()` in this process with a patched

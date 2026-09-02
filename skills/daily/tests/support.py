@@ -4,10 +4,12 @@ and an in-process CLI runner.
 Three jobs, in order of how much trouble they save:
 
 1. **Fake ActivityWatch and Harvest servers.** The scripts hit `http://localhost:5600`
-   and `https://api.harvestapp.com` through module-level base URLs. Repointing those
-   constants at a local `http.server` gives real end-to-end coverage of `main()` —
-   URL construction, bucket discovery, JSON parsing, error paths — without a single
-   mock of the code under test.
+   and `https://api.harvestapp.com`. Repointing both at a local `http.server` gives real
+   end-to-end coverage of `main()` — URL construction, bucket discovery, JSON parsing,
+   error paths — without a single mock of the code under test. The two are redirected
+   differently: the activity source through its setting, `TIMESHEET_ACTIVITY_URL`, and
+   Harvest by repointing the `harvest_client.API_BASE` constant. `aw_client` used to have
+   a matching constant and no longer does — it resolves its address per request.
 
 2. **A day-builder DSL.** AW event streams are the input to every interesting
    calculation, and hand-writing UTC timestamps for a realistic day is both tedious

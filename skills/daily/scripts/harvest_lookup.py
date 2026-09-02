@@ -29,11 +29,6 @@ import sys
 
 from skill_config import find_workspace, has_value
 
-for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout is not one of these
-    if isinstance(_s, io.TextIOWrapper):
-        _s.reconfigure(encoding="utf-8")
-
-
 def find_catalog_dir(explicit: str | None) -> str:
     """Locate the `.mcp/` directory holding the catalogs.
 
@@ -162,6 +157,14 @@ def lookup_from_entries(query, days=180, task_filter=None):
 
 
 def main():
+    # Not `harvest_client.use_utf8()`: that also sets PYTHONIOENCODING for child
+    # processes, and this script spawns none — reaching for it would pull the Harvest
+    # client, its base URL and its credential machinery into a script that never bills.
+    # In `main()` rather than at module scope because an import must have no side effect
+    # (issue #21); a captured or redirected stream is not a TextIOWrapper and is skipped.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Look up a Harvest project + tasks by code/name.")
     ap.add_argument("query", help="project code (exact) or code/name fragment")
     ap.add_argument("--task", help="filter task rows by name substring (case-insensitive)")

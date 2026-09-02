@@ -49,11 +49,6 @@ from aw_client import (dedupe_heartbeats, fetch_events, get, local_clock,
 NOISE_FLOOR = 5    # drop sub-5s events (tab-switch noise), per SKILL.md
 GAP_FOLD = 60      # inter-event gaps shorter than this don't break a span (seconds)
 
-for _s in (sys.stdout, sys.stderr):   # pytest's captured stdout is not one of these
-    if isinstance(_s, io.TextIOWrapper):
-        _s.reconfigure(encoding="utf-8")
-
-
 def load_classes():
     """Return [(label, compiled_regex), ...] from AW settings 'classes'.
     Skips non-regex rules (e.g. parent categories with type 'none')."""
@@ -132,6 +127,14 @@ def category_rollup(events, classes, noise_floor=NOISE_FLOOR):
 
 
 def main():
+    # Not `harvest_client.use_utf8()`: that also sets PYTHONIOENCODING for child
+    # processes, and this script spawns none — reaching for it would pull the Harvest
+    # client, its base URL and its credential machinery into a script that never bills.
+    # In `main()` rather than at module scope because an import must have no side effect
+    # (issue #21); a captured or redirected stream is not a TextIOWrapper and is skipped.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Categorized window-activity timeline for one day.")
     ap.add_argument("date", help="YYYY-MM-DD (local date)")
     ap.add_argument("--utc-offset", type=float, default=None,

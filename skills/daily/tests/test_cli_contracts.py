@@ -15,6 +15,7 @@ Each test here was written against the failing behaviour first.
 """
 from __future__ import annotations
 
+import ast
 import datetime as dt
 import gc
 import importlib
@@ -22,6 +23,7 @@ import io
 import json
 import sys
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -32,6 +34,8 @@ import harvest_client
 import harvest_patch as hp
 import harvest_post as hpost
 from support import day, run_cli
+
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 
 def resource_warnings_from(fn) -> list:
@@ -171,14 +175,70 @@ def test_text_mode_still_says_so_in_words(live_aw):
 @pytest.mark.parametrize("name", ["harvest_post", "harvest_patch", "harvest_list",
                                   "activity_timeline", "harvest_lookup"])
 def test_scripts_import_under_a_stdout_that_cannot_be_reconfigured(name, monkeypatch):
-    """These scripts call `sys.stdout.reconfigure(...)` at import time. Under pytest's
-    capture — and under any harness that swaps in a plain file-like object — that
-    attribute does not exist, so importing the module raises and the script becomes
-    untestable. `activity_timeline` and `harvest_lookup` already guard it; the three
-    Harvest CLIs did not, which is why they had no tests at all."""
+    """`sys.stdout.reconfigure(...)` does not exist on a plain file-like object, so a
+    script that called it unguarded raised on *import* under pytest's capture — or under
+    any harness that swaps the stream — and became untestable. Three Harvest CLIs did
+    exactly that, which is why they had no tests at all.
+
+    None of these reconfigure at import any more; the call moved into `main()` when
+    imports were made side-effect-free. The guard is still the property, so it is asserted
+    where it now lives, in `test_the_encoding_fix_is_applied_by_every_cli_that_needs_it`
+    below. This stays as the weaker, broader claim it always was underneath — that the
+    module is importable at all under a swapped stream — which is what makes every test in
+    this file possible.
+    """
     monkeypatch.setattr(sys, "stdout", io.StringIO())
     monkeypatch.setattr(sys, "stderr", io.StringIO())
     importlib.reload(importlib.import_module(name))
+
+
+# Every script whose `main()` has to make the console UTF-8 before it prints, and how.
+# The four that shell out need `PYTHONIOENCODING` for the child as well, so they call the
+# shared `harvest_client.use_utf8()`; the two that spawn nothing reconfigure their own
+# streams rather than importing the Harvest client into a script that never bills.
+UTF8_VIA_HELPER = ["harvest_post", "harvest_patch", "harvest_list", "refresh_catalogs"]
+UTF8_INLINE = ["activity_timeline", "harvest_lookup"]
+
+
+@pytest.mark.parametrize("name", UTF8_VIA_HELPER)
+def test_the_encoding_fix_is_applied_by_every_cli_that_needs_it(name, monkeypatch):
+    """Asserted at the call, because nothing else can see it.
+
+    `run_cli` hands `main()` a `StringIO`, which is not a `TextIOWrapper`, so the body of
+    `use_utf8()` correctly does nothing under test — meaning the suite stayed green when
+    the call was deleted from a `main()` entirely. The defect that returns is the one in
+    `TESTING.md` § "Three CLIs crashed on import under captured stdout": a Windows console
+    on a codepage, a client name with a macron in it, and a `UnicodeEncodeError` partway
+    through a report the user is reading.
+
+    This was covered incidentally while the call sat at module scope and the test above
+    reloaded the module. Moving it into `main()` took that away, so it is asserted here
+    directly rather than left to a side effect of an import test.
+    """
+    module = importlib.import_module(name)
+    called = []
+    monkeypatch.setattr(harvest_client, "use_utf8", lambda: called.append(name))
+    monkeypatch.setattr(module, "use_utf8", lambda: called.append(name))
+    run_cli(module, ["--help"])
+    assert called, (
+        f"{name}.main() never applies the UTF-8 console fix, so a non-ASCII client name "
+        "raises UnicodeEncodeError partway through its output on a Windows codepage")
+
+
+@pytest.mark.parametrize("name", UTF8_INLINE)
+def test_the_scripts_that_spawn_nothing_still_fix_their_own_streams(name):
+    """The other half, which has no helper to spy on. Asserted on the source: the
+    reconfigure has to be inside `main()` — at module scope it is the import side effect
+    that issue #21 removed, and absent altogether it is the crash above."""
+    tree = ast.parse((SCRIPTS / f"{name}.py").read_text(encoding="utf-8"))
+    main = next((n for n in tree.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    assert main is not None, f"{name} has no main()"
+    reconfigures = [n for n in ast.walk(main) if isinstance(n, ast.Attribute)
+                    and n.attr == "reconfigure"]
+    assert reconfigures, (
+        f"{name}.main() never reconfigures its streams, so a non-ASCII character raises "
+        "UnicodeEncodeError on a Windows codepage")
 
 
 # --------------------------------------------------------------------------------------

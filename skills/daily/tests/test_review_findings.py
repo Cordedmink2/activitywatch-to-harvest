@@ -22,6 +22,7 @@ import pytest
 import activity_timeline as tl
 import afk_blocks as ab
 import aw_client
+import harvest_client
 import harvest_lookup as hl
 import refresh_catalogs as rc
 import skill_config
@@ -53,17 +54,20 @@ def test_timeline_errors_when_the_window_bucket_is_missing(monkeypatch):
 # 2. Every script must import under a captured stdout
 # --------------------------------------------------------------------------------------
 
-def test_refresh_catalogs_imports_under_a_stdout_that_cannot_be_reconfigured(workspace, monkeypatch):
-    """The one script that kept a bare `sys.stdout.reconfigure()` at import. Under a
-    captured stream — a test harness, a wrapper, `pythonw.exe` — it died with an
-    AttributeError naming neither the script nor the cause."""
+def test_the_encoding_fix_survives_a_stdout_that_cannot_be_reconfigured(monkeypatch):
+    """A captured or redirected stream — a test harness, a wrapper, `pythonw.exe` — is not
+    a `TextIOWrapper` and has no `reconfigure`. A bare call died there with an
+    AttributeError naming neither the script nor the cause.
+
+    This used to import `refresh_catalogs` under a swapped stream, because the call sat at
+    that module's import scope. It does not any more; `use_utf8()` is called from `main()`
+    and is the only copy, so the guard is asserted on the function itself. Doing it that
+    way also stops this test from being the thing that decides whether the module is in
+    `sys.modules` for whatever runs next.
+    """
     monkeypatch.setattr(sys, "stdout", io.StringIO())
     monkeypatch.setattr(sys, "stderr", io.StringIO())
-    sys.modules.pop("refresh_catalogs", None)
-    try:
-        importlib.import_module("refresh_catalogs")
-    finally:
-        sys.modules.pop("refresh_catalogs", None)
+    harvest_client.use_utf8()          # must not raise
 
 
 # --------------------------------------------------------------------------------------
