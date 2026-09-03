@@ -30,7 +30,7 @@ Usage:
 The day's boundaries come from the configured TIMESHEET_TIMEZONE, converted at
 each instant rather than once for the day, so the day the clocks change is read
 at its true length and needs nothing from the user. --utc-offset overrides it
-for one run. There is no assumed zone: see aw_client.resolve_zone for why.
+for one run. There is no assumed zone: see timezone.resolve_zone for why.
 
 The judgement constants below (--solid, --blip-gap, --min-uncovered, the two
 bands) are defaults, not policy. They are a person's working style, so they
@@ -43,9 +43,9 @@ import json
 import sys
 from typing import NamedTuple
 
-from aw_client import (UsageError, dedupe_heartbeats, fetch_events, get, local_clock,
-                       parse_range, parse_ts, pick_bucket, resolve_base, resolve_zone,
-                       utc_bounds, zone_label)
+from aw_client import (UsageError, dedupe_heartbeats, fetch_events, get, parse_ts,
+                       pick_bucket, resolve_base)
+from timezone import local_clock, parse_range, resolve_zone, utc_bounds, zone_label
 
 DEFAULT_THRESHOLD = 1050  # 17.5 min — the skill's "real break" boundary
 

@@ -62,6 +62,13 @@ worth nothing while there is one plugin.
   `timezone.py` first (#36). *Updated 2026-09-03:* #32 gave the same refusal to `harvest_patch.py`,
   so the edge is two provider scripts wide, not one, and one of them also imports the other for the
   refusal itself. The decision is unchanged; the move is larger than this bullet first described.
+  *Updated 2026-09-03, #36 landed:* `skills/daily/scripts/timezone.py` holds the zone arithmetic
+  and the four scripts that need it import it directly, so no provider script imports the
+  activity-source client and none imports another script. The refusal message stayed on the
+  provider's side of the line, in `harvest_write.py`, because what Harvest does with two clock
+  times is not a fact about the zone — `skills/daily/TESTING.md` § "Two provider scripts were
+  importing the activity-source client" carries that argument, and
+  `skills/daily/tests/test_module_boundaries.py` is what holds the direction from here on.
 - `reconcile` reaches the adapter across a sibling directory by path today. It moves onto the same
   contract `daily` uses (#31).
 - The export channel constrains the seam. Any future adoption of `bin/` has to answer for it, or

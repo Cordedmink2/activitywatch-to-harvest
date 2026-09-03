@@ -31,7 +31,7 @@ may already have been invoiced, and Harvest has no undo. See `harvest_write.py`
 for why the gate lives in the invocation rather than only in SKILL.md's prose.
 
 Harvest recomputes an entry's duration from its two clock times on a patch exactly as it
-does on a create, so a patch can arrive at the entry `harvest_post.py` refuses — one worked
+does on a create, so a patch can arrive at the entry a create refuses — one worked
 straight through the autumn change, billed short by the span that happened twice. This
 needs `TIMESHEET_TIMEZONE` to know when that is, and it reads the entry to know what the
 patch would leave behind: see `refuse_a_result_that_straddles_the_change()` below. That
@@ -48,10 +48,9 @@ Failure: prints `ERR <status> <body[:200]>` to stderr and exits 1.
 import datetime as dt
 import sys
 
-import aw_client
 import harvest_client
-import harvest_post
 import harvest_write
+import timezone
 from harvest_client import use_utf8
 
 FLAGS = {
@@ -124,12 +123,12 @@ def current_entry(entry_id: str) -> dict:
 def refuse_a_result_that_straddles_the_change(entry_id: str, body: dict) -> None:
     """Refuse a patch whose *result* runs straight through the autumn change.
 
-    `harvest_post.py`'s `refusal_for_a_straddled_change()` says why such an entry cannot be
-    posted, and prints the same message here: Harvest bills the difference between the two
-    clock times, so an entry worked through the change is short by the span that happened
-    twice, and nothing raises. One message with one owner — `references/self-development.md`
-    § "Rules with more than one copy" registers it as that function's, and its arithmetic
-    has already been wrong in prose once.
+    `harvest_write.refusal_for_a_straddled_change()` says why such an entry cannot be
+    billed as one, and prints the same message here as it does on a create: Harvest bills
+    the difference between the two clock times, so an entry worked through the change is
+    short by the span that happened twice, and nothing raises. One message with one owner —
+    `references/self-development.md` § "Rules with more than one copy" registers it as that
+    function's, and its arithmetic has already been wrong in prose once.
 
     Three things make this more than that one call, and each is a decision:
 
@@ -163,10 +162,10 @@ def refuse_a_result_that_straddles_the_change(entry_id: str, body: dict) -> None
     # rather than as a missing setting. No offset flag is offered because this script has
     # none — see `resolve_zone`. What it can answer for itself is narrow: a one-sided time
     # is not read until below, and reaches Harvest's own 422 if it is not a time at all.
-    zone = aw_client.resolve_zone(None, offers_offset_flag=False)
+    zone = timezone.resolve_zone(None, offers_offset_flag=False)
     # Already parsed and normalised by `main()`, which is why this one is not guarded.
     dated = body.get("spent_date")
-    if dated and harvest_post.repeated_span(dt.date.fromisoformat(dated), zone) is None:
+    if dated and timezone.repeated_span(dt.date.fromisoformat(dated), zone) is None:
         return
 
     fields = ("spent_date", "started_time", "ended_time")
@@ -186,7 +185,7 @@ def refuse_a_result_that_straddles_the_change(entry_id: str, body: dict) -> None
         # guard stands down: it refuses what it can measure, and nothing else.
         return
 
-    refusal = harvest_post.refusal_for_a_straddled_change(spent, start_min, end_min, zone)
+    refusal = harvest_write.refusal_for_a_straddled_change(spent, start_min, end_min, zone)
     if refusal:
         print(refusal, file=sys.stderr)
         sys.exit(1)

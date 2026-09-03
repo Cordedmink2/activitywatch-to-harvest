@@ -34,6 +34,7 @@ import aw_client                       # noqa: E402
 import harvest_client as hc            # noqa: E402
 import refresh_catalogs                # noqa: E402
 import skill_config                    # noqa: E402
+import timezone                        # noqa: E402
 from support import SETTING_KEYS, bundled_script_names  # noqa: E402
 
 
@@ -353,7 +354,7 @@ def test_a_platform_with_one_shell_is_still_told_the_plugin_may_not_be_enabled(
 
 @pytest.mark.parametrize("missing", [
     pytest.param(lambda: hc.load_creds(), id="credentials"),
-    pytest.param(lambda: aw_client.resolve_zone(None), id="timezone"),
+    pytest.param(lambda: timezone.resolve_zone(None), id="timezone"),
     pytest.param(lambda: refresh_catalogs.mcp_dir(), id="workspace"),
 ])
 def test_every_message_a_user_meets_this_way_carries_the_cause(missing, plugin_install,
@@ -415,10 +416,10 @@ def seam_readers() -> set[str]:
 
     Naming a setting is allowed at one remove: `afk_blocks` documents
     `TIMESHEET_TIMEZONE` in its `--utc-offset` help and never resolves it, because
-    `aw_client.resolve_zone` does — through `skill_config`, like everything else.
+    `timezone.resolve_zone` does — through `skill_config`, like everything else.
     Requiring the literal import in *every* script that mentions a key would push the two
-    scripts back to resolving the zone apiece, which is the duplication `aw_client` exists
-    to prevent.
+    scripts back to resolving the zone apiece, which is the duplication the shared modules
+    exist to prevent.
 
     Derived rather than listed: a hand-maintained allowlist is a place to quietly add the
     next offender.

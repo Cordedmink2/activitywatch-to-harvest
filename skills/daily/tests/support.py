@@ -65,11 +65,11 @@ SETTING_KEYS = (
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, NamedTuple, cast
 
-# The one spelling of the repeated-hour marker, taken from the script that renders it.
+# The one spelling of the repeated-hour marker, taken from the module that defines it.
 # `conftest` puts `scripts/` on `sys.path` before importing this module, which is the only
 # way it is ever imported. Spelling the character again here would let a fixture and the
 # output it is compared against disagree without anything failing.
-from aw_client import SECOND_PASS_MARK
+from timezone import SECOND_PASS_MARK
 
 # --------------------------------------------------------------------------------------
 # Local-time DSL

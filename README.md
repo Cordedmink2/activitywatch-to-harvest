@@ -503,6 +503,7 @@ activity-to-timesheet/
 │       ├── aw_client.py          # shared ActivityWatch REST helpers for the two above
 │       ├── harvest_lookup.py     # project_id/task_id lookup by code, name or client
 │       ├── skill_config.py       # the one seam every script reads a setting through
+│       ├── timezone.py           # the zone a day is read in + its clock arithmetic
 │       └── ...                   # harvest_post/patch/list, refresh_catalogs, screenshot_capture
 ├── tests/                    # guards on the install/setup scripts a new user runs first
 └── install/                  # export_agent_skills.py (the shared-directory export the

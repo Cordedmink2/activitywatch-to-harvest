@@ -51,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   task is not touched — that, and the refused case, are still `/billables:setup`'s read-back check.
 
 ### Changed
+- The zone a day is read in, and every clock conversion that follows from it, now live in
+  `scripts/timezone.py` (#36). Both halves of the skill need that arithmetic and neither owns it:
+  the two write scripts had been importing the ActivityWatch client to reach it, and one of them
+  had been importing the other for the daylight-saving refusal. Nothing about a command line, an
+  output shape or a message changes — the functions moved as they stood. What is different is that
+  no script that posts to Harvest imports anything of the activity source's, which is the edge
+  ADR-0006 said had to be gone before the provider moves behind a command contract.
 - The confirmation gate, the preview and the `OK` / `ERR` contract are one implementation,
   `scripts/harvest_write.py`, which `harvest_post.py` and `harvest_patch.py` both declare their
   body to. No command line changes. One message does: a patch with `--start` after `--end` now

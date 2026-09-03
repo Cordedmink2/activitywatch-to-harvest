@@ -22,12 +22,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-import aw_client as aw
 import harvest_client as hc
 import harvest_list as hlist
 import harvest_patch as hp
 import harvest_post as hpost
+import harvest_write as hw
 import skill_config
+import timezone as tz
 from support import CREATE_ARGS, NO_BODY, resource_warnings_from, run_cli
 
 CONFIRM = "--confirm"
@@ -170,12 +171,12 @@ def test_the_direction_of_the_change_is_what_decides_it_not_the_arithmetic(monke
     with the direction flipped. No zone produces it, and that is the point — it isolates
     the one branch. 90 and 255 are `01:30` and `04:15` in minutes since midnight."""
     zone = ZoneInfo("Pacific/Auckland")
-    fall_back = aw.Transition(dt.time(3, 0), dt.time(2, 0), repeats=True)
-    monkeypatch.setattr(aw, "transition_clocks", lambda *a: fall_back)
-    assert hpost.refusal_for_a_straddled_change(dt.date(2026, 4, 5), 90, 255, zone)
+    fall_back = tz.Transition(dt.time(3, 0), dt.time(2, 0), repeats=True)
+    monkeypatch.setattr(tz, "transition_clocks", lambda *a: fall_back)
+    assert hw.refusal_for_a_straddled_change(dt.date(2026, 4, 5), 90, 255, zone)
 
-    monkeypatch.setattr(aw, "transition_clocks", lambda *a: fall_back._replace(repeats=False))
-    assert hpost.refusal_for_a_straddled_change(dt.date(2026, 4, 5), 90, 255, zone) is None
+    monkeypatch.setattr(tz, "transition_clocks", lambda *a: fall_back._replace(repeats=False))
+    assert hw.refusal_for_a_straddled_change(dt.date(2026, 4, 5), 90, 255, zone) is None
 
 
 def test_clocks_going_back_at_midnight_do_not_refuse_an_ordinary_working_day(
@@ -497,7 +498,7 @@ def test_the_refusal_is_the_create_s_message_rather_than_a_second_wording(
     r, _ = patched(monkeypatch, live_harvest,
                    ["--start", STRADDLE[0], "--end", STRADDLE[1]])
 
-    expected = hpost.refusal_for_a_straddled_change(
+    expected = hw.refusal_for_a_straddled_change(
         dt.date(2026, 4, 5), 90, 255, ZoneInfo("Pacific/Auckland"))
     assert expected is not None
     assert r.err.strip() == expected.strip()

@@ -101,7 +101,7 @@ def load_creds() -> tuple[str, str]:
         # concludes the dialog did not work.
         #
         # The shell note is appended rather than written here because the same cause
-        # produces the same absence in `aw_client.resolve_zone()`, and it is a cause the
+        # produces the same absence in `timezone.resolve_zone()`, and it is a cause the
         # user cannot deduce: the two lines above are the *right* advice for a session
         # that has not restarted, and exactly the wrong advice for a command that came
         # from PowerShell.

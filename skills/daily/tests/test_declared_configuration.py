@@ -28,6 +28,7 @@ import pytest
 import activity_timeline as tl
 import afk_blocks as ab
 import aw_client as aw
+import timezone as tz
 import harvest_patch as hpatch
 import harvest_post as hpost
 from support import aw_server, day, run_cli
@@ -120,12 +121,12 @@ def test_a_flag_is_taken_exactly_as_given():
     spent in another zone should not have to reconfigure the plugin to do it. What it
     resolves to is a zone that is that offset all year, which is what passing a number
     has always meant."""
-    assert aw.resolve_zone(13.0).utcoffset(None) == dt.timedelta(hours=13)
+    assert tz.resolve_zone(13.0).utcoffset(None) == dt.timedelta(hours=13)
 
 
 def test_the_zone_comes_from_the_configuration(monkeypatch):
     monkeypatch.setenv("TIMESHEET_TIMEZONE", "Europe/London")
-    zone = aw.resolve_zone(None)
+    zone = tz.resolve_zone(None)
     # A real zone, not the fixed-offset one `--utc-offset` produces: the whole point of
     # reading the setting is that the day's two ends can be resolved at different offsets.
     assert isinstance(zone, ZoneInfo)
@@ -137,9 +138,9 @@ def test_the_configured_zone_dates_a_day_by_the_offset_in_force_on_it(monkeypatc
     rather than a number is what lets a user reconstruct a day from the other side of a
     daylight-saving change without touching their configuration."""
     monkeypatch.setenv("TIMESHEET_TIMEZONE", "Europe/London")
-    zone = aw.resolve_zone(None)
-    assert aw.utc_bounds(MAY, zone)[0] == "2026-05-27T23:00:00Z"              # BST, UTC+1
-    assert aw.utc_bounds(dt.date(2026, 1, 15), zone)[0] == "2026-01-15T00:00:00Z"   # GMT
+    zone = tz.resolve_zone(None)
+    assert tz.utc_bounds(MAY, zone)[0] == "2026-05-27T23:00:00Z"              # BST, UTC+1
+    assert tz.utc_bounds(dt.date(2026, 1, 15), zone)[0] == "2026-01-15T00:00:00Z"   # GMT
 
 
 def test_a_day_containing_the_change_is_bounded_by_both_of_its_offsets(monkeypatch):
@@ -151,7 +152,7 @@ def test_a_day_containing_the_change_is_bounded_by_both_of_its_offsets(monkeypat
     12:00Z-12:00Z and never asks ActivityWatch for the first hour of the day.
     """
     monkeypatch.setenv("TIMESHEET_TIMEZONE", "Pacific/Auckland")
-    start, end = aw.utc_bounds(dt.date(2026, 4, 5), aw.resolve_zone(None))
+    start, end = tz.utc_bounds(dt.date(2026, 4, 5), tz.resolve_zone(None))
     assert (start, end) == ("2026-04-04T11:00:00Z", "2026-04-05T12:00:00Z")
 
 
@@ -160,7 +161,7 @@ def test_a_day_the_clocks_jump_forward_over_is_bounded_the_other_way(monkeypatch
     UTC+13. A single noon offset here overshoots instead, pulling in an hour of the
     previous local day — the same class of error, biased the opposite way."""
     monkeypatch.setenv("TIMESHEET_TIMEZONE", "Pacific/Auckland")
-    start, end = aw.utc_bounds(dt.date(2026, 9, 27), aw.resolve_zone(None))
+    start, end = tz.utc_bounds(dt.date(2026, 9, 27), tz.resolve_zone(None))
     assert (start, end) == ("2026-09-26T12:00:00Z", "2026-09-27T11:00:00Z")
 
 
@@ -174,7 +175,7 @@ def test_no_new_zealand_offset_is_applied_to_a_user_who_configured_nothing(uncon
     guess.
     """
     with pytest.raises(SystemExit) as exc:
-        aw.resolve_zone(None)
+        tz.resolve_zone(None)
     message = str(exc.value)
     assert "TIMESHEET_TIMEZONE" in message
     assert "12" not in message, "the old New Zealand default is still being suggested"
@@ -184,7 +185,7 @@ def test_the_missing_zone_message_names_both_ways_to_supply_one(unconfigured):
     """A user reading this has two routes and should not have to find out about the
     second one from the source: configure it once, or pass it for this run."""
     with pytest.raises(SystemExit) as exc:
-        aw.resolve_zone(None)
+        tz.resolve_zone(None)
     message = str(exc.value)
     assert "/plugin configure" in message
     assert "--utc-offset" in message
@@ -197,7 +198,7 @@ def test_a_zone_that_cannot_be_loaded_says_so_and_names_the_escape_hatch(monkeyp
     so the message names the check and the escape hatch rather than guessing which."""
     monkeypatch.setenv("TIMESHEET_TIMEZONE", "Nowhere/Notreal")
     with pytest.raises(SystemExit) as exc:
-        aw.resolve_zone(None)
+        tz.resolve_zone(None)
     message = str(exc.value)
     assert "Nowhere/Notreal" in message
     assert "tzdata" in message

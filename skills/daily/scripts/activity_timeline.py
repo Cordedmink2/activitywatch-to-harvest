@@ -30,7 +30,7 @@ Usage:
 The day's boundaries come from the configured TIMESHEET_TIMEZONE, converted at
 each instant rather than once for the day, so the day the clocks change is read
 at its true length. --utc-offset overrides it for one run. There is no assumed
-zone — see aw_client.resolve_zone.
+zone — see timezone.resolve_zone.
 """
 import argparse
 import datetime as dt
@@ -39,9 +39,9 @@ import json
 import re
 import sys
 
-from aw_client import (UsageError, dedupe_heartbeats, fetch_events, get, local_clock,
-                       parse_range, parse_ts, pick_bucket, resolve_base,
-                       resolve_zone, utc_bounds, zone_label)
+from aw_client import (UsageError, dedupe_heartbeats, fetch_events, get, parse_ts,
+                       pick_bucket, resolve_base)
+from timezone import local_clock, parse_range, resolve_zone, utc_bounds, zone_label
 
 # Defaults for the two noise constants, each exposed as a flag in main(): what counts as
 # noise depends on how a person works, so they belong in the user's `context.md`

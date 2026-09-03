@@ -1,4 +1,5 @@
-"""Writing to the provider: the confirmation gate, the preview, and the `OK` / `ERR` contract.
+"""Writing to the provider: the confirmation gate, the preview, the guards in front of both,
+and the `OK` / `ERR` contract.
 
 Not a script. `harvest_post.py` and `harvest_patch.py` each *declare* the write they
 would make — `create(body)` or `update(entry_id, body)` — and hand it to `perform()`, and
@@ -6,6 +7,8 @@ everything a write has in common happens here, once:
 
   take_gate(argv)        -> (argv without the gate, whether it was there)
   ordered_minutes(a, b)  -> both clock times as minutes, or `ERR` and exit 1
+  refusal_for_a_straddled_change(spent, start_min, end_min, zone)
+                         -> why this entry cannot be billed as one, or None
   perform(write, confirmed)
       unconfirmed: print `WOULD POST <body>` / `WOULD PATCH <id> <body>`, then a line
                    naming the flag, and exit 0 — nothing was *written*. A caller's own
@@ -31,7 +34,10 @@ that described the entry in its own words would be a second description free to 
 from the first, with the user approving the paraphrase.
 
 The gate is a property of writing, not of reaching the provider, so a script that only
-reads has no business here and calls `harvest_client.request()` for itself.
+reads has no business here and calls `harvest_client.request()` for itself. The two guards
+are here on the same test: each refuses a body *either* writer could assemble, and each is
+about what Harvest does with the two clock times it stores rather than about what the
+clocks did — that half is `timezone.py`'s, and both guards read it from there.
 
 This existed twice — once per write script, with every fix landing twice or not at all —
 until #22. It is what ADR-0006 says the provider's command contract should own, and where
@@ -44,6 +50,7 @@ import sys
 from typing import NamedTuple, NoReturn
 
 from harvest_client import parse_time_to_minutes, request
+from timezone import repeated_span, zone_label
 
 CONFIRM_FLAG = "--confirm"
 
@@ -118,6 +125,93 @@ def ordered_minutes(started: str, ended: str,
             "Harvest otherwise silently stores reversed times as 23h entries "
             "and zero-duration as 0h — the script blocks both.")
     return start_min, end_min
+
+
+def clock(minutes: int) -> str:
+    """Minutes-since-midnight as the plain `HH:MM` a create's own arguments are in.
+
+    Deliberately not an echo of what the user typed: `8:15am` and `08:15` are the same
+    entry, and the refusal below has to name times the user did *not* type, so all four
+    times in that message are written one way or they cannot be compared by eye.
+    """
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def hours(minutes: int) -> str:
+    """Minutes as the decimal hours Harvest bills them in — 165 -> `2.75`.
+
+    Two decimals, then trailing zeros trimmed to one: `3.0` rather than `3`, which is the
+    shape `references/output-format.md` writes hours in and the shape Harvest shows them
+    back in. A stretch that is not a whole number of minutes' worth of quarter-hours reads
+    rounded, e.g. 100 minutes as `1.67` — the times above it are exact, and they are what
+    the entry is actually posted from.
+    """
+    text = f"{minutes / 60:.2f}".rstrip("0")
+    return text + "0" if text.endswith(".") else text
+
+
+def refusal_for_a_straddled_change(spent, start_min, end_min, zone) -> str | None:
+    """Why this entry cannot be billed as one, or None if it can.
+
+    Harvest stores two clock times and bills their difference. On the day the clocks go
+    back, an entry worked straight through the change is short by exactly the span that
+    happened twice: `01:30`-`04:15` in `Pacific/Auckland` on 2026-04-05 bills 2.75 hrs for
+    3.75 hrs of work. Nothing raises — the entry is well-formed, and it reads correctly in
+    every listing afterwards, so there is no later moment at which anyone finds out.
+
+    Here rather than in either write script because both reach it: a create refuses the
+    entry it was handed, a patch refuses the entry its change would *result* in, and the
+    message is the same one. It was `harvest_post.py`'s until #36, which is why
+    `harvest_patch.py` imported a script to print it. What the zone did on the date is
+    `timezone.py`'s (`repeated_span()`); what Harvest does with two clock times is this
+    module's, and this message is the second half — which is also why it stays on the
+    provider's side of the boundary rather than travelling with the arithmetic.
+
+    That span is an hour in most zones and is never assumed to be: `Australia/Lord_Howe`
+    moves thirty minutes and `Antarctica/Troll` two hours, and every figure in the message
+    below is measured off the zone's own two readings.
+
+    **It refuses only the entry that is unambiguously wrong**, which is the one whose clock
+    interval contains the repeated span with both ends strictly outside it. The tempting
+    rule — "the clock interval and the elapsed time disagree" — refuses the two
+    replacements this message recommends, because `01:30`-`03:00` also spans 1.5 clock
+    hours and 2.5 real ones if its end is read as the unambiguous `03:00` an hour after the
+    change. That reading is why the ends have to be strict: an entry *ending* at
+    `03:00` or *starting* at `02:00` is one of the two recommendations under one reading
+    and an hour short under the other, and this cannot refuse its own advice. Inside the
+    span the script likewise cannot know which pass a bare `02:30` means, and both readings
+    bill correctly for their own pass. `references/output-format.md` keeps the hand-split
+    guidance for everything left over.
+
+    It refuses rather than splitting. Two entries out of one approval would put a body on
+    the wire the user never previewed, which is the property the confirmation gate exists
+    to hold.
+    """
+    span = repeated_span(spent, zone)
+    if span is None:
+        return None
+    repeat_open, repeat_close = span
+    if not (start_min < repeat_open and end_min > repeat_close):
+        return None
+
+    first, second = repeat_close - start_min, end_min - repeat_open
+    repeated = repeat_close - repeat_open
+    return (
+        f"ERR {clock(start_min)}-{clock(end_min)} on {spent} runs straight through the "
+        f"daylight-saving change in {zone_label(zone)}.\n"
+        f"  Harvest bills the difference between the two clock times, so this entry would "
+        f"record {hours(end_min - start_min)} hrs against the {hours(first + second)} hrs "
+        f"that really passed. Post two entries instead:\n"
+        f"      {clock(start_min)} {clock(repeat_close)}   ({hours(first)} hrs)\n"
+        f"      {clock(repeat_open)} {clock(end_min)}   ({hours(second)} hrs)\n"
+        f"  Those two look like they overlap by {hours(repeated)} hrs and do not — they "
+        f"abut. The clocks go back at one instant, and that instant reads "
+        f"{clock(repeat_close)} as you reach it and {clock(repeat_open)} once it has "
+        f"passed, so the first entry ends and the second begins at the same moment. "
+        f"Closing the apparent overlap is what loses the {hours(repeated)} hrs that "
+        f"happened twice, which is why this is refused rather than split for you. Say in "
+        f"the day's notes that the clocks changed — the overlap is the first thing a "
+        f"reviewer will query.")
 
 
 def preview_line(write: Write) -> str:

@@ -1052,8 +1052,9 @@ is there.
 ### Two scripts parsed the same `--window` flag differently
 `afk_blocks` rejected `17:00-09:00`; `activity_timeline` accepted it and printed an empty
 timeline, which reads as "nothing happened then" rather than "you typed it backwards".
-Same class of defect `aw_client.py` was created to end. `parse_range` now lives there and
-both call it.
+Same class of defect the shared modules were created to end. `parse_range` moved into
+`aw_client.py` and both called it; since #36 it lives in `timezone.py`, with the rest of the
+zone arithmetic.
 
 ### `--json` did not always emit JSON
 On a day with no `not-afk` activity, `afk_blocks --json` printed a sentence and exited 0.
@@ -1272,8 +1273,9 @@ was green throughout, because on that input the branch fires correctly. The clai
 grepping one test file rather than the suite — worth recording as a method note, since an
 entry here that invents a blind spot sends the next person to fix a hole that is not there.
 What was missing is narrower: no test asserted the branch fires *only* where a gap really
-is, which is the half #18 broke. Both defects are now pinned in `test_aw_client.py` under
-"The hour the clocks skip", at the shared module rather than through one script's re-export.
+is, which is the half #18 broke. Both defects are now pinned in `test_timezone.py` under
+"The hour the clocks skip" (`test_aw_client.py` until #36 moved the arithmetic), at the
+shared module rather than through one script's re-export.
 
 **What is refused and what is not, inside a skipped hour.** A marked reading and a spanning
 range are refused by name. An *unmarked* reading is not: `02:30` on the spring morning still
@@ -1399,7 +1401,7 @@ inside the span is left alone because it bills correctly for one of its two pass
 Phase-1 test asserts the two recommended entries post unchanged; it is the assertion the
 first design would have failed, and it was written before the guard existed.
 
-**The span is read, not assumed.** `aw_client.transition_clocks()` bisects the day for the
+**The span is read, not assumed.** `transition_clocks()` bisects the day for the
 change, because `zoneinfo` publishes no transition list and there is no supported way to ask
 a zone when it next changes. Two zones are in the tests because each breaks an assumption
 `Pacific/Auckland` cannot reach: `Australia/Lord_Howe` moves thirty minutes, so an assumed
@@ -1433,8 +1435,9 @@ not cover" amounts to: less prose than before, and not none.
 which `harvest_post.py` does not have, so `resolve_zone` grew a way to omit it — written
 first as a `offset_flag="--utc-offset"` parameter default.
 `test_the_inventory_entry_lists_exactly_the_flags_its_scripts_parse` went red and wanted
-`--utc-offset` added to the `aw_client` entry, where it would have told every run that a
-module with no command line takes an argument. A bare flag literal in a script is
+`--utc-offset` added to the inventory entry of the module it lived in — `aw_client` then,
+`timezone` since #36 — where it would have told every run that a module with no command
+line takes an argument. A bare flag literal in a script is
 indistinguishable from a flag that script parses, and the boolean the parameter became is
 the simpler design anyway. Neither the test nor the reading that produced it was looking for
 this.
@@ -1491,7 +1494,8 @@ first been written to recommend it. The recommendation on a start/end-time accou
 create's own: patch the entry to the first of the two ranges and post the second.
 
 **One message, imported rather than restated.** `harvest_patch.py` calls
-`harvest_post.refusal_for_a_straddled_change()` and prints what it returns, and the test
+`refusal_for_a_straddled_change()` — `harvest_post.py`'s at the time, `harvest_write.py`'s
+since #36 — and prints what it returns, and the test
 asserts *equality* with that function's output rather than a substring of it — the multi-copy
 table registers one owner for this message, and a second wording would be a second thing to
 keep true. What was extracted is `repeated_span()`, the cheap half of the question (is there
@@ -1522,7 +1526,9 @@ read the entry.
    restated) and it is against the grain of `harvest_write.py`, which exists because shared
    write-path behaviour belongs in a module that is not an entry point. #36's `timezone.py`
    is where both functions should end up; ADR-0006's consequence bullet now records that the
-   edge is two scripts wide.
+   edge is two scripts wide. *Closed by #36:* `repeated_span()` is in `timezone.py` and the
+   message in `harvest_write.py`, and no script imports a script — see § "Two provider
+   scripts were importing the activity-source client".
 
 And an entry whose stored times are absent (a duration-mode entry, whose `started_time` is
 null) or unreadable is left alone: there is no clock interval to straddle, and inventing one
@@ -1703,6 +1709,65 @@ hook that writes it — a session where the hook fails after opening the env fil
 publish neither, which reads as "did not arrive" and is true. And the note is suppressed
 outside a session, so a bundled script run by hand from a terminal never sees it, which is
 right today and would be wrong if that route ever gained a published layer.
+
+### Two provider scripts were importing the activity-source client — #36
+**Rung 3.** 2026-09-03. No observed failure: nothing was wrong with the arithmetic, and the
+suite was green before and after. What was wrong was the direction of an import.
+
+`harvest_post.py` and `harvest_patch.py` both imported `aw_client` — for `resolve_zone()`,
+`zone_label()` and `transition_clocks()` — so the provider adapter reached into the activity
+source to date the day it was billing. ADR-0006 says an adapter that does that is not behind
+a boundary, and #33 moves the boundary, so the edge had to go first or travel with it. #32
+had widened it: a second provider script, and a second edge beside it, `harvest_patch.py`
+importing `harvest_post.py` — a script — for the refusal message and for `repeated_span()`.
+
+**What moved.** `scripts/timezone.py` now holds every function that answers a question about
+a zone or a clock reading: `resolve_zone()`, `zone_label()`, `parse_local_time()`,
+`clock_reads()`, `to_utc()`, `transition_clocks()`, `repeated_span()`, `parse_range()`,
+`utc_bounds()`, `local_clock()` and the marker they share. `aw_client.py` keeps what it was
+named for — bucket discovery, the request, the heartbeat collapse, and the server's address.
+Not one line of the arithmetic changed, and no assertion about it changed either; the
+daylight-saving tests moved from `test_aw_client.py` to `test_timezone.py` as they stood.
+
+**The refusal message did not go with it, and the ticket said it should.** #36's comment
+asked for `refusal_for_a_straddled_change()` in `timezone.py` alongside `repeated_span()`.
+It is in `harvest_write.py` instead, for the reason the comment itself gives: the convention
+being broken is that one — "not a script … everything a write has in common happens here,
+once" — and this is a guard shared by the two writers, the same shape as `ordered_minutes()`
+already there. The split is where the two halves of the question fall. *What the clocks did
+on a date* is the zone's, and a second provider adapter would ask it unchanged; *that
+Harvest bills the difference between two clock times, so post these two entries instead* is
+the provider's behaviour and its wording, and a second adapter would need its own. Put in
+`timezone.py`, that paragraph of Harvest prose would sit in the module both day-reading
+scripts import beside the activity-source client — reintroducing, as vocabulary, the
+coupling the ticket removed as an import. (`aw_client.py` itself imports nothing of it:
+what was left there after the move needs no zone at all.)
+
+**The instrument is new, and it is the acceptance criterion.** `tests/test_module_boundaries.py`
+reads each script's imports out of its syntax tree and holds three rules: no `harvest_*.py`
+imports `aw_client`, nothing imports a module with a `__main__` guard, and `timezone.py`
+imports neither half. Both populations come from `scripts/`, so a new script is held the day
+it lands. It was written first and failed on five counts against the tree as it stood, which
+is what said the two edges were exactly where ADR-0006 claimed. That red run is not a
+rung-2 measurement smuggled in: an import edge is visible in the source and needed no
+measuring. What it bought was the instrument, and the knowledge that the instrument can
+fail — a boundary test that has never been red is a test of nothing.
+
+**A fourth check, on the other direction.** Every module that *calls* `resolve_zone()` must
+import the module that defines it — read as identifiers rather than as text, because
+`harvest_client.py` names the function in prose to say which absence it shares its wording
+with, and a text search cannot tell a cross-reference from a call. Without it, "no provider
+script imports `aw_client`" is satisfied just as well by a script growing its own copy of
+the resolution, which is the duplication the shared module exists to prevent.
+
+**What was not measured.** Nothing about behaviour, deliberately — the claim is that this
+change has none, and the evidence is the whole suite green with the goldens untouched —
+861 collected, 856 passing and the five benchmarks skipped as they are by default — and
+`pyright` at zero. The module name is the one risk taken: `scripts/` is on `sys.path` at run time, so
+`timezone.py` shadows any third-party top-level module of that name for these scripts. There
+is no such module in the standard library (`datetime.timezone` is an attribute and
+`zoneinfo` is the package), and the scripts have no third-party dependencies at all, so the
+exposure is a future dependency named exactly `timezone` — checked by hand, not by a test.
 
 ## Rejected
 

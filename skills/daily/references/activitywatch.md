@@ -19,7 +19,7 @@ The bundled scripts (`afk_blocks.py`, `activity_timeline.py`) wrap this API and 
 
 ## Time zones
 
-AW stores everything in UTC. Compute the UTC range from the user's *local-midnight* boundaries. Example for `2026-05-13` at UTC+12: `[2026-05-12T12:00:00Z, 2026-05-13T12:00:00Z]`. The zone is the configured `TIMESHEET_TIMEZONE` (`/plugin configure billables`), which `aw_client.resolve_zone` loads as a real zone, so a daylight-saving change is handled without anyone remembering it. **Do not substitute a zone of your own if it is unset** — the scripts refuse the run instead, deliberately: a guessed offset moves the day boundary by hours and nothing fails visibly.
+AW stores everything in UTC. Compute the UTC range from the user's *local-midnight* boundaries. Example for `2026-05-13` at UTC+12: `[2026-05-12T12:00:00Z, 2026-05-13T12:00:00Z]`. The zone is the configured `TIMESHEET_TIMEZONE` (`/plugin configure billables`), which `timezone.resolve_zone` loads as a real zone, so a daylight-saving change is handled without anyone remembering it. **Do not substitute a zone of your own if it is unset** — the scripts refuse the run instead, deliberately: a guessed offset moves the day boundary by hours and nothing fails visibly.
 
 Each end of the day is resolved separately, so the day the clocks change is *not* twenty-four hours long: `2026-04-05` in `Pacific/Auckland` runs `[2026-04-04T11:00:00Z, 2026-04-05T12:00:00Z]`, twenty-five hours, and the spring one is twenty-three. Six consequences worth expecting rather than querying:
 
