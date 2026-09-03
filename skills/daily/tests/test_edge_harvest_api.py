@@ -333,7 +333,14 @@ def test_patch_sends_only_the_fields_whose_flags_were_passed(live_harvest):
 
 
 def test_patch_sends_both_times_and_nothing_else_when_shifting_a_block(live_harvest):
-    srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
+    """The GET is routed because a patch that moves the times reads the entry to learn
+    which *date* they would land on — see the fall-back section below. It changes nothing
+    about the body that goes out: the read is the guard's, not the write's."""
+    srv = live_harvest({
+        ("GET", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID), "spent_date": "2026-08-12",
+                                               "started_time": "9:00am", "ended_time": "10:30am"},
+        ("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)},
+    })
     r = run_cli(hp, [ENTRY_ID, "--start", "09:15", "--end", "10:45", CONFIRM])
     assert r.code == 0
 
@@ -423,6 +430,251 @@ def test_patch_passes_a_non_numeric_entry_id_straight_through_to_the_url(live_ha
     assert r.code == 1
     assert r.err.startswith("ERR")
     assert "404" in r.err
+    assert "Traceback" not in r.err
+
+
+# --------------------------------------------------------------------------------------
+# The entry a patch would leave behind, on the day the clocks go back — #32
+# --------------------------------------------------------------------------------------
+#
+# `harvest_post.py` refuses a create that runs straight through the fall-back, because
+# Harvest bills the difference between the two clock times and that entry is short by the
+# span that happened twice. The same entry can be *arrived at* by patching a correct one,
+# and a patch carries only what it changes — so the guard is on the result, which is the
+# body over what the entry already says, and reading that is the one GET this script makes.
+
+AUCKLAND_FALL_BACK = "2026-04-05"       # the clocks go back at 03:00 to 02:00
+STRADDLE = ("01:30", "04:15")           # 2.75 clock hours over the 3.75 really worked
+
+
+def entry_on(date: str = AUCKLAND_FALL_BACK, start: str | None = "1:30am",
+             end: str | None = "4:15am") -> dict:
+    """One entry as Harvest returns it — 12-hour times, which is how the API writes them."""
+    return {"spent_date": date, "started_time": start, "ended_time": end}
+
+
+def patched(monkeypatch, live_harvest, args, current=None, zone="Pacific/Auckland",
+            confirm=True):
+    """A patch against a named zone, with the entry Harvest already holds behind the GET.
+
+    Returns `(result, server)`, so a test can say both what the run did and whether it
+    paid for the read. `current` is what `GET /time_entries/<id>` answers with; a test
+    that expects no read may leave it at its default and assert `srv.sent("GET") == []`.
+    """
+    monkeypatch.setenv("TIMESHEET_TIMEZONE", zone)
+    srv = live_harvest({
+        ("GET", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID),
+                                               **(current if current is not None
+                                                  else entry_on())},
+        ("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)},
+    })
+    argv = [ENTRY_ID, *args] + ([CONFIRM] if confirm else [])
+    return run_cli(hp, argv), srv
+
+
+def test_a_patch_whose_result_straddles_the_change_is_refused_and_nothing_is_sent(
+        monkeypatch, live_harvest):
+    """The defect #23 predicted and left open: the entry `harvest_post.py` now refuses can
+    still be reached by patching a correct one. `01:30`-`04:15` on the fall-back day bills
+    2.75 hrs against 3.75 worked, is well-formed, and reads correctly in every listing
+    afterwards — so there is no later moment at which anyone finds out."""
+    r, srv = patched(monkeypatch, live_harvest,
+                     ["--start", STRADDLE[0], "--end", STRADDLE[1]],
+                     entry_on(start="9:00am", end="10:30am"))
+
+    assert srv.sent("PATCH") == [], "nothing may be written that would bill short"
+    assert r.code == 1 and r.out == ""
+    assert "runs straight through the daylight-saving change" in r.err
+    assert "Traceback" not in r.err
+
+
+def test_the_refusal_is_the_create_s_message_rather_than_a_second_wording(
+        monkeypatch, live_harvest):
+    """One message, one owner — `references/self-development.md` § "Rules with more than
+    one copy" registers it as `refusal_for_a_straddled_change()`'s. A restatement here
+    would be a second thing to keep true, and the arithmetic in it has already been wrong
+    in prose once."""
+    r, _ = patched(monkeypatch, live_harvest,
+                   ["--start", STRADDLE[0], "--end", STRADDLE[1]])
+
+    expected = hpost.refusal_for_a_straddled_change(
+        dt.date(2026, 4, 5), 90, 255, ZoneInfo("Pacific/Auckland"))
+    assert expected is not None
+    assert r.err.strip() == expected.strip()
+
+
+@pytest.mark.parametrize("args,current", [
+    (["--start", "01:30"], entry_on(start="2:30am")),
+    (["--end", "04:15"], entry_on(end="2:30am")),
+    (["--date", AUCKLAND_FALL_BACK], entry_on(date="2026-08-12")),
+], ids=["start-alone", "end-alone", "date-alone"])
+def test_every_flag_that_can_produce_the_straddle_on_its_own_reaches_the_guard(
+        monkeypatch, live_harvest, args, current):
+    """A patch carries only what it changes, so each of these is a *whole* straddling
+    entry once it lands on the one already there. The third is the one no arithmetic over
+    the arguments could see: the date moves under times nobody typed."""
+    r, srv = patched(monkeypatch, live_harvest, args, current)
+
+    assert srv.sent("PATCH") == []
+    assert r.code == 1
+    assert "runs straight through the daylight-saving change" in r.err
+
+
+def test_hours_states_a_duration_the_clock_cannot_and_is_never_refused(
+        monkeypatch, live_harvest):
+    """`--hours 3.75` is the *correct* answer on a transition day — the one way to record
+    what really passed when the two clock times cannot say it. Refusing it would leave no
+    way to fix the entry at all. It settles the duration outright, so it also ends the
+    question before the read."""
+    r, srv = patched(monkeypatch, live_harvest,
+                     ["--date", AUCKLAND_FALL_BACK, "--hours", "3.75"])
+
+    assert r.code == 0
+    assert srv.sent("PATCH")[0]["body"] == {"spent_date": AUCKLAND_FALL_BACK, "hours": 3.75}
+    assert srv.sent("GET") == [], "the duration is stated, so the entry's times decide nothing"
+
+
+def test_hours_is_an_exception_for_the_duration_alone_not_a_way_past_the_guard(
+        monkeypatch, live_harvest):
+    """The escape hatch is for the duration the two clock times cannot state. It is not a
+    flag that suspends the check: where the same body also carries times, Harvest
+    recomputes hours from them — which is what
+    `test_patch_sends_both_times_and_nothing_else_when_shifting_a_block` pins — so the
+    entry lands at the 2.75 hrs this exists to refuse, with a `3.75` in the request that
+    changed nothing. A model assembling one command to fix both is the likely way here."""
+    r, srv = patched(monkeypatch, live_harvest,
+                     ["--date", AUCKLAND_FALL_BACK, "--start", STRADDLE[0],
+                      "--end", STRADDLE[1], "--hours", "3.75"])
+
+    assert r.code == 1 and srv.sent("PATCH") == []
+    assert "runs straight through the daylight-saving change" in r.err
+
+
+def test_the_entry_is_read_once_where_it_is_read_at_all(monkeypatch, live_harvest):
+    """The cost the ticket accepted is one read per invocation. A guard that resolved the
+    result field by field, or re-read it to answer a second question, would multiply a
+    request on the path where PATCH semantics are already the documented trap."""
+    r, srv = patched(monkeypatch, live_harvest, ["--start", "09:15", "--end", "10:45"],
+                     entry_on(date="2026-08-12", start="9:00am", end="10:30am"))
+
+    assert r.code == 0
+    assert len(srv.sent("GET")) == 1
+
+
+def test_an_unconfirmed_time_patch_still_previews_rather_than_writing(
+        monkeypatch, live_harvest):
+    """The read is the guard's and the gate is still the write's. Every other preview test
+    passes a note, which no longer reaches the read at all — so without this one the
+    preview's new dependency on the provider answering is unasserted."""
+    r, srv = patched(monkeypatch, live_harvest, ["--start", "09:15", "--end", "10:45"],
+                     entry_on(date="2026-08-12", start="9:00am", end="10:30am"),
+                     confirm=False)
+
+    assert r.code == 0
+    assert r.lines[0].startswith(f"WOULD PATCH {ENTRY_ID} ")
+    assert srv.sent("PATCH") == [], "the gate still stands between the preview and the write"
+
+
+@pytest.mark.parametrize("args", [
+    ["--notes", "Reworded for the client"],
+    ["--project-id", "48084036"],
+], ids=["notes", "project"])
+def test_a_patch_that_cannot_move_a_clock_does_not_pay_for_the_read(
+        monkeypatch, live_harvest, args):
+    """The read is not a tax on every patch. Nothing time-shaped in the body means nothing
+    the guard could refuse, and a note correction is the commonest patch there is."""
+    r, srv = patched(monkeypatch, live_harvest, args)
+
+    assert r.code == 0
+    assert srv.sent("GET") == []
+
+
+def test_a_date_with_no_transition_settles_it_without_reading_the_entry(
+        monkeypatch, live_harvest):
+    """The patch names the date, and nothing repeats on it, so no reading of the entry's
+    own times could produce a straddle. Ordinary days are every day but two a year."""
+    r, srv = patched(monkeypatch, live_harvest,
+                     ["--start", STRADDLE[0], "--end", STRADDLE[1], "--date", "2026-08-12"])
+
+    assert r.code == 0
+    assert srv.sent("GET") == []
+    assert srv.sent("PATCH")[0]["body"] == {"started_time": "01:30", "ended_time": "04:15",
+                                            "spent_date": "2026-08-12"}
+
+
+def test_a_patch_that_names_the_date_and_both_times_is_refused_without_reading_anything(
+        monkeypatch, live_harvest):
+    """The other half of the same rule: the body already says everything the guard needs,
+    so the refusal costs nothing either."""
+    r, srv = patched(monkeypatch, live_harvest,
+                     ["--start", STRADDLE[0], "--end", STRADDLE[1],
+                      "--date", AUCKLAND_FALL_BACK])
+
+    assert r.code == 1 and srv.sent("PATCH") == []
+    assert srv.sent("GET") == []
+
+
+@pytest.mark.parametrize("start,end", [("01:30", "03:00"), ("02:00", "04:15")],
+                         ids=["first", "second"])
+def test_the_two_entries_the_refusal_recommends_can_themselves_be_patched(
+        monkeypatch, live_harvest, start, end):
+    """The guard must not refuse its own advice. Both replacements have one end *at* the
+    transition, which the containment test keeps strictly outside — and a run told to
+    correct a straddling entry will patch it to the first of these."""
+    r, srv = patched(monkeypatch, live_harvest,
+                     ["--start", start, "--end", end, "--date", AUCKLAND_FALL_BACK])
+
+    assert r.code == 0, r.err
+    assert srv.sent("PATCH")[0]["body"]["started_time"] == start
+
+
+def test_a_straddling_patch_is_refused_before_the_preview_as_well(monkeypatch, live_harvest):
+    """The preview is what the user says yes to, and its own last line says to re-run with
+    the flag. A change that must not be applied must not be offered."""
+    r, srv = patched(monkeypatch, live_harvest,
+                     ["--start", STRADDLE[0], "--end", STRADDLE[1]], confirm=False)
+
+    assert r.code == 1 and r.out == "", "nothing may be previewed that cannot then be applied"
+    assert srv.sent("PATCH") == []
+
+
+def test_an_entry_with_no_clock_times_at_all_is_left_alone(monkeypatch, live_harvest):
+    """A duration-mode entry comes back with `started_time` null. There is no clock
+    interval to straddle, and the guard refuses only what it can read — inventing one
+    would block the accounts `--hours` exists for."""
+    r, srv = patched(monkeypatch, live_harvest, ["--start", "01:30"],
+                     entry_on(start=None, end=None))
+
+    assert r.code == 0
+    assert srv.sent("PATCH")[0]["body"] == {"started_time": "01:30"}
+
+
+def test_a_patch_date_that_is_not_a_date_is_refused_by_name(live_harvest):
+    """The date is now read rather than passed through, because the guard needs to know
+    whether the clocks changed on it. Harvest answers a malformed one with a 422 of its
+    own; saying so here costs a round trip less and names the format."""
+    srv = live_harvest({("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)}})
+    r = run_cli(hp, [ENTRY_ID, "--date", "05/04/2026", CONFIRM])
+
+    assert srv.sent("PATCH") == []
+    assert r.code == 1 and "YYYY-MM-DD" in r.err
+    assert "Traceback" not in r.err
+
+
+def test_an_entry_the_provider_will_not_hand_back_is_an_err_line_not_a_traceback(
+        monkeypatch, live_harvest):
+    """The read is a request like any other, and a wrong entry id now fails on it rather
+    than on the PATCH. Same contract either way — a status and a line, never a traceback,
+    and nothing written."""
+    monkeypatch.setenv("TIMESHEET_TIMEZONE", "Pacific/Auckland")
+    srv = live_harvest({
+        ("GET", f"/time_entries/{ENTRY_ID}"): (404, {"message": "Not Found"}),
+        ("PATCH", f"/time_entries/{ENTRY_ID}"): {"id": int(ENTRY_ID)},
+    })
+    r = run_cli(hp, [ENTRY_ID, "--start", "01:30", CONFIRM])
+
+    assert srv.sent("PATCH") == []
+    assert r.code == 1 and r.err.startswith("ERR") and "404" in r.err
     assert "Traceback" not in r.err
 
 

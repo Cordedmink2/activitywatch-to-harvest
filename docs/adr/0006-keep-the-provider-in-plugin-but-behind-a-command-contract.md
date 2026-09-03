@@ -59,7 +59,9 @@ worth nothing while there is one plugin.
   in the contract. That is the largest immediate return, and it is why #22 belongs to this work.
 - `harvest_post.py` currently imports `aw_client` for timezone arithmetic. An adapter that reaches
   into the activity-source client is not behind a boundary, so those helpers move to a shared
-  `timezone.py` first (#36).
+  `timezone.py` first (#36). *Updated 2026-09-03:* #32 gave the same refusal to `harvest_patch.py`,
+  so the edge is two provider scripts wide, not one, and one of them also imports the other for the
+  refusal itself. The decision is unchanged; the move is larger than this bullet first described.
 - `reconcile` reaches the adapter across a sibling directory by path today. It moves onto the same
   contract `daily` uses (#31).
 - The export channel constrains the seam. Any future adoption of `bin/` has to answer for it, or

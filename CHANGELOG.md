@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading
+- **Changing an entry's times or its date now needs `TIMESHEET_TIMEZONE` too**, where
+  `harvest_patch.py` previously needed nothing but credentials. It has to know when the clocks
+  change to refuse a patch that would leave an entry running straight through one, and it asks for
+  the zone the same way the create does — same message, naming `/plugin configure billables`, and
+  before the preview rather than only before the write. A plugin install has already supplied it;
+  what changes is patching on a machine configured for nothing else. A patch that cannot move a
+  clock — notes, project, task, `--hours` — still asks for nothing.
+- **A patch that changes a time or a date now reads the entry first**, one `GET` per invocation,
+  because a patch carries only what it changes and the guard is on what the entry would end up as.
+  Nothing about the body that goes out changes. It is not paid for on a patch that cannot straddle:
+  notes-only and the like, a `--date` naming a day the clocks do not repeat on, or a patch that
+  already names the date and both times. **It happens on the preview too** — a change that must not
+  be applied must not be offered — so previewing a time or date change now needs credentials, a
+  reachable Harvest and an entry id that exists, where before it needed none of them. A mistyped id
+  answers `ERR 404` instead of printing `WOULD PATCH`.
+
 ### Fixed
+- **A patch could move an entry's times across a daylight-saving change and bill it short,
+  silently** (#32). Harvest recomputes the duration from the two clock times on a `PATCH` exactly
+  as it does on a create, so the entry `harvest_post.py` has refused since 0.6.0 could still be
+  reached by patching a correct one: `harvest_patch.py <id> --start 01:30 --end 04:15` on
+  `2026-04-05` in `Pacific/Auckland` left 2.75 hrs where 3.75 were worked. The check is on the
+  *resulting* entry, so `--start` alone, `--end` alone and `--date` alone — which moves the date
+  under times nobody typed — each reach it, and the refusal is the create's own message, with both
+  replacement ranges and why they are not the overlap they look like. `--hours` on its own is not
+  refused — a duration-mode account has no other way to correct such an entry — but passed
+  alongside times it settles nothing, because Harvest recomputes hours from them, so that
+  combination is refused like any other. On a start/end-time account, which is the usual one, the
+  fix is the two entries the message names: patch the one you have to the first and post the
+  second. A malformed `--date` is now an `ERR` naming the format instead of Harvest's 422.
 - **The screenshot task survives a plugin update** (#29). It stores an absolute path to the capture
   script, and on a plugin install that path names the *versioned* cache folder — so every
   `/plugin update` left it running the superseded release's script (the old folder stays on disk,

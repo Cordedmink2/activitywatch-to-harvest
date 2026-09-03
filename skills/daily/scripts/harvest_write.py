@@ -8,7 +8,8 @@ everything a write has in common happens here, once:
   ordered_minutes(a, b)  -> both clock times as minutes, or `ERR` and exit 1
   perform(write, confirmed)
       unconfirmed: print `WOULD POST <body>` / `WOULD PATCH <id> <body>`, then a line
-                   naming the flag, and exit 0 — nothing reached the provider
+                   naming the flag, and exit 0 — nothing was *written*. A caller's own
+                   guards may have read from the provider first; `harvest_patch.py` does
       confirmed:   send it; print `OK <id>` and exit 0, or `ERR <status> <body>` to
                    stderr and exit 1
 

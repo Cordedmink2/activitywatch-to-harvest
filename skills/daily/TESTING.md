@@ -1452,6 +1452,90 @@ anyone has made. Whether a model reading the message posts *both* entries rather
 "correcting" the overlap is untested — the message says not to, and that is a claim about
 prose, which is what § "Three things the review caught" is a record of being wrong about.
 
+**The update script, which this entry left open, closed by #32.** 2026-09-03. #23's Out of
+scope named it and predicted it: the entry refused above can be *arrived at* by patching a
+correct one, because Harvest recomputes the duration from the two clock times on a PATCH
+exactly as it does on a create. `harvest_patch.py <id> --start 01:30 --end 04:15` left 2.75
+hrs where 3.75 were worked, as silently as the create did.
+
+The guard is on the *result*, not on the arguments, which is the whole of the difference. A
+patch carries only what it changes, so `--start` alone, `--end` alone and `--date` alone are
+each a complete straddling entry once laid over the one already on the server — and the
+third is the one no reading of the arguments could reach, since it moves the date under
+times nobody typed. That means a GET the script did not previously make, on the path where
+PATCH semantics are already the documented trap. It is skipped where the answer is settled
+without it: nothing time-shaped in the body, a `--date` naming a day with no repeated span,
+or a body that already carries all three fields. Three tests assert the absence of that
+request rather than the presence of the guard, because "does not pay for it" is the half a
+passing refusal test cannot see.
+
+**`--hours` is deliberately not refused, and the first version of that exception was a
+hole.** The ticket's reasoning is that `--hours 3.75` states a duration the two clock times
+cannot, so refusing it would leave a duration-mode account no way to correct the entry at
+all. Written as `if "hours" in body: return`, that also let
+`--start 01:30 --end 04:15 --hours 3.75` through — and Harvest recomputes hours from the
+times whenever they are there, which this suite's own
+`test_patch_sends_both_times_and_nothing_else_when_shifting_a_block` pins, so the entry
+lands at 2.75 hrs with a `3.75` in the body that changed nothing. The exact entry the ticket
+exists to prevent, reached by the command a model is most likely to assemble after reading
+that `--hours` is allowed. The exception is now for `--hours` as the whole answer; found by
+the review subagent, not by the suite, and the test that names it was written after.
+
+**And the exception's premise does not hold on the usual account.** The module docstring
+twelve lines above the guard says `--hours` on a start/end-time account — "most accounts,
+including the typical consultancy setup" — leaves the entry inconsistent or converts it to a
+running timer. So `--hours` is the right answer on a *duration-mode* account and not on the
+common one, which is narrower than #32's wording. The behaviour stands as the ticket asked;
+what changed is the prose, in `SKILL.md` Step 9 and `references/output-format.md`, which had
+first been written to recommend it. The recommendation on a start/end-time account is the
+create's own: patch the entry to the first of the two ranges and post the second.
+
+**One message, imported rather than restated.** `harvest_patch.py` calls
+`harvest_post.refusal_for_a_straddled_change()` and prints what it returns, and the test
+asserts *equality* with that function's output rather than a substring of it — the multi-copy
+table registers one owner for this message, and a second wording would be a second thing to
+keep true. What was extracted is `repeated_span()`, the cheap half of the question (is there
+anything on this date to straddle?), because the patch asks it before deciding whether to
+read the entry.
+
+**Four costs, accepted, and one shape the guard cannot see.**
+
+1. Patching a time or a date now requires `TIMESHEET_TIMEZONE` where it previously required
+   nothing — same message, same `### Upgrading` note as the create's. A notes-only patch
+   still asks for nothing, which is its own test.
+2. **The read lands on the preview as well**, because a change that must not be applied must
+   not be offered, which is the create's doctrine and the reason its guard runs before the
+   gate. So previewing a time change now needs credentials, a reachable provider and an
+   entry id that exists: a mistyped id answers `ERR 404` where it used to answer
+   `WOULD PATCH`, and the workflow `SKILL.md` prescribes — preview, then confirm — costs two
+   reads rather than the one the ticket priced. One per invocation is what the tests pin.
+   Raised by review; the alternative (guard only the confirmed run) was rejected for putting
+   a body in front of the user that the next command would refuse.
+3. `--date` is parsed rather than passed through, so a malformed one is an `ERR` naming the
+   format. It carries `harvest_post.py`'s consequence with it: `date.fromisoformat` widened
+   on 3.11, so `--date 20260405` is now accepted and normalised where Harvest used to answer
+   it with a 422 — on a verb that overwrites a line someone has already approved. Consistent
+   with the create rather than novel, and noted here because the destructive verb is where
+   it matters more.
+4. `harvest_patch.py` imports `harvest_post.py` — a script — for the message and for
+   `repeated_span()`. That is the multi-copy table's answer (one owner, imported not
+   restated) and it is against the grain of `harvest_write.py`, which exists because shared
+   write-path behaviour belongs in a module that is not an entry point. #36's `timezone.py`
+   is where both functions should end up; ADR-0006's consequence bullet now records that the
+   edge is two scripts wide.
+
+And an entry whose stored times are absent (a duration-mode entry, whose `started_time` is
+null) or unreadable is left alone: there is no clock interval to straddle, and inventing one
+would block the accounts `--hours` exists for. A deliberate hole in the same family as the
+strict boundary above — the guard refuses what it can measure.
+
+**What was not measured**, on top of the create's own gap: no real entry has been patched
+across a real transition either, and the GET's response shape is the fake's (`spent_date`,
+`started_time`, `ended_time` as Harvest documents them), not one observed from the API. Nor
+is it observed that Harvest ignores a `hours` field sent alongside times — the guard above
+is written as though it does, which is what this suite's own patch tests assume and what the
+module docstring has said since before them.
+
 ### Two ways the configuration does not arrive, and only one had a name — #28
 **Rung 1.** 2026-09-02. Issue #28.
 
@@ -1840,6 +1924,12 @@ away, which is worse than naming none.
 
 #23 scoped it out and this is where it waits. The entry above on the unmarked `--window`
 into the skipped hour is the read-side half of the same hour.
+
+**#32 gave it a second instance, on the write path it did not have before.** The patch
+guard declines a spring-forward for the same reason and by the same route — it asks
+`repeated_span()`, which answers None there — so a patch can now *arrive* at an over-billed
+entry as well as a create. Nothing new to decide: whatever closes this closes both, because
+both ask one function. Named here so the gap is not read as a create-only one.
 
 ### Does a piece split out of a thin block re-validate at its own ratio? — untested
 

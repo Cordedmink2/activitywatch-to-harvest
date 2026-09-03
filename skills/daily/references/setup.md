@@ -77,7 +77,7 @@ Everything the skill needs to know about *this machine and account* is declared 
 | --- | --- | --- |
 | `HARVEST_ACCOUNT_ID` | yes | every Harvest command stops, naming this key |
 | `HARVEST_API_KEY` | yes | as above |
-| `TIMESHEET_TIMEZONE` | yes | `afk_blocks` / `activity_timeline` refuse to date a day |
+| `TIMESHEET_TIMEZONE` | yes | `afk_blocks` / `activity_timeline` refuse to date a day; `harvest_post` refuses to create, and `harvest_patch` to change a time or a date, without knowing when the clocks change |
 | `TIMESHEET_ACTIVITY_URL` | no | `http://localhost:5600` |
 | `TIMESHEET_SCREENSHOTS_DIR` | no | `~/Pictures/WorkScreenshots` |
 | `TIMESHEET_WORKSPACE` | no | the directory Claude Code is run from, if it looks like a workspace |

@@ -67,6 +67,40 @@ def hours(minutes: int) -> str:
     return text + "0" if text.endswith(".") else text
 
 
+def repeated_span(spent, zone) -> tuple[int, int] | None:
+    """The minutes-since-midnight bounds of the span the clocks repeat on `spent`, or None.
+
+    Measured, never assumed: `Australia/Lord_Howe` moves thirty minutes and
+    `Antarctica/Troll` two hours, and both figures come off the zone's own two readings.
+
+    None means there is nothing on this date an entry could straddle, which is three
+    different facts and not one:
+
+    - no transition at all, which is every date but two a year;
+    - a spring-forward. The clock skips rather than repeating, so an entry across it is
+      over-billed rather than short, and its two pieces would be separated by a gap where
+      these two abut — a different message, and #23 put it out of scope. The `TESTING.md`
+      Open gaps entry for the skipped hour carries it. `repeats` comes from the sign of
+      the offset shift and not from the order of the two readings, which gets
+      `America/Santiago` exactly backwards;
+    - a repeated span that crosses midnight, as it does in `America/Santiago`, where the
+      clocks go back at 00:00 to 23:00. Containment would then need an end past 1440, and
+      `parse_time_to_minutes` caps a reading at 23:59 — so no entry these scripts can even
+      express contains that span, and there is nothing to catch.
+
+    Separate from the refusal below because `harvest_patch.py` asks the cheap half of the
+    question first: on a date with no repeated span it can skip reading the entry it is
+    about to patch, which is a request over the wire.
+    """
+    change = aw_client.transition_clocks(spent, zone)
+    if change is None or not change.repeats:
+        return None
+    repeat_open, repeat_close = _minutes(change.once_passed), _minutes(change.as_reached)
+    if repeat_open >= repeat_close:
+        return None
+    return repeat_open, repeat_close
+
+
 def refusal_for_a_straddled_change(spent, start_min, end_min, zone) -> str | None:
     """Why this entry cannot be posted as one, or None if it can.
 
@@ -96,23 +130,10 @@ def refusal_for_a_straddled_change(spent, start_min, end_min, zone) -> str | Non
     the wire the user never previewed, which is the property the confirmation gate exists
     to hold.
     """
-    change = aw_client.transition_clocks(spent, zone)
-    if change is None:
+    span = repeated_span(spent, zone)
+    if span is None:
         return None
-    if not change.repeats:
-        # A spring-forward. The clock skips rather than repeating, so an entry across it
-        # is over-billed rather than short, and its two pieces would be separated by a gap
-        # where these two abut — a different message, and #23 put it out of scope. The
-        # `TESTING.md` Open gaps entry for the skipped hour carries it.
-        return None
-    repeat_open = _minutes(change.once_passed)
-    repeat_close = _minutes(change.as_reached)
-    if repeat_open >= repeat_close:
-        # The repeated span crosses midnight, as it does in `America/Santiago`, where the
-        # clocks go back at 00:00 to 23:00. Containment would then need an end past 1440,
-        # and `parse_time_to_minutes` caps a reading at 23:59 — so no entry this script can
-        # even express contains that span, and there is nothing here to catch.
-        return None
+    repeat_open, repeat_close = span
     if not (start_min < repeat_open and end_min > repeat_close):
         return None
 

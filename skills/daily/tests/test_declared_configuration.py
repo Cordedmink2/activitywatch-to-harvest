@@ -28,6 +28,7 @@ import pytest
 import activity_timeline as tl
 import afk_blocks as ab
 import aw_client as aw
+import harvest_patch as hpatch
 import harvest_post as hpost
 from support import aw_server, day, run_cli
 
@@ -256,6 +257,34 @@ def test_a_create_will_not_post_against_a_zone_nobody_chose(unconfigured):
     assert r.code != 0
     assert r.out == "", "nothing may be previewed that cannot then be posted"
     assert "TIMESHEET_TIMEZONE" in r.err and "/plugin configure" in r.err
+    assert "Traceback" not in r.err
+
+
+def test_a_patch_that_could_move_a_clock_will_not_run_against_a_zone_nobody_chose(
+        unconfigured):
+    """The same upgrade, one release later, for the same reason (#32): a patch can arrive
+    at the entry the create refuses, so it has to know when the clocks change too. Same
+    message, and before the preview here as well."""
+    r = run_cli(hpatch, ["2988748904", "--start", "01:30", "--end", "04:15"])
+    assert r.code != 0
+    assert r.out == "", "nothing may be previewed that cannot then be applied"
+    assert "TIMESHEET_TIMEZONE" in r.err and "/plugin configure" in r.err
+    assert "Traceback" not in r.err
+
+
+def test_a_patch_that_cannot_move_a_clock_still_asks_for_nothing(unconfigured):
+    """The zone is read where it decides something, not on every patch. A note correction
+    on a machine that has never been configured must still go through — it did before this
+    guard existed, and nothing about it turns on when the clocks change.
+
+    It stops here on the credentials, which the hermetic fixture blanks along with the
+    zone: what is asserted is *which* value it stops for, not that it got further. Without
+    the first two assertions an absent message is also satisfied by an empty stderr, and
+    this would pass against a script that had stopped running at all."""
+    r = run_cli(hpatch, ["2988748904", "--notes", "Reworded for the client", "--confirm"])
+    assert r.code != 0
+    assert "Harvest credentials not found" in r.err, "the one value a note patch needs"
+    assert "TIMESHEET_TIMEZONE" not in r.err
     assert "Traceback" not in r.err
 
 
